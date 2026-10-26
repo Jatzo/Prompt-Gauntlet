@@ -109,3 +109,12 @@ def test_a_judge_that_has_exited_is_reported_as_unavailable(root, judge_dir):
     with pytest.raises(JudgeError):
         judge.ping()
     judge.close()
+
+
+def test_a_placeholder_pin_beside_a_real_test_set_is_a_mismatch(root, judge_dir):
+    judge_dir.mkdir()
+    (judge_dir / "test.jsonl").write_text('{"id": "t1"}\n')
+    with JudgeClient(root, judge_dir) as judge:
+        report = judge.verify_hashes()
+    assert not report.ok
+    assert report.test_set == "mismatch"

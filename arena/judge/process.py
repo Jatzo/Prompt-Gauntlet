@@ -20,7 +20,8 @@ from arena.judge import store
 from arena.judge.hashing import read_pin, sha256_text
 from arena.schemas import JudgeReport
 
-# Written in data/test.sha256 until Phase 2 builds the real test set.
+# Written in data/test.sha256 until Phase 2 builds the real test set. Accepted only while no test
+# set file exists: a real file beside a placeholder pin means the pin was never written or reverted.
 PLACEHOLDER_PREFIX = "PLACEHOLDER"
 
 
@@ -41,7 +42,7 @@ def verify_hashes(root: Path, data_dir: Path) -> dict:
     if not test_pin.exists():
         test_status = "missing_pin"
     elif test_pin.read_text().startswith(PLACEHOLDER_PREFIX):
-        test_status = "placeholder"
+        test_status = "mismatch" if test_file.exists() else "placeholder"
     elif not test_file.exists():
         test_status = "missing_test_set"
     elif sha256_text(test_file) == read_pin(test_pin):
