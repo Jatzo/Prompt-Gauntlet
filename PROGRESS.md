@@ -91,6 +91,18 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 - Finalise and hash the constitution, write the real `data/test.sha256`, and commit and tag the
   pre-registration `docs/experiments/001`.
 
+## Process evidence (from Phase 3 on)
+Each phase now closes with a green CI run on its pushed commits, at least one ADR in `docs/adr/`, and
+a `docs/debug-log.md` entry for its first non-trivial bug (PLAN.md section 17). Case studies use the
+cybersecurity structure in PLAN.md section 13. No case study has been written yet.
+- Phase 3 CI: not yet run. Nothing has been pushed since f8a505e, so Phase 3 is "done locally, CI
+  pending" until the operator approves a push.
+- Phase 3 ADR: none written. Possible subjects, decided at close-out: two model families in place of
+  hand labels; refused and model-switched labelling items keeping their source label.
+- Phase 3 debug log: none yet. The open bug where a replay run is treated as live (the novelty hook
+  reads `backend.name`, and a replay backend's name is `replay-<digest>`) gets the first entry when
+  it is fixed.
+
 ## Open questions for the operator
 - A CLAUDE.md line on call storage: "Agent calls are stored by `(cycle, step)`; detector and target calls by request hash in the Judge DB."
 - Which open-weights classifier, which embedding model for dedup, and which non-Claude generator family stays test-only.

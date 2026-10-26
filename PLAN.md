@@ -311,7 +311,16 @@ Experiment history lives in the **database as versioned `DetectorConfig` rows** 
 - A **cross-model check** (swap the target or detector model)
 - Regression check and linked lessons/experiments
 
-**Each case study** (`docs/case-studies/NNN-slug.md`): title and summary; threat model (lethal-trifecta lens); how it was found; the attack (one sanitised example); root cause; the fix and its design principle; results table with CIs and a chart; residual risk and what didn't work; lessons (linked to the technique journal); reproduce command and pinned version.
+**Each case study** (`docs/case-studies/NNN-slug.md`) is written for a cybersecurity reader and follows this structure. This section is the template; the writer's brief in `prompts/casestudy.md` repeats it.
+1. **Title and summary.** One paragraph: what was found, what was done, and the verdict.
+2. **Context and scope.** What was tested, on what target, under what authorisation. Always stated: the target is the project's own local toy app, the only secret at risk is the dummy canary, and no third-party system, endpoint, credential or model provider was attacked. The threat model through the lethal-trifecta lens, the technique and impact class, and the pinned config version.
+3. **Approach.** How the weakness was found (cycle, agent, query budget), the attack as one sanitised example, the root cause, and the fix with its design principle.
+4. **Evidence and results.** The numbers: ASR and utility for that technique, TPR at 1% FPR and the achieved FPR, the out-of-sample FPR cost, each before and after with confidence intervals, plus the chart, the regression check, the held-out variant check and the cross-model check. Every number comes from the evidence pack and `RESULTS.md`; none is estimated or filled in.
+5. **Verdict and confidence.** A plain verdict (fixed, partly fixed, not fixed, or no effect) with a stated confidence level (high, medium or low) and what it rests on: interval widths, replication on the second fold, and the cross-model check.
+6. **Recommended action.** What a team running a similar tool-using agent should do, and what this project does next.
+7. **Limitations.** Residual risk, what did not work, the labelling limits in `docs/limitations.md`, and anything the result does not show. Then the lessons (linked to the technique journal) and the reproduce command.
+
+A null or negative result is written up in the same structure and given the same care. Runs are never chosen because they look best. Responsible disclosure follows section 12, item 6.
 
 **Quality bar:** prefer 3 deep studies over many shallow ones ("added a decoder, base64 now caught" is not enough on its own). Require at least one negative or adaptive-bypass case study. The final text is **human-edited, not merely approved**, and any generated text is tagged as such.
 
@@ -370,13 +379,24 @@ prompt-gauntlet/
     server.py  static/index.html
   data/  public_dev.jsonl  test.sha256  build_test.py   (real test set lives outside git)
   private/                  # gitignored
-  docs/case-studies/  docs/experiments/  journal/  DATASETS.md  SECURITY.md
+  docs/case-studies/  docs/experiments/  docs/adr/  docs/debug-log.md  journal/  DATASETS.md  SECURITY.md
   runs/                     # gitignored
   .gitignore  .gitattributes  .gitleaks.toml  .github/workflows/ci.yml  Makefile
   tests/
 ```
 
 ## 17. Phases (each "done when" is a runnable command or check)
+
+**Process evidence, for every phase.** A phase is done only with all three:
+- a green run of `.github/workflows/ci.yml` (the full `make ci`) on the pushed phase commits. Until the
+  operator approves the push, the phase is "done locally, CI pending";
+- at least one architecture decision record in `docs/adr/NNNN-slug.md` for a real choice made in that
+  phase: the context, the decision, the alternative not taken and why, and the consequences;
+- the first time a non-trivial bug comes up in the phase, an entry in `docs/debug-log.md`: what broke,
+  how it was investigated, the fix, and the regression test (by name) that would catch it again.
+
+Neither an ADR nor a bug is ever invented to fill the list, and a real one is never left out. This is
+checked at each phase close-out, not by a test, since a test would push towards writing one early.
 
 **Core v1**
 1. **Foundations.** Repo + `.gitignore`/`.gitattributes`/CI/secret scan from the first commit; `schemas.py` (section 6); DB schema; `llm.py` (live/mock/replay, stored outputs, schema-failure rate); cycle state machine; controls; CLI status; `constitution.md` (drafted now, referencing numeric limits by their `config.py` names; finalised and hashed at the end of Phase 2) and `prompts/`; `memory.py` with validation; dispatcher allowlists; the Judge-as-process stub; AST boundary test; the `config.py` defaults table (proposed for your approval); and a **citation-verification task** producing `docs/references.md` (each paper in section 3a marked verified/unverified before it is cited anywhere). *No dashboard yet.*
