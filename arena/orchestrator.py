@@ -137,14 +137,17 @@ class Orchestrator:
     def _step_plan(self, cycle_id: int) -> None:
         cycle.reach(self.conn, cycle_id, "running")
 
-        def write(memory: Memory, plan: CEOPlan) -> None:
+        def write(memory: Memory, plan: CEOPlan) -> str:
             where = {"cycle_id": cycle_id, "step": "plan", "role": "ceo"}
             memory.record_episode(kind="plan", body=plan.model_dump(mode="json"), **where)
             memory.record_prediction(plan.prediction, **where)
+            return "plan recorded"
 
         self._run_step(
             cycle_id,
             "plan",
+            "ceo",
+            "propose_plan",
             lambda: self._agent_call("ceo", "propose_plan", cycle_id, "plan", CEOPlan),
             write,
         )
@@ -152,7 +155,7 @@ class Orchestrator:
     def _step_judge(self, cycle_id: int) -> None:
         cycle.reach(self.conn, cycle_id, "evaluating")
 
-        def write(memory: Memory, report: JudgeReport) -> None:
+        def write(memory: Memory, report: JudgeReport) -> str:
             memory.record_episode(
                 kind="judge_report",
                 body=report.model_dump(mode="json"),
@@ -160,11 +163,14 @@ class Orchestrator:
                 step="judge",
                 role="judge",
             )
+            return report.reason_code
 
-        self._run_step(cycle_id, "judge", lambda: self.judge.evaluate(cycle_id), write)
+        self._run_step(
+            cycle_id, "judge", "judge", "evaluate", lambda: self.judge.evaluate(cycle_id), write
+        )
 
     def _step_postmortem(self, cycle_id: int) -> None:
-        def write(memory: Memory, postmortem: PostMortem) -> None:
+        def write(memory: Memory, postmortem: PostMortem) -> str:
             where = {"cycle_id": cycle_id, "step": "postmortem", "role": "ceo"}
             memory.record_episode(
                 kind="postmortem", body=postmortem.model_dump(mode="json"), **where
@@ -172,16 +178,22 @@ class Orchestrator:
             # A rejected lesson is logged, not raised: the stored output would be replayed on every
             # resume and hit the same rejection, so raising would stop the run for good. The memory
             # checks all run before any insert, so a rejection leaves nothing half-written.
+            rejected_count = 0
             for proposal in postmortem.lesson_candidates:
                 try:
                     memory.add_lesson(proposal, **where)
                 except MemoryWriteRejected as rejected:
+                    rejected_count += 1
                     detail = {"reason": str(rejected), "text": proposal.text}
                     db.log_event(self.conn, "lesson_rejected", detail, cycle_id=cycle_id)
+            stored = len(postmortem.lesson_candidates) - rejected_count
+            return f"{stored} lessons stored, {rejected_count} rejected"
 
         self._run_step(
             cycle_id,
             "postmortem",
+            "ceo",
+            "write_postmortem",
             lambda: self._agent_call("ceo", "write_postmortem", cycle_id, "postmortem", PostMortem),
             write,
         )
@@ -190,8 +202,10 @@ class Orchestrator:
         self,
         cycle_id: int,
         step: str,
+        role: str,
+        tool: str,
         produce: Callable[[], Result],
-        write: Callable[[Memory, Result], None],
+        write: Callable[[Memory, Result], str],
     ) -> None:
         """Run one step at most once per cycle.
 
@@ -202,7 +216,7 @@ class Orchestrator:
         if self._written(cycle_id, step):
             return
         result = produce()
-        self._write_once(cycle_id, step, lambda memory: write(memory, result))
+        self._write_once(cycle_id, step, role, tool, lambda memory: write(memory, result))
 
     def _agent_call[Model: pydantic.BaseModel](
         self, role: str, tool: str, cycle_id: int, step: str, response_model: type[Model]
@@ -245,11 +259,22 @@ class Orchestrator:
             is not None
         )
 
-    def _write_once(self, cycle_id: int, step: str, write: Callable[[Memory], None]) -> None:
+    def _write_once(
+        self, cycle_id: int, step: str, role: str, tool: str, write: Callable[[Memory], str]
+    ) -> None:
         with db.transaction(self.conn):
             if self._written(cycle_id, step):
                 return
-            write(Memory(self.conn, self.config))
+            outcome = write(Memory(self.conn, self.config))
+            # The live feed reads these. Outcomes are fixed-format strings, never agent free text.
+            detail = {
+                "cycle": cycle_id,
+                "step": step,
+                "role": role,
+                "tool": tool,
+                "outcome": outcome,
+            }
+            db.log_event(self.conn, "step_done", detail, cycle_id=cycle_id)
             self.conn.execute(
                 "INSERT INTO step_writes (cycle_id, step, kind, created_at)"
                 " VALUES (?, ?, 'memory', ?)",

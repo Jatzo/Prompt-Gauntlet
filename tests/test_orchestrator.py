@@ -189,3 +189,53 @@ def test_resuming_under_a_different_config_pauses_the_run(conn, changed):
     assert resumed.status == "paused"
     assert db.control_state(conn) == ("paused", "anomaly: config_mismatch")
     assert episodes(conn) == ["plan", "judge_report"]
+
+
+def step_done_events(conn):
+    rows = conn.execute("SELECT detail FROM events WHERE kind = 'step_done' ORDER BY id")
+    return [json.loads(row[0]) for row in rows]
+
+
+def test_each_step_logs_one_step_done_event(conn):
+    outcome = make(conn).run_cycle()
+    assert step_done_events(conn) == [
+        {
+            "cycle": outcome.cycle_id,
+            "step": "plan",
+            "role": "ceo",
+            "tool": "propose_plan",
+            "outcome": "plan recorded",
+        },
+        {
+            "cycle": outcome.cycle_id,
+            "step": "judge",
+            "role": "judge",
+            "tool": "evaluate",
+            "outcome": "not_implemented",
+        },
+        {
+            "cycle": outcome.cycle_id,
+            "step": "postmortem",
+            "role": "ceo",
+            "tool": "write_postmortem",
+            "outcome": "0 lessons stored, 0 rejected",
+        },
+    ]
+
+
+def test_a_crash_before_the_write_commits_leaves_no_step_done_event(conn, monkeypatch):
+    original = Memory.record_episode
+
+    def crash_on_postmortem(self, *, kind, **kwargs):
+        if kind == "postmortem":
+            raise Crash
+        return original(self, kind=kind, **kwargs)
+
+    monkeypatch.setattr(Memory, "record_episode", crash_on_postmortem)
+    with pytest.raises(Crash):
+        make(conn).run_cycle()
+    assert [event["step"] for event in step_done_events(conn)] == ["plan", "judge"]
+
+    monkeypatch.setattr(Memory, "record_episode", original)
+    make(conn, script={}).run_cycle()
+    assert [event["step"] for event in step_done_events(conn)] == ["plan", "judge", "postmortem"]
