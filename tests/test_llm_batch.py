@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import threading
 import time
@@ -338,3 +339,106 @@ def test_without_the_flag_a_refusal_stops_the_batch_even_from_the_cache():
     )
     with pytest.raises(llm.ContentRefused, match="item b"):
         batch(requests, cache, backend)
+
+
+class SwitchingBackend(CountingBackend):
+    """Answers texts containing "flagged" from another model, as the plan's safeguards fallback
+    does; everything else from the pinned model."""
+
+    safeguard_fallback = True
+
+    def complete(self, *, role, model_id, step_key, request):
+        response = super().complete(
+            role=role, model_id=model_id, step_key=step_key, request=request
+        )
+        if "flagged" in request.user:
+            return dataclasses.replace(response, model_id="claude-older-4-8")
+        return response
+
+
+def items(count, flagged=()):
+    return [keyed(f"i{n}", f"flagged {n}" if n in flagged else f"text {n}") for n in range(count)]
+
+
+def refusable(requests, cache, backend):
+    return llm.call_batch(
+        "detector", requests, DetectorResult, cache, backend=backend, refusals_are_items=True
+    )
+
+
+def test_one_switched_item_is_a_stored_refusal_and_never_asked_again():
+    backend, cache = SwitchingBackend(), MemoryEvalCache()
+    results = refusable(items(20, flagged={3}), cache, backend)
+    assert results[3] == Unscorable(llm.REFUSED)
+    assert all(isinstance(r, DetectorResult) for n, r in enumerate(results) if n != 3)
+    [row] = [o for o in cache.outputs.values() if o.item_id == "i3"]
+    assert (row.failure, row.model_id, row.input_tokens) == (llm.REFUSED, "claude-older-4-8", 10)
+    assert refusable(items(20, flagged={3}), cache, backend) == results
+    assert backend.calls["flagged 3"] == 1
+
+
+def test_a_rerun_with_one_switched_call_and_the_rest_cached_passes():
+    backend, cache = SwitchingBackend(), MemoryEvalCache()
+    refusable(items(20), cache, backend)
+    rerun = items(19) + [keyed("i19", "flagged 19")]
+    assert refusable(rerun, cache, backend)[19] == Unscorable(llm.REFUSED)
+
+
+@pytest.mark.parametrize(
+    ("count", "flagged"),
+    [
+        (1, {0}),  # no answer from the pinned model at all
+        (20, {1, 2}),  # two switches in twenty is more than single items
+    ],
+)
+def test_too_many_switches_stop_the_batch_and_a_rerun_stops_again(count, flagged):
+    backend, cache = SwitchingBackend(), MemoryEvalCache()
+    with pytest.raises(ModelIdMismatch, match="Too many"):
+        refusable(items(count, flagged), cache, backend)
+    calls = dict(backend.calls)
+    with pytest.raises(ModelIdMismatch, match="Too many"):
+        refusable(items(count, flagged), cache, backend)
+    assert backend.calls == calls
+
+
+def test_safeguard_refusals_alone_are_not_model_switches():
+    rows = [
+        llm.CachedOutput(f"k{n}", f"i{n}", "", False, llm.REFUSED, "pinned", 0, 0, "live")
+        for n in range(3)
+    ]
+    llm._check_switches("detector", "pinned", rows)
+
+
+def test_a_switch_still_raises_without_the_flag_or_from_a_backend_without_fallback():
+    with pytest.raises(ModelIdMismatch):
+        batch(items(20, flagged={3}), MemoryEvalCache(), SwitchingBackend())
+    plain = CountingBackend(model_id="claude-older-4-8")
+    with pytest.raises(ModelIdMismatch):
+        refusable(items(1), MemoryEvalCache(), plain)
+
+
+def test_a_recording_of_the_live_backend_keeps_its_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr(llm, "REPO_ROOT", tmp_path)
+    recorder = llm.RecordBackend(SwitchingBackend(), tmp_path / "runs" / "c.jsonl")
+    assert recorder.safeguard_fallback is True
+    assert (
+        llm.RecordBackend(CountingBackend(), tmp_path / "runs" / "d.jsonl").safeguard_fallback
+        is False
+    )
+
+
+class AlwaysSwitching(SwitchingBackend):
+    def complete(self, *, role, model_id, step_key, request):
+        time.sleep(0.01)  # A real call takes seconds; an instant one would finish the queue first.
+        response = CountingBackend.complete(
+            self, role=role, model_id=model_id, step_key=step_key, request=request
+        )
+        return dataclasses.replace(response, model_id="claude-older-4-8")
+
+
+def test_a_run_wide_switch_stops_early_instead_of_spending_the_whole_batch():
+    backend, cache = AlwaysSwitching(), MemoryEvalCache()
+    with pytest.raises(ModelIdMismatch, match="Too many"):
+        refusable(items(400), cache, backend)
+    # Concurrency lets a few more finish, but nowhere near the whole batch.
+    assert sum(backend.calls.values()) < 100

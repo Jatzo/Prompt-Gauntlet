@@ -17,6 +17,9 @@ measured.
 - A provider's safeguards refuse some inputs, most likely the most explicit attacks. A refused attack
   keeps its source label and a refused benign item is contested; both are counted and left out of
   agreement, so raw agreement and kappa describe the items both families answered, not the whole set.
+  An item the Claude plan answers from a different model than the pinned one counts as a refusal
+  too; the cause is not confirmed (most likely a safeguards fallback), and a batch with no pinned
+  answer or with switches on more than 5% of its items stops instead.
   A refusal is stored and never asked again. To ask again after the safeguards change, delete those
   rows: `sqlite3 private/data/labels-cache.db "DELETE FROM outputs WHERE failure = 'refused: safeguards'"`.
 

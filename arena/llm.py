@@ -162,6 +162,31 @@ def _pinned_model(role: str, config: ArenaConfig) -> str:
     return pinned
 
 
+# At most this share of a batch (and at least one item) may come back from another model.
+_SWITCH_SHARE = 0.05
+# New results seen before the share is also checked while the batch runs, so a run-wide switch
+# stops early instead of after every call is spent.
+_SWITCH_EARLY = 40
+
+
+def _check_switches(role: str, pinned: str, batch: Sequence["CachedOutput"]) -> None:
+    """A model switch is a refusal only for single items. A batch with no answer from the pinned
+    model, or with more switches than `_SWITCH_SHARE` allows, is a configuration fault and stops,
+    stored rows included, so a rerun stops the same way until the cause is fixed."""
+    switched = [o for o in batch if o.failure == REFUSED and o.model_id != pinned]
+    if not switched:
+        return
+    answered = sum(o.model_id == pinned and o.failure != REFUSED for o in batch)
+    if not answered or len(switched) > max(1, int(len(batch) * _SWITCH_SHARE)):
+        raise ModelIdMismatch(
+            f"{role}: {len(switched)} of {len(batch)} items answered by {switched[0].model_id}, "
+            f"pinned id is {pinned}. Too many to be single flagged items.",
+            role=role,
+            expected=pinned,
+            reported=switched[0].model_id,
+        )
+
+
 def _wrong_model(role: str, pinned: str, response: LLMResponse) -> ModelIdMismatch:
     return ModelIdMismatch(
         f"{role} answered as {response.model_id}, pinned id is {pinned}.",
@@ -380,7 +405,22 @@ def call_batch[Model: pydantic.BaseModel](
             with spent_lock:
                 spent[0] += response.input_tokens + response.output_tokens
             if response.model_id != pinned:
-                raise _wrong_model(role, pinned, response)
+                if not (refusals_are_items and getattr(backend, "safeguard_fallback", False)):
+                    raise _wrong_model(role, pinned, response)
+                # A flagged input answered by another model: a refusal for this item, never
+                # retried, with the model that answered kept in the row. `_check_switches` stops
+                # the batch if this is the whole run rather than single items.
+                return CachedOutput(
+                    key=key,
+                    item_id=keyed.item_id,
+                    raw_output="",
+                    valid=False,
+                    failure=REFUSED,
+                    model_id=response.model_id[:64],
+                    input_tokens=response.input_tokens,
+                    output_tokens=response.output_tokens,
+                    backend=backend.name,
+                )
             parsed, failure = _validate(response, keyed.request, response_model)
             output = CachedOutput(
                 key=key,
@@ -414,10 +454,14 @@ def call_batch[Model: pydantic.BaseModel](
         read: set[Future] = set()
         try:
             futures = [pool.submit(attempt, key, keyed) for key, keyed in missing.items()]
+            fresh: list[CachedOutput] = []
             for future in as_completed(futures):
                 read.add(future)
                 try:
                     unstored.append(future.result())
+                    fresh.append(unstored[-1])
+                    if len(fresh) >= _SWITCH_EARLY:
+                        _check_switches(role, pinned, fresh)
                 except Exception as failure:
                     error = failure
                     # Stop reading here: as_completed never yields a future that shutdown
@@ -446,6 +490,7 @@ def call_batch[Model: pydantic.BaseModel](
         if error is not None:
             raise error
 
+    _check_switches(role, pinned, [outputs[key] for key in dict.fromkeys(keys)])
     results: list[Model | Unscorable] = []
     for key in keys:
         output = outputs[key]
@@ -600,6 +645,9 @@ class LiveBackend:
     """
 
     name = "live"
+    # The plan may answer an input its safeguards flag from an older model instead of refusing.
+    # `call_batch` reads this, for callers that take refusals as items.
+    safeguard_fallback = True
     # The tool the SDK injects for structured output.
     _SDK_TOOL = "StructuredOutput"
     # Each call is one CLI process, so live calls are capped across all threads.
@@ -850,6 +898,7 @@ class RecordBackend:
         resolved.parent.mkdir(parents=True, exist_ok=True)
         self.inner = inner
         self.cassette = resolved
+        self.safeguard_fallback = getattr(inner, "safeguard_fallback", False)
 
     def complete(self, *, role, model_id, step_key, request):
         response = self.inner.complete(
