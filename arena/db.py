@@ -195,8 +195,8 @@ CREATE TABLE detector_configs (
 );
 """
 
-# Added in version 3: the run's novelty archive (PLAN section 10), written only through memory.py
-# and cleared at the start of each run.
+# Added in version 3: the novelty archive (PLAN section 10), written only through memory.py. Reads
+# are scoped to one run through the cycle, so each run starts with an empty archive.
 VERSION_3 = """
 CREATE TABLE novelty_archive (
     id INTEGER PRIMARY KEY,

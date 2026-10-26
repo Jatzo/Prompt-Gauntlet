@@ -71,6 +71,11 @@ def token_set_jaccard(left: str, right: str) -> float:
     return len(a & b) / len(a | b)
 
 
+# Episodes that hold the Attacker's batches, held-back attacks included. No briefing, recall or
+# other agent-facing read may select them.
+PRIVATE_EPISODE_KINDS = ("attack_batch", "novelty_closed")
+
+
 class Memory:
     def __init__(self, conn: sqlite3.Connection, config: ArenaConfig = DEFAULTS):
         self.conn = conn
@@ -246,15 +251,37 @@ class Memory:
         self._provenance("memory_operator_notes", row_id, "operator", 0, "operator")
         return row_id
 
-    def archive_texts(self) -> list[str]:
-        """The archive, leaving out anything from a rolled-back cycle, whose work was abandoned."""
-        return [text for _, text in self._archive_rows()]
+    def archive_texts(self, run_id: str) -> list[str]:
+        """The run's own archive. A new run starts empty, two runs in one database never see each
+        other's, and anything from a rolled-back cycle is left out, since its work was
+        abandoned."""
+        return [text for _, text in self._archive_rows(run_id)]
 
-    def _archive_rows(self) -> list[tuple[int, str]]:
+    def _archive_rows(self, run_id: str) -> list[tuple[int, str]]:
         return self.conn.execute(
-            "SELECT a.id, a.text FROM novelty_archive a LEFT JOIN cycles c ON c.id = a.cycle_id"
-            " WHERE COALESCE(c.state, '') != 'rolled_back' ORDER BY a.id"
+            "SELECT a.id, a.text FROM novelty_archive a JOIN cycles c ON c.id = a.cycle_id"
+            " WHERE c.run_id = ? AND c.state != 'rolled_back' ORDER BY a.id",
+            (run_id,),
         ).fetchall()
+
+    def episode(self, cycle_id: int, kind: str) -> dict | None:
+        """The newest episode of one kind for one cycle, or None."""
+        row = self.conn.execute(
+            "SELECT body FROM memory_episodic WHERE cycle_id = ? AND kind = ? ORDER BY id DESC"
+            " LIMIT 1",
+            (cycle_id, kind),
+        ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def latest_committed_episode(self, run_id: str, kind: str) -> dict | None:
+        """The newest episode of one kind from the run's committed cycles, or None."""
+        row = self.conn.execute(
+            "SELECT e.body FROM memory_episodic e JOIN cycles c ON c.id = e.cycle_id"
+            " WHERE c.run_id = ? AND c.state = 'committed' AND e.kind = ?"
+            " ORDER BY e.cycle_id DESC, e.id DESC LIMIT 1",
+            (run_id, kind),
+        ).fetchone()
+        return json.loads(row[0]) if row else None
 
     def offer_to_archive(
         self, items: Sequence[tuple[str, str]], *, cycle_id: int, step: str, role: str
@@ -264,6 +291,9 @@ class Memory:
         of the text, so the result depends only on the set offered, not its order. Returns the
         archive size."""
         self._require_transaction()
+        run_id = self.conn.execute("SELECT run_id FROM cycles WHERE id = ?", (cycle_id,)).fetchone()
+        if run_id is None:
+            raise KeyError(f"No cycle {cycle_id}: archive rows must belong to a run.")
         for cluster_id, text in items:
             row_id = self._insert(
                 "INSERT INTO novelty_archive (cycle_id, cluster_id, text, created_at)"
@@ -271,7 +301,9 @@ class Memory:
                 (cycle_id, cluster_id, text, db.now()),
             )
             self._provenance("novelty_archive", row_id, role, cycle_id, step)
-        members = {row_id: (text, novelty.grams(text)) for row_id, text in self._archive_rows()}
+        members = {
+            row_id: (text, novelty.grams(text)) for row_id, text in self._archive_rows(run_id[0])
+        }
         while len(members) > self.config.novelty_archive_size:
 
             def crowding(member_id: int) -> tuple[float, str]:
@@ -283,11 +315,6 @@ class Memory:
             self.conn.execute("DELETE FROM novelty_archive WHERE id = ?", (dropped,))
             del members[dropped]
         return len(members)
-
-    def clear_archive(self) -> None:
-        """Each run starts with an empty archive, so no arm inherits another run's state."""
-        self._require_transaction()
-        self.conn.execute("DELETE FROM novelty_archive")
 
     def _require_transaction(self) -> None:
         if not self.conn.in_transaction:

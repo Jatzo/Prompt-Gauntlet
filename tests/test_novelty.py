@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from arena import db, novelty
+from arena import cycle, db, novelty
 from arena.config import ArenaConfig
 from arena.memory.memory import Memory
 from arena.schemas import AttackVerdict
@@ -117,39 +117,45 @@ ITEMS = [
 ]
 
 
-def offer(memory, items):
+def offer(memory, items, run_id="run"):
     with db.transaction(memory.conn):
-        return memory.offer_to_archive(items, cycle_id=1, step="archive", role="orchestrator")
+        cycle_id = cycle.open_cycle(memory.conn, run_id)
+        return memory.offer_to_archive(items, cycle_id=cycle_id, step="archive", role="o")
 
 
 def test_the_archive_keeps_the_most_different_members_whatever_the_order(memory, tmp_path):
     assert offer(memory, ITEMS) == 3
-    kept = set(memory.archive_texts())
+    kept = set(memory.archive_texts("run"))
     # The two near-copies cannot both survive.
     assert not {ITEMS[0][1], ITEMS[1][1]} <= kept
 
     other = Memory(db.connect(tmp_path / "other.db"), ArenaConfig(novelty_archive_size=3))
     offer(other, list(reversed(ITEMS)))
-    assert set(other.archive_texts()) == kept
+    assert set(other.archive_texts("run")) == kept
     other.conn.close()
 
 
-def test_the_archive_is_written_only_inside_a_transaction_and_cleared_per_run(memory):
+def test_the_archive_is_written_only_inside_a_transaction_and_only_for_a_real_cycle(memory):
     with pytest.raises(RuntimeError, match="transaction"):
-        memory.offer_to_archive(ITEMS[:1], cycle_id=1, step="archive", role="orchestrator")
-    offer(memory, ITEMS[:2])
+        memory.offer_to_archive(ITEMS[:1], cycle_id=1, step="archive", role="o")
+    with db.transaction(memory.conn), pytest.raises(KeyError, match="No cycle"):
+        memory.offer_to_archive(ITEMS[:1], cycle_id=99, step="archive", role="o")
+
+
+def test_two_runs_in_one_database_keep_their_archives_apart(memory):
+    offer(memory, ITEMS[:2], run_id="arm-a")
     with db.transaction(memory.conn):
-        memory.clear_archive()
-    assert memory.archive_texts() == []
+        cycle.reach(memory.conn, 1, "committed")
+    offer(memory, ITEMS[2:5], run_id="arm-b")
+    assert memory.archive_texts("arm-a") == [ITEMS[0][1], ITEMS[1][1]]
+    assert memory.archive_texts("arm-b") == [ITEMS[2][1], ITEMS[3][1], ITEMS[4][1]]
+    assert memory.archive_texts("arm-c") == []
 
 
 def test_attacks_from_a_rolled_back_cycle_leave_the_archive(memory):
-    from arena import cycle
-
     with db.transaction(memory.conn):
         hijacked = cycle.open_cycle(memory.conn, "run")
-        memory.offer_to_archive(ITEMS[:1], cycle_id=hijacked, step="archive", role="orchestrator")
+        memory.offer_to_archive(ITEMS[:1], cycle_id=hijacked, step="archive", role="o")
         cycle.advance(memory.conn, hijacked, "rolled_back")
-    with db.transaction(memory.conn):
-        memory.offer_to_archive(ITEMS[2:3], cycle_id=hijacked + 1, step="archive", role="o")
-    assert memory.archive_texts() == [ITEMS[2][1]]
+    offer(memory, ITEMS[2:3])
+    assert memory.archive_texts("run") == [ITEMS[2][1]]

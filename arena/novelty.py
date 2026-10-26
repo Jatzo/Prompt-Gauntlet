@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
+from arena.anomaly import Anomaly
 from arena.data.dedup import shingles
 from arena.schemas import AttackVerdict
 
@@ -29,8 +30,11 @@ MIN_TRAIN_ATTACKS = 50
 Band = Literal["low", "mid", "high"]
 
 
-class NotCalibrated(RuntimeError):
-    """Train holds too few attacks to calibrate the novelty threshold for a live run."""
+class NotCalibrated(Anomaly):
+    """Train holds too few attacks to calibrate the novelty threshold for a live run. An anomaly,
+    so the run pauses until the operator builds the data, rather than rolling the cycle back."""
+
+    kind = "novelty_not_calibrated"
 
 
 def grams(text: str) -> frozenset[str]:

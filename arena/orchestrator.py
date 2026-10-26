@@ -23,6 +23,7 @@ from arena.anomaly import Anomaly, ConfigMismatch, HashMismatch, HijackDetected
 from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig, config_hash
 from arena.judge_client import HashReport
 from arena.memory.memory import Memory, MemoryWriteRejected
+from arena.run_novelty import RunNovelty
 from arena.schemas import CEOPlan, JudgeReport, PostMortem, QueryReply
 
 STEPS = ("plan", "judge", "postmortem")
@@ -57,6 +58,14 @@ class Orchestrator:
         self.run_id = run_id
         self.root = root
         self.config = config
+        self.novelty = RunNovelty(
+            conn,
+            run_id=run_id,
+            # Mock and replay runs may use the fixed threshold; others need a calibrated one.
+            live=backend.name not in ("mock", "replay"),
+            private_dir=root / "private" / "data",
+            config=config,
+        )
 
     def run_cycle(self) -> CycleOutcome:
         halted = self._halted(None)
@@ -70,7 +79,11 @@ class Orchestrator:
                 if halted:
                     return halted
                 getattr(self, f"_step_{step}")(cycle_id)
-            cycle.reach(self.conn, cycle_id, "committed")
+            # Closing in the same transaction as the commit, so a crash can never leave a
+            # committed cycle whose held-back attacks were never offered to the archive.
+            with db.transaction(self.conn):
+                cycle.reach(self.conn, cycle_id, "committed")
+                self.novelty.close_cycle(Memory(self.conn, self.config), cycle_id)
             return CycleOutcome("committed", cycle_id, "all steps done")
         except Anomaly as anomaly:
             detail = {"message": str(anomaly), **_jsonable(anomaly.detail)}
