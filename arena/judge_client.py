@@ -23,6 +23,8 @@ from arena.schemas import (
     BatchReport,
     EvaluateRequest,
     JudgeReport,
+    LabelCheckReport,
+    LabelCheckRequest,
     MeasureRequest,
     QueryReply,
     QueryRequest,
@@ -148,6 +150,15 @@ class JudgeClient:
         return QueryReply.model_validate(
             self._request("query_detector", **request.model_dump(mode="json"))
         )
+
+    def label_check(self, request: LabelCheckRequest) -> LabelCheckReport:
+        """The data build's checker pass: target episodes for every attack, so the long wait."""
+        reply = self._request(
+            "label_check",
+            timeout=DEFAULTS.measure_timeout_seconds,
+            **request.model_dump(mode="json"),
+        )
+        return LabelCheckReport.model_validate(reply)
 
     def measure(self, request: MeasureRequest) -> BaselineReport:
         """One baseline measurement. It can run for hours live, so it has its own, longer wait."""

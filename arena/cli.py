@@ -7,6 +7,7 @@ python -m arena.cli abandon-cycle --reason TEXT
 python -m arena.cli baseline --backend mock|replay|live [--profile clean|low_asr]
 python -m arena.cli data build --synthetic|--real --judge-dir PATH [--pilot N]
 python -m arena.cli data fetch [--only SOURCE ...]
+python -m arena.cli data check --judge-dir PATH --backend mock|replay|live [--trials N]
 python -m arena.cli live-check [--calls N]
 
 Exit codes are listed in arena/exit_codes.py.
@@ -33,6 +34,7 @@ from arena.exit_codes import ExitCode
 from arena.judge_client import JudgeClient, JudgeError
 from arena.orchestrator import Orchestrator, phase1_mock_script
 from arena.report_tables import render
+from arena.schemas import LabelCheckRequest
 from arena.target.ladder import LADDER
 
 CONTROL_TARGETS = {"start": "running", "resume": "running", "pause": "paused", "stop": "stopped"}
@@ -120,6 +122,34 @@ def cmd_data_fetch(args) -> int:
         print(f"{key}: {outcome}")
     done = all(outcome in ("fetched", "present") for _, outcome in results)
     return ExitCode.OK if done else ExitCode.NEEDS_OPERATOR
+
+
+def cmd_data_check(args) -> int:
+    """The checker pass, once, after the build and before sealing: which attacks the toy app
+    confirms on the evaluation target, and on other rungs only."""
+    request = LabelCheckRequest(
+        measure=baselines.request(
+            backend=args.backend,
+            targets=list(LADDER),
+            reference=LADDER[0],
+            trials=args.trials,
+            seed=DEFAULTS.seed,
+            cassette=args.cassette,
+        )
+    )
+    try:
+        with JudgeClient(judge_dir=args.judge_dir) as judge:
+            report = judge.label_check(request)
+    except JudgeError as error:
+        print(f"Checker pass not run. {error}", file=sys.stderr)
+        return ExitCode.FAILED
+    print(f"Checked on {report.reference_target}, {report.trials} trials per attack.")
+    for name, counts in sorted(report.partitions.items()):
+        print(
+            f"{name}: {counts.confirmed} confirmed, {counts.rung_only} on another rung only, "
+            f"{counts.invalid} invalid, {counts.unpaired} unpaired"
+        )
+    return ExitCode.OK
 
 
 def cmd_data_build(args) -> int:
@@ -395,6 +425,11 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument(
         "--pilot", type=int, default=0, metavar="N", help="label N items, print, write nothing"
     )
+    check = data.add_parser("check")
+    check.add_argument("--judge-dir", type=Path, default=None)
+    check.add_argument("--backend", choices=("mock", "replay", "live"), required=True)
+    check.add_argument("--cassette", default=None)
+    check.add_argument("--trials", type=int, default=DEFAULTS.trials_per_pair)
     fetch = data.add_parser("fetch")
     fetch.add_argument("--only", nargs="+", default=None, metavar="SOURCE")
     fetch.add_argument("--raw-dir", type=Path, default=raw_dir)
@@ -403,7 +438,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "baseline":
         return cmd_baseline(args)
     if args.command == "data":
-        return cmd_data_fetch(args) if args.data_command == "fetch" else cmd_data_build(args)
+        commands_by_name = {
+            "fetch": cmd_data_fetch,
+            "check": cmd_data_check,
+            "build": cmd_data_build,
+        }
+        return commands_by_name[args.data_command](args)
     if args.command == "live-check":
         return cmd_live_check(args.calls)
 

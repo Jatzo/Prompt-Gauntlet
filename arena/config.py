@@ -157,11 +157,11 @@ class ArenaConfig(_Frozen):
     # Generator families whose samples go to test only, as a cross-family check. Proposal.
     test_only_generator_families: tuple[str, ...] = ()
     # The share of attacks no Claude model wrote, reported against this target by the real
-    # data build. Approved 2026-10-26.
+    # data build. Approved.
     non_claude_attack_share_target: float = 0.30
     # Labelling has no human step. A build stops when contested benign items (the two labeller
     # families disagree, or either calls it an attack) pass this share of any partition's benign
-    # items. Approved 2026-10-26.
+    # items. Approved.
     contested_exclusion_cap: float = 0.15
     # The digest of the pulled open-weights labeller (`ollama list`). None until the operator pulls
     # it; the Ollama backend refuses to run without it.

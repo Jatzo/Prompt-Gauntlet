@@ -609,6 +609,15 @@ class MeasureRequest(Strict):
         return arms
 
 
+class FprIfContested(Strict):
+    """Dev FPR with every contested benign item (left out because the two labeller families
+    disagreed) counted as not flagged, and as flagged. The true FPR on them is unknown."""
+
+    contested: Annotated[int, Field(ge=0)]
+    all_clear: Probability
+    all_flagged: Probability
+
+
 class DetectionRow(Strict):
     arm: CategoryKey
     score_kind: Literal["binary", "verbalised", "logit"]
@@ -631,6 +640,7 @@ class DetectionRow(Strict):
     target_unreachable: bool = False
     # Rules disabled after a regex timeout. Every item was re-scored without them.
     disabled_rules: list[Identifier] = []
+    fpr_if_contested: FprIfContested | None = None
 
 
 class EndToEndRow(Strict):
@@ -676,6 +686,32 @@ class BaselineReport(Strict):
     # system prompt and a growing history, so a mean over the whole cache would overstate it.
     detector_tokens_per_call: Annotated[float, Field(ge=0)]
     fingerprints: dict[CategoryKey, Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]]
+
+
+# The checker pass of the real data build, run once inside the Judge before the test set is sealed.
+
+
+class LabelCheckRequest(Strict):
+    """`measure.reference_target` is the evaluation target that confirms an attack; every other
+    target in `measure.targets` is checked too, for confirmations on another rung only."""
+
+    measure: MeasureRequest
+
+
+class CheckerCounts(Strict):
+    confirmed: Annotated[int, Field(ge=0)]
+    rung_only: Annotated[int, Field(ge=0)]
+    invalid: Annotated[int, Field(ge=0)]
+    # Attacks no task places (no injection pair), so the toy app never saw them.
+    unpaired: Annotated[int, Field(ge=0)]
+
+
+class LabelCheckReport(Strict):
+    """Counts only. The per-item record stays in the Judge folder as checker.json."""
+
+    reference_target: TargetKey
+    trials: Annotated[int, Field(ge=1)]
+    partitions: dict[Partition, CheckerCounts]
 
 
 # Attacker batches and T2 queries, checked inside the Judge.

@@ -740,6 +740,8 @@ class OllamaBackend:
         if urllib.parse.urlsplit(url).hostname not in self._HOSTS:
             raise LiveCallRefused(f"The Ollama server must be local, not {url}.")
         self._url, self._post = url.rstrip("/"), post or _post_json
+        # The backend name is in every cache key, so a re-pulled model never reuses old answers.
+        self.name = f"ollama@{digest[:12]}"
         found = {
             entry.get("name"): entry.get("digest", "")
             for entry in self._post(f"{self._url}/api/tags", None).get("models", [])

@@ -20,7 +20,13 @@ from arena.data.feasibility import Feasibility, check_feasible
 from arena.data.labelling import LabelResult, check_cap
 from arena.data.pairs import build_pairs
 from arena.data.splits import SplitRow, split
-from arena.judge.data import MEASURABLE, PLACEHOLDER_PREFIX, pin_lines, verify_test_set
+from arena.judge.data import (
+    MEASURABLE,
+    PLACEHOLDER_PREFIX,
+    in_scope,
+    pin_lines,
+    verify_test_set,
+)
 from arena.schemas import Sample
 
 
@@ -35,6 +41,8 @@ class BuildSummary:
     near_removed: int
     pairs: dict[str, int]
     feasibility: Feasibility
+    # The pin of test.jsonl as built. The checker pass (`data check`) rewrites impact classes in it,
+    # so the pin to seal is taken after that pass, not from here.
     test_pin: str
     labels: LabelResult | None = None
 
@@ -110,9 +118,12 @@ def build_dataset(
     (judge_dir / "labels.json").write_text("{}")
     contested: dict[str, Counter] = {}
     for sample in labels.contested if labels else []:
-        if sample.partition != "train":
+        # Only items the FPR is measured on, so the sensitivity row adds no item it never scored.
+        if sample.partition != "train" and in_scope(sample):
             category = sample.technique.removeprefix("benign.")
             contested.setdefault(sample.partition, Counter())[category] += 1
+    # A checker record from an earlier build describes impact classes this build has just reset.
+    (judge_dir / "checker.json").unlink(missing_ok=True)
     (judge_dir / "contested.json").write_text(
         json.dumps({name: dict(counts) for name, counts in contested.items()}, sort_keys=True)
     )

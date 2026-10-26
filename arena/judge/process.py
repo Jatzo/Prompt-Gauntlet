@@ -11,6 +11,7 @@ Methods:
 - measure: a BaselineReport of aggregates for every requested arm and target.
 - validate_batch: classify, cluster and check an Attacker batch; the reply covers its own items.
 - query_detector: a T2 label for one text, counted against the cycle's budget.
+- label_check: the data build's checker pass over every partition, before the test set is sealed.
 """
 
 import argparse
@@ -20,12 +21,13 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from arena.judge import attacks, keep, measure, store
+from arena.judge import attacks, keep, labelcheck, measure, store
 from arena.judge.data import verify_test_set
 from arena.judge.hashing import read_pin, sha256_text
 from arena.schemas import (
     EvaluateRequest,
     JudgeReport,
+    LabelCheckRequest,
     MeasureRequest,
     QueryRequest,
     ValidateBatchRequest,
@@ -98,6 +100,10 @@ def handle(request: dict, root: Path, data_dir: Path, conn) -> dict:
     if method == "measure":
         context = measure.Context(root, data_dir, store.EvalCache(conn))
         return measure.run(MeasureRequest.model_validate(params), context).model_dump(mode="json")
+    if method == "label_check":
+        context = measure.Context(root, data_dir, store.EvalCache(conn))
+        request = LabelCheckRequest.model_validate(params)
+        return labelcheck.run(request, context).model_dump(mode="json")
     raise ValueError(f"unknown method {method!r}")
 
 

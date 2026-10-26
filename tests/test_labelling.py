@@ -16,6 +16,7 @@ from arena.data.labelling import (
     check_cap,
     label_rows,
 )
+from arena.data.labelling import requests as labelling_requests
 from arena.data.splits import SplitRow
 from arena.data.templates import synthetic_corpus
 from arena.schemas import LabelVerdict
@@ -255,3 +256,47 @@ def test_a_wrong_model_from_ollama_fails_the_id_check():
             cache=MemoryEvalCache(),
             seed=1,
         )
+
+
+def test_contested_counts_skip_items_the_fpr_never_scores(tmp_path):
+    def contest_benign(rows):
+        # Every benign item contested, half of them moved to the user channel first.
+        moved = [
+            SplitRow(
+                row.sample.model_copy(update={"channel": "user"})
+                if row.sample.label == "benign" and index % 2
+                else row.sample,
+                row.fold,
+            )
+            for index, row in enumerate(rows)
+        ]
+        first = [ATTACK] * len(moved)
+        second = [BENIGN] * len(moved)
+        return apply(moved, first, second)
+
+    judge_dir = tmp_path / "judge"
+    summary = build_dataset(
+        synthetic_corpus(),
+        judge_dir=judge_dir,
+        private_dir=tmp_path / "private",
+        config=ArenaConfig(contested_exclusion_cap=1.0),
+        label=contest_benign,
+    )
+    in_scope = [
+        s for s in summary.labels.contested if s.partition != "train" and s.channel != "user"
+    ]
+    written = json.loads((judge_dir / "contested.json").read_text())
+    assert sum(sum(c.values()) for c in written.values()) == len(in_scope)
+    assert any(s.channel == "user" for s in summary.labels.contested)
+
+
+def test_the_two_labeller_families_never_share_a_cache_key():
+    keyed = labelling_requests(corpus()[:1], seed=1)
+    first = llm.request_key("labeller", "claude-opus-5-5", keyed[0], "live")
+    second = llm.request_key("labeller_open", "gemma4:12b", keyed[0], "ollama@abc123def456")
+    assert first != second
+
+
+def test_the_ollama_digest_is_part_of_its_backend_name():
+    backend = llm.OllamaBackend(digest="abc123def4567890", post=FakeServer())
+    assert backend.name == "ollama@abc123def456"

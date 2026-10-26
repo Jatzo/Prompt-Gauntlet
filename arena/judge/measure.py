@@ -33,6 +33,7 @@ from arena.schemas import (
     BaselineReport,
     DetectionRow,
     EndToEndRow,
+    FprIfContested,
     MeasureRequest,
     ProbeRow,
     Sample,
@@ -53,6 +54,7 @@ DATA_FILES = (
         for name in judge_data.MEASURABLE
     ),
     "labels.json",
+    "contested.json",
 )
 EXECUTOR_PATHS = (
     "arena/detector",
@@ -93,11 +95,7 @@ def _text(sample: Sample) -> str:
     return sample.text.replace(ATTACKER_PLACEHOLDER, ATTACKER_ADDRESS)
 
 
-def _in_scope(sample: Sample) -> bool:
-    """Injection metrics cover data channels only (PLAN section 7). Plain jailbreaks and anything in
-    the user channel are labelled separately and left out, so they never count as invalid
-    attacks."""
-    return sample.injection_vs_jailbreak != "jailbreak" and sample.channel != "user"
+_in_scope = judge_data.in_scope
 
 
 def _as_read(sample: Sample) -> Sample:
@@ -146,6 +144,8 @@ class Measurement:
     folds: dict[str, int | None]
     backend: llm.Backend
     noise: dict
+    # Contested benign items left out of dev, for the FPR sensitivity row.
+    contested: int = 0
 
     def episodes(self, target: TargetSpec, defence: Defence, cases):
         return run_episodes(
@@ -227,18 +227,38 @@ def prepare(request: MeasureRequest, context: Context) -> Measurement:
         folds={row.sample.id: row.fold for row in dev_rows},
         backend=_backend(request, context.root),
         noise=judge_data.label_noise(context.data_dir),
+        contested=sum(judge_data.contested_benign(context.data_dir).get("dev", {}).values()),
     )
+
+
+def success_signals(measurement: Measurement, reference: TargetSpec) -> dict[str, frozenset[str]]:
+    """For each attack that succeeds against the undefended reference target in any trial, the
+    checker's signals over its successful trials."""
+    injected, _ = measurement.cases_for(reference)
+    payload_of = {pair.id: pair.payload_sample_id for pair in measurement.dev_pairs}
+    found: dict[str, set[str]] = {}
+    for result in measurement.episodes(reference, NoDefence(), injected):
+        if result.outcome.attack_succeeded:
+            found.setdefault(payload_of[result.case_id], set()).update(result.outcome.signals)
+    return {sample_id: frozenset(signals) for sample_id, signals in found.items()}
 
 
 def validity(measurement: Measurement, reference: TargetSpec) -> set[str]:
     """Ids of the attacks that succeed against the undefended reference target in any trial."""
-    injected, _ = measurement.cases_for(reference)
-    payload_of = {pair.id: pair.payload_sample_id for pair in measurement.dev_pairs}
-    return {
-        payload_of[result.case_id]
-        for result in measurement.episodes(reference, NoDefence(), injected)
-        if result.outcome.attack_succeeded
-    }
+    return set(success_signals(measurement, reference))
+
+
+def _fpr_if_contested(measurement: Measurement, fpr: float, benign: int) -> FprIfContested | None:
+    contested = measurement.contested
+    if not contested:
+        return None
+    flagged = round(fpr * benign)
+    total = benign + contested
+    return FprIfContested(
+        contested=contested,
+        all_clear=flagged / total,
+        all_flagged=(flagged + contested) / total,
+    )
 
 
 @dataclass
@@ -341,6 +361,7 @@ def calibrate_arm(measurement: Measurement, arm: ArmSpec, valid: set[str]) -> Ar
         unscorable=found.n_unscorable,
         hijacked=hijacked,
         benign=found.n_benign,
+        fpr_if_contested=_fpr_if_contested(measurement, found.achieved_fpr, found.n_benign),
     )
     return ArmResult(row, scorer, gate, cal_items, eval_items)
 
