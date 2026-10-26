@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from arena import cli, db
+from arena import cli, db, usage
 from arena.config import REPO_ROOT
 
 CASSETTE = REPO_ROOT / "tests" / "fixtures" / "phase1_cycle.cassette.jsonl"
@@ -51,3 +51,13 @@ def test_status_reports_the_run(db_path, capsys):
     assert "Control: running" in out
     assert "Latest cycle: 1 (committed)" in out
     assert "Schema failures, ceo: 0% of the last 2 calls" in out
+
+
+def test_status_reports_the_same_token_total_as_the_usage_ledger(db_path, capsys):
+    cli.main(["--db", db_path, "control", "start"])
+    cli.main(["--db", db_path, "run-cycle"])
+    capsys.readouterr()
+    cli.main(["--db", db_path, "status"])
+    total = usage.total_tokens(db.connect(Path(db_path)))
+    assert total > 0
+    assert f"Tokens used: {total}" in capsys.readouterr().out

@@ -9,7 +9,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from arena import db, llm
+from arena import db, llm, usage
 from arena.config import agent_db_path
 from arena.judge_client import JudgeClient
 from arena.orchestrator import Orchestrator, phase1_mock_script
@@ -22,10 +22,7 @@ def cmd_status(conn) -> int:
     print(f"Control: {state} ({reason})")
     row = conn.execute("SELECT id, state FROM cycles ORDER BY id DESC LIMIT 1").fetchone()
     print(f"Latest cycle: {row['id']} ({row['state']})" if row else "Latest cycle: none yet")
-    tokens = conn.execute(
-        "SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM usage"
-    ).fetchone()[0]
-    print(f"Tokens used: {tokens}")
+    print(f"Tokens used: {usage.total_tokens(conn)}")
     for (role,) in conn.execute("SELECT DISTINCT role FROM llm_calls ORDER BY role"):
         rate, calls = llm.schema_failure_rate(conn, role)
         print(f"Schema failures, {role}: {rate:.0%} of the last {calls} calls")
