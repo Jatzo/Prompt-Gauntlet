@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from arena import cli, db
-from arena.judge_client import REPO_ROOT
+from arena.config import REPO_ROOT
 
 CASSETTE = REPO_ROOT / "tests" / "fixtures" / "phase1_cycle.cassette.jsonl"
 

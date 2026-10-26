@@ -5,8 +5,9 @@ import pydantic
 import pytest
 
 from arena import db, llm
+from arena.config import REPO_ROOT
 from arena.judge.hashing import sha256_text
-from arena.judge_client import REPO_ROOT, JudgeClient, JudgeError
+from arena.judge_client import JudgeClient, JudgeError
 from arena.orchestrator import Orchestrator, phase1_mock_script
 from arena.schemas import JudgeReport
 from tests.conftest import STUB_REPORT

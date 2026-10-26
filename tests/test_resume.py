@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 
-from arena.judge_client import REPO_ROOT
+from arena.config import REPO_ROOT
 
 MARKER_TIMEOUT_SECONDS = 60
 

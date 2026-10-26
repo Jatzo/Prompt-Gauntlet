@@ -34,7 +34,6 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 - `docs/references.md`: 12 sources verified, 2 corrected.
 
 ## Open items
-- Tests import `REPO_ROOT` from `arena.judge_client` in three files, while the code imports it from `arena.config`. Waiting for the operator's call.
 - `arena/judge/process.py` writes timestamps without milliseconds, unlike the rest of the code. It is pinned, so it changes only on instruction.
 - Phase 3: calibration must ignore predictions from rolled-back cycles. Lesson evidence already does.
 - Phase 2: the database integrity check scans the whole file on every connect, and usage totals are summed on every call. Both are fine at today's size; revisit when detector sweeps make thousands of calls.
