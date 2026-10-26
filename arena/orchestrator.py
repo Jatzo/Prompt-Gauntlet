@@ -219,15 +219,7 @@ class Orchestrator:
                 request = QueryRequest(cycle_id=cycle, step=step, text=text, measure=settings)
                 return self.judge.query_detector(request)
 
-            memory = Memory(self.conn, self.config)
-            directive = Directive(
-                focus_technique_class=plan.focus,
-                hypothesis_text=plan.hypothesis_text,
-                cited_lesson_texts=(
-                    memory.lesson_texts(plan.cites_lesson_ids) if self.use_memory else []
-                ),
-                constraints=[],
-            )
+            directive = self._directive(plan)
             view = AttackerView(directive, self.novelty.last_view() if self.use_memory else ())
             # The Judge counts the query budget; the turns never ask for more than it allows.
             turns = min(self.config.attacker_query_turns, DEFAULTS.query_budget_t2)
@@ -253,6 +245,17 @@ class Orchestrator:
             )
 
         self._run_step(cycle_id, "attack", "attacker", "submit_attack_batch", produce, write)
+
+    def _directive(self, plan: CEOPlan) -> Directive:
+        """The one route from memory to behaviour, the same for the Attacker and the Defender in
+        a cycle. The no-memory arm gets no lessons."""
+        lessons = Memory(self.conn, self.config).lesson_texts(plan.cites_lesson_ids)
+        return Directive(
+            focus_technique_class=plan.focus,
+            hypothesis_text=plan.hypothesis_text,
+            cited_lesson_texts=lessons if self.use_memory else [],
+            constraints=[],
+        )
 
     def _measure_settings(self, detector: DetectorConfig) -> MeasureRequest:
         """What the Judge measures a query or a batch against: the incumbent detector at its

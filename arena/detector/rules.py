@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 import regex
 
-from arena.schemas import Rule
+from arena.schemas import DetectorConfig, Rule
 
 
 @dataclass
@@ -36,3 +36,14 @@ class RuleSet:
             except TimeoutError:
                 self.disabled.add(rule_id)
         return hits
+
+
+def rule_hits(
+    config: DetectorConfig, rule_set: RuleSet, prepared: Sequence[str]
+) -> list[list[str]]:
+    """The rule ids that fire on each already-normalised text, or none when the config has no rules
+    layer. The scorer and the Defender's choice of hard benign cases both use this, so a false
+    positive there means exactly what it means in a score."""
+    if "rules" not in config.layers:
+        return [[] for _ in prepared]
+    return [rule_set.matches(text) for text in prepared]

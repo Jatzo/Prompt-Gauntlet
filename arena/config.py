@@ -84,6 +84,10 @@ class ArenaConfig(_Frozen):
     # Detector queries the Attacker makes a cycle, one model turn each. Never above the T2 budget.
     # Proposal.
     attacker_query_turns: int = 8
+    # What the Defender sees beyond this cycle's evasions: hard benign cases and attacks of the
+    # focus class, both from train only.
+    defender_hard_benign: int = 20
+    defender_train_attacks: int = 10
     # Novelty (PLAN section 10). The archive size and percentile are approved; the calibration
     # sample is a proposal, sized so the quadratic comparison takes seconds.
     novelty_archive_size: int = 50

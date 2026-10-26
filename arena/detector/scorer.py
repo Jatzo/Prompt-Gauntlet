@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from arena import llm
 from arena.config import DEFAULTS, ArenaConfig
 from arena.detector.normalisers import normalise
-from arena.detector.rules import RuleSet
+from arena.detector.rules import RuleSet, rule_hits
 from arena.schemas import DetectorConfig, DetectorResult
 
 CLASSIFIER_TOOL = "report_score"
@@ -71,10 +71,8 @@ class Scorer:
 
     def score(self, texts: Sequence[str]) -> list[Score]:
         prepared = [normalise(text, list(self.config.normalisers)) for text in texts]
-        rule_hits = [
-            self.rules.matches(text) if "rules" in self.config.layers else [] for text in prepared
-        ]
-        results: list[Score | None] = [Score(100.0) if hits else None for hits in rule_hits]
+        hits_per_text = rule_hits(self.config, self.rules, prepared)
+        results: list[Score | None] = [Score(100.0) if hits else None for hits in hits_per_text]
         if "classifier" not in self.config.layers:
             return [result or Score(0.0) for result in results]
 

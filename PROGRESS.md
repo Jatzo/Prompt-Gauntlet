@@ -95,7 +95,7 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 Each phase now closes with a green CI run on its pushed commits, at least one ADR in `docs/adr/`, and
 a `docs/debug-log.md` entry for its first non-trivial bug (PLAN.md section 17). Case studies use the
 cybersecurity structure in PLAN.md section 13. No case study has been written yet.
-- Phase 3 CI: green on 01b98ef (run 40379322734). Later commits need another push and run.
+- Phase 3 CI: green on 546a5af (run 40391500144), which includes the attack step. Later commits need another push and run.
 - Phase 3 ADR: none written. Possible subjects, decided at close-out: two model families in place of
   hand labels; refused and model-switched labelling items keeping their source label.
 - Phase 3 debug log: one entry, a replay run treated as live, fixed with the attack step.
