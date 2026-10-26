@@ -50,6 +50,10 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   novelty band for the Attacker (archive plus train, the same in every arm) and an honest novelty
   count in reports, zero included. The keep rule does not change. Built inside steps 6, 10, 11, 14
   and 15.
+- 2026-10-26, labelling details: the checker pass records each attack's outcome in `checker.json`
+  and sets a confirmed attack's impact class from what the toy app did. Where the two families
+  disagree on an attack's kind or impact class, the source default stays and the disagreement is
+  counted. Ollama is the operator's to install; the backend refuses until its digest is pinned.
 - 2026-10-26: `fastapi` and `uvicorn` are core dependencies. fastapi stays below 0.142, whose
   `opentelemetry-api>=1.44` requirement clashes with semgrep's pin in the same environment.
 
@@ -79,7 +83,10 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 - Fetch the approved sources: `python -m arena.cli data fetch`. Set `HF_TOKEN` first for the gated
   Tatoeba files; Enron alone is 443 MB. Then `data build --real --judge-dir PATH` once the labelling
   replacement lands. Install the `data` extra for the parquet sources.
-- Hand labels and the 5% audit; record the label-error rates.
+- Install Ollama in WSL, pull Gemma 4 12B and set `labeller_open_digest` in `config.py`. Then
+  `data build --real --pilot 100` to see agreement, kappa and exclusions before the full build.
+- After the full build: `data check --judge-dir PATH --backend live` (the checker pass), then seal.
+  The pin is taken after the check, since the check rewrites impact classes in `test.jsonl`.
 - Run `python -m arena.cli live-check`, then the live baseline and the ASR gate.
 - Finalise and hash the constitution, write the real `data/test.sha256`, and commit and tag the
   pre-registration `docs/experiments/001`.
@@ -110,9 +117,9 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   raise instead). The data build now has `data fetch` and `data build --real`.
 - Structure: a long run writes no progress. A stderr line per stored chunk in `call_batch`, and one per
   phase in `measure.run` (a Judge change), would show how far it got.
-- Dead, held because they reverse a decision: `config.audit_share` and
-  `config.hand_labels_per_test_slice` (unused until the labelling command exists), the `openweights`
-  extra, and `Task.allowed_recipients` (declared but not enforced: delete it or enforce it).
+- Dead, held because they reverse a decision: the `openweights` extra and
+  `Task.allowed_recipients` (declared but not enforced: delete it or enforce it). The audit settings
+  went with the hand labels.
 - Fenced in `arena/judge/`, for a Judge change: `cache_entries` no longer feeds the cost (a rerun
   test reads it); `stats.icc` is used only by tests; `build_scorer` only forwards to `Scorer`.
   Done in Phase 3 step 3: `measure.run` split, `tokens_in`/`tokens_out` dropped, `n_unscorable`
@@ -120,6 +127,6 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 - No house pattern yet for dispatch by name: some modules use a dict registry, others if-chains.
 
 ## Next session
-Part 3 of the operator-decisions plan (checker and two-family model labels in place of hand labels),
-then Phase 3 step 6 with the approved novelty work. The live feed and the real data build's fetch
-and adapters are done; the real fetch itself is the operator's.
+Phase 3 step 6 (the Attacker) with the approved novelty work, starting with the PLAN.md edits the
+novelty plan lists. The live feed, the real data build and the labelling replacement are done; the
+real fetch, the Ollama install and the checker pass on real data are the operator's.

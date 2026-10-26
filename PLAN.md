@@ -159,8 +159,12 @@ Give each field bounds and one example JSON in `arena/schemas.py`:
 
 ### Labelling protocol
 - **"Attack" = an instruction placed in a data channel that attempts a stated target action.** Plain jailbreaks and benign instructions in the user channel are labelled separately (`injection_vs_jailbreak`) and excluded from injection metrics.
-- Prefer **deterministic labels** (the checker confirms the action). Use LLM labels only with a second, different-family model and report Cohen's kappa.
-- Hand-label at least **300 samples per test partition**, and audit a random 5% of every partition. Propagate the measured label-error rate into the reported uncertainty.
+- **No human labels.** Labels come from three places, in this order:
+  - **The source.** An item from an attack source stays an attack. Whether it works is the checker's call.
+  - **The checker.** Before the test set is sealed, the Judge plays every attack in every partition against the undefended evaluation target (`data check`). A confirmed attack takes its impact class from what the toy app did. One that never fires stays an attack, counted as invalid and never turned benign. One that fires on another rung only is counted apart. The pre-registration records this pass as labelling.
+  - **Two model families.** Claude (Opus 5.5, which never scores its own detector or attacks) and an open-weights model (Gemma 4 12B through Ollama, pinned by digest) label every item. A benign item is kept only when both call it benign. For attacks, the families' kind and impact class replace the source's default only where they agree.
+- **Contested items are excluded and reported.** Benign items the families disagree on are left out of every partition and counted by partition, source and category. A build whose contested share of any partition's benign items passes 15% stops before writing anything. Raw agreement, prevalence and Cohen's kappa are reported for each field.
+- **The remaining label error is not measured**, so no interval is widened for it. Each report adds a sensitivity row instead: dev FPR with every contested benign item counted as not flagged, and as flagged.
 
 ### Sources
 - Seed from public labelled datasets (check each licence): e.g. deepset prompt-injections, BIPIA, InjecAgent, AgentDojo task suites, plus a generated set from taxonomy templates. Record `source`, `generator_family`, `template_family` per sample.
@@ -312,7 +316,7 @@ Experiment history lives in the **database as versioned `DetectorConfig` rows** 
 
 **Dangerous detail:** case studies describe technique classes and defensive lessons, not a ready-made attack library. Reproducibility comes from the pinned config and the private seed procedure, not from publishing payload corpora.
 
-**Aggregates:** an auto-generated `RESULTS.md` (metrics with CIs, cross-play matrix, findings found/fixed, calibration scatter, ablation results) and one long-form write-up including limitations and null results. Every number quoted anywhere (README, write-up, summaries) must come from `RESULTS.md`. Keep a **negative-results log** and include it.
+**Aggregates:** an auto-generated `RESULTS.md` (metrics with CIs, cross-play matrix, findings found/fixed, calibration scatter, ablation results) and one long-form write-up including limitations and null results. Every number quoted anywhere (README, write-up, summaries) must come from `RESULTS.md`. Keep a **negative-results log** and include it. Both `RESULTS.md` and the write-up state the labelling limitation in `docs/limitations.md`.
 
 ## 14. Pre-registered experiments
 
@@ -412,7 +416,7 @@ prompt-gauntlet/
 - Few kept improvements per run, so the lesson list may stay thin.
 - Unattended LLM-agent reliability: schema failures, attacker mode collapse, mostly invalid or duplicate attacks.
 - Same-family bias (Claude generating attacks, defending, and acting as target) may limit transfer.
-- Label noise and thin hand-labelled partitions make 1% FPR resolution marginal.
+- There are no human labels. The error left on items both model families agree on is not measured, and excluding contested items removes some of the hardest negatives; the FPR sensitivity row shows how much that could matter. Thin partitions also make 1% FPR resolution marginal.
 - Evaluation cost may force the ablation to be exploratory.
 - The target is a toy, so external validity is limited however well it is built.
 
