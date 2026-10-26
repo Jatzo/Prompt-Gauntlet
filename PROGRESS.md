@@ -88,15 +88,13 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   file as an empty partition (needs a Judge change to raise instead).
 - Structure: a long run writes no progress. A stderr line per stored chunk in `call_batch`, and one per
   phase in `measure.run` (a Judge change), would show how far it got.
-- Structure: `measure.run` is one 250-line function. Split out validity, detector calibration and the
-  end-to-end run when Phase 3's `evaluate` needs them, so the threshold protocol exists once.
 - Dead, held because they reverse a decision: `config.audit_share` and
   `config.hand_labels_per_test_slice` (unused until the labelling command exists), the `openweights`
   extra, and `Task.allowed_recipients` (declared but not enforced: delete it or enforce it).
-- Fenced in `arena/judge/`, for a Judge change: `BaselineReport.tokens_in`, `tokens_out` and
-  `cache_entries` no longer feed the cost; `stats.icc` is used only by tests; `Detection.n_unscorable`
-  duplicates a count in `measure.py`; `build_scorer` only forwards to `Scorer`; `measure.py` cites
-  PLAN section 5 where it means 7; the `process.py` docstring does not list `measure`.
+- Fenced in `arena/judge/`, for a Judge change: `cache_entries` no longer feeds the cost (a rerun
+  test reads it); `stats.icc` is used only by tests; `build_scorer` only forwards to `Scorer`.
+  Done in Phase 3 step 3: `measure.run` split, `tokens_in`/`tokens_out` dropped, `n_unscorable`
+  used, the PLAN reference and the `process.py` docstring corrected.
 - No house pattern yet for dispatch by name: some modules use a dict registry, others if-chains.
 
 ## Next session

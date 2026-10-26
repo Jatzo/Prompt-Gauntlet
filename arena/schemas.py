@@ -571,6 +571,15 @@ class MeasureRequest(Strict):
     # Bootstrap replicates; None means the defaults table. Tests use fewer, for speed.
     replicates: Annotated[int, Field(ge=50, le=20000)] | None = None
 
+    @field_validator("arms")
+    @classmethod
+    def _unique_arm_names(cls, arms: list[ArmSpec]) -> list[ArmSpec]:
+        # Results are keyed by arm name, so two arms with one name would share a row.
+        names = [arm.name for arm in arms]
+        if len(set(names)) != len(names):
+            raise ValueError("arm names must be unique")
+        return arms
+
 
 class DetectionRow(Strict):
     arm: CategoryKey
@@ -621,8 +630,6 @@ class BaselineReport(Strict):
             "headline_arm": "zero_shot_llm",
             "reference_target": "target_strong.strict.standard",
             "label_error": {},
-            "tokens_in": 0,
-            "tokens_out": 0,
             "cache_entries": 0,
             "detector_tokens_per_call": 0.0,
             "fingerprints": {"judge": "0" * 64},
@@ -635,8 +642,6 @@ class BaselineReport(Strict):
     headline_arm: CategoryKey
     reference_target: TargetKey
     label_error: dict[CategoryKey, Metric]
-    tokens_in: Annotated[int, Field(ge=0)]
-    tokens_out: Annotated[int, Field(ge=0)]
     # Distinct model calls in the evaluation cache, across every run that used it.
     cache_entries: Annotated[int, Field(ge=0)]
     # Mean tokens of a detector call alone, which prices a detector experiment. Target turns carry a

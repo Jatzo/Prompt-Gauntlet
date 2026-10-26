@@ -7,6 +7,7 @@ Methods:
 - ping: liveness.
 - verify_hashes: the constitution and the frozen test set against their committed pins.
 - evaluate: a JudgeReport of aggregates. Phase 1 returns a stub marked not_implemented.
+- measure: a BaselineReport of aggregates for every requested arm and target.
 """
 
 import argparse

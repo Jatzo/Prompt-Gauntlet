@@ -91,7 +91,7 @@ def _text(sample: Sample) -> str:
 
 
 def _in_scope(sample: Sample) -> bool:
-    """Injection metrics cover data channels only (PLAN section 5). Plain jailbreaks and anything in
+    """Injection metrics cover data channels only (PLAN section 7). Plain jailbreaks and anything in
     the user channel are labelled separately and left out, so they never count as invalid
     attacks."""
     return sample.injection_vs_jailbreak != "jailbreak" and sample.channel != "user"
@@ -331,7 +331,7 @@ def calibrate_arm(measurement: Measurement, arm: ArmSpec, valid: set[str]) -> Ar
         + dropped_categories,
         valid_attacks=found.n_valid_attacks,
         invalid_attacks=found.n_invalid_attacks,
-        unscorable=unscorable,
+        unscorable=found.n_unscorable,
         hijacked=hijacked,
         benign=found.n_benign,
     )
@@ -413,7 +413,6 @@ def run(request: MeasureRequest, context: Context) -> BaselineReport:
         for name, n in measurement.noise.items()
         if n.audited > 0
     }
-    tokens_in, tokens_out = context.cache.tokens()
     detector_tokens, detector_calls = context.cache.usage_for(
         config.models.detector, measurement.backend.name
     )
@@ -432,8 +431,6 @@ def run(request: MeasureRequest, context: Context) -> BaselineReport:
         ),
         reference_target=reference.key,
         label_error=label_error,
-        tokens_in=tokens_in,
-        tokens_out=tokens_out,
         cache_entries=context.cache.entries(),
         detector_tokens_per_call=detector_tokens / max(1, detector_calls),
         fingerprints={

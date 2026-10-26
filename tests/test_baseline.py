@@ -328,8 +328,6 @@ def report(probe_tpr, headline_tpr=0.8, strong_asr=0.3):
         headline_arm="zero_shot_llm",
         reference_target=LADDER[0].key,
         label_error={},
-        tokens_in=1000,
-        tokens_out=100,
         cache_entries=10,
         detector_tokens_per_call=110.0,
         fingerprints={"judge": "0" * 64},
@@ -419,3 +417,12 @@ def test_no_sample_id_or_canary_reaches_any_output(tmp_path):
                 yield from lists(item)
 
     assert not [len(v) for v in lists(saved["report"]) if len(v) in sizes and len(v) > 12]
+
+
+def test_two_arms_with_one_name_are_refused():
+    request = baselines.request(
+        backend="mock", targets=list(LADDER), reference=LADDER[0], trials=1, seed=1
+    )
+    arm = request.arms[0].model_dump()
+    with pytest.raises(ValueError, match="unique"):
+        type(request).model_validate(request.model_dump() | {"arms": [arm, arm]})
