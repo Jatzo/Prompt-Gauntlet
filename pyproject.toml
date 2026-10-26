@@ -28,6 +28,10 @@ openweights = [
     "torch>=2.4",
     "transformers>=4.44",
 ]
+# The live backend: the Claude Agent SDK on the operator's plan. Pinned, since it is alpha.
+live = [
+    "claude-agent-sdk==0.2.174",
+]
 
 [tool.setuptools.packages.find]
 include = ["arena*"]

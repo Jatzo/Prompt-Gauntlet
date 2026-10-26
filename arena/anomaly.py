@@ -35,6 +35,12 @@ class UsageCapReached(Anomaly):
     kind = "usage_cap"
 
 
+class UsageLimitReached(Anomaly):
+    """The plan refused a call at its rate or usage limit. The run waits for the reset."""
+
+    kind = "usage_limit"
+
+
 class HashMismatch(Anomaly):
     kind = "hash_mismatch"
 

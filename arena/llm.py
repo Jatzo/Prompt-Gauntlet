@@ -14,9 +14,11 @@ Backends:
 - replay: hand-written JSONL cassettes under tests/fixtures/.
 - record: wraps live and writes a cassette, only under runs/ or private/ (both gitignored),
   because recorded output can contain anything a model said.
-- live: behind ARENA_ALLOW_LIVE=1 and always refused under pytest. Not wired up yet.
+- live: the Claude Agent SDK on the operator's plan, behind ARENA_ALLOW_LIVE=1 and always refused
+  under pytest.
 """
 
+import asyncio
 import contextlib
 import hashlib
 import json
@@ -35,7 +37,13 @@ from typing import Protocol
 import pydantic
 
 from arena import db, usage
-from arena.anomaly import HijackDetected, ModelIdMismatch, SchemaFailureSpike, UsageCapReached
+from arena.anomaly import (
+    HijackDetected,
+    ModelIdMismatch,
+    SchemaFailureSpike,
+    UsageCapReached,
+    UsageLimitReached,
+)
 from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig
 
 
@@ -71,6 +79,10 @@ class Backend(Protocol):
 
 class SchemaFailure(RuntimeError):
     """Every attempt at a step produced output that did not validate."""
+
+
+class LiveCallFailed(RuntimeError):
+    """A live call got no answer (an API or CLI failure). Never stored, so a rerun asks again."""
 
 
 class LiveCallRefused(RuntimeError):
@@ -536,21 +548,163 @@ class ReplayBackend:
 
 
 class LiveBackend:
-    """The real model. Refused in tests and unless the operator sets ARENA_ALLOW_LIVE=1.
+    """The real model, through the Claude Agent SDK on the operator's own plan.
 
-    Not wired up in Phase 1: the operator checks the plan's terms for automated use first.
+    Refused in tests and unless the operator sets ARENA_ALLOW_LIVE=1. The SDK is imported only after
+    those checks, so nothing here needs it installed (it is the optional `live` extra).
+
+    Each call is one SDK query: our own system prompt, the pinned model, no built-in tools, no
+    settings, skills or memory, and one turn, so the SDK cannot retry or re-prompt out of sight. The
+    tool's schema goes in as the structured-output schema with `additionalProperties` removed: the
+    SDK would otherwise reject unknown fields and ask again, and `_validate` must see them to call
+    them a hijack. The SDK names its tool `StructuredOutput`, so a reply through it is filed under
+    the tool the request asked for; a call to any other tool keeps that tool's name, so the
+    tool-name check still catches it. The SDK cannot set a temperature, so
+    `LLMRequest.temperature` has no effect here.
     """
 
     name = "live"
+    # The tool the SDK injects for structured output.
+    _SDK_TOOL = "StructuredOutput"
+    # Each call is one CLI process, so live calls are capped across all threads.
+    # shortcut: sized from the defaults once at import; a run's own ArenaConfig does not change it.
+    _slots = threading.BoundedSemaphore(DEFAULTS.live_concurrency)
+    # The CLI retries transient 429 and 529 errors itself; `config.retries` covers the rest.
+    _CLI_RETRIES = "2"
+    # Wording of the CLI's results when a plan limit is used up.
+    _LIMIT_PHRASES = ("session limit", "weekly limit", "usage limit", "opus limit", "sonnet limit")
 
     def __init__(self):
         if os.environ.get("PYTEST_CURRENT_TEST"):
             raise LiveCallRefused("Live model calls are never made from tests. Use mock or replay.")
         if os.environ.get("ARENA_ALLOW_LIVE") != "1":
             raise LiveCallRefused("Live calls are off. Set ARENA_ALLOW_LIVE=1 to allow them.")
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            raise LiveCallRefused(
+                "ANTHROPIC_API_KEY is set, which would bill the API instead of the operator's "
+                "plan. Unset it; the plan's login comes from CLAUDE_CODE_OAUTH_TOKEN."
+            )
+        import claude_agent_sdk
+
+        self._sdk = claude_agent_sdk
 
     def complete(self, *, role, model_id, step_key, request):
-        raise NotImplementedError("The live backend is not wired up yet.")
+        # Each worker thread of call_batch runs its own event loop for its one query.
+        with self._slots:
+            return asyncio.run(self._complete(model_id, request))
+
+    def _options(self, model_id: str, request: LLMRequest):
+        [tool] = [tool for tool in request.tools if tool["name"] == request.tool]
+        return self._sdk.ClaudeAgentOptions(
+            system_prompt=request.system,
+            model=model_id,
+            tools=[],
+            setting_sources=[],
+            max_turns=1,
+            output_format={"type": "json_schema", "schema": _open_schema(tool["input_schema"])},
+            env={
+                "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+                "CLAUDE_CODE_MAX_RETRIES": self._CLI_RETRIES,
+            },
+        )
+
+    def _limit(self, detail: str, **extra) -> UsageLimitReached:
+        return UsageLimitReached(f"The plan refused the call: {detail}", **extra)
+
+    async def _complete(self, model_id: str, request: LLMRequest) -> LLMResponse:
+        sdk = self._sdk
+        reported, headroom, tool = model_id, None, request.tool
+        attempt, raw = "", ""
+        usage: dict = {}
+        try:
+            async for message in sdk.query(
+                prompt=request.user, options=self._options(model_id, request)
+            ):
+                if isinstance(message, sdk.RateLimitEvent):
+                    info = message.rate_limit_info
+                    if info.status == "rejected":
+                        raise self._limit(
+                            info.rate_limit_type or "rejected",
+                            resets_at=info.resets_at,
+                            limit_type=info.rate_limit_type,
+                        )
+                    if info.utilization is not None:
+                        headroom = max(0.0, 1.0 - info.utilization)
+                elif isinstance(message, sdk.AssistantMessage):
+                    reported = message.model or reported
+                    if message.error == "rate_limit":
+                        raise self._limit("rate_limit")
+                    if message.error in ("authentication_failed", "billing_error"):
+                        raise LiveCallRefused(f"The plan refused the call: {message.error}.")
+                    # What the model actually wrote, kept as evidence if the SDK rejects it.
+                    for block in message.content or []:
+                        if isinstance(getattr(block, "input", None), dict):
+                            attempt = json.dumps(block.input)
+                            if block.name != self._SDK_TOOL:
+                                # Only the SDK's own tool is offered, so any other is a hijack.
+                                tool = block.name
+                        elif getattr(block, "text", None) and not attempt:
+                            attempt = block.text
+                elif isinstance(message, sdk.ResultMessage):
+                    usage = message.usage or {}
+                    # The SDK marks an API failure as an error result with subtype "success"; the
+                    # HTTP status is there only when the API gave one (a timeout has none).
+                    if message.is_error and (
+                        message.api_error_status or message.subtype == "success"
+                    ):
+                        # An API failure, not an answer: never stored, so a rerun asks again.
+                        if message.api_error_status == 429:
+                            raise self._limit(f"429: {(message.result or '')[:200]}")
+                        self._check_limit_text(message.result or "")
+                        raise LiveCallFailed(
+                            f"API error {message.api_error_status}: {(message.result or '')[:200]}"
+                        )
+                    if message.structured_output is not None:
+                        raw = json.dumps(message.structured_output)
+                    else:
+                        # The SDK rejected the reply. Keep the model's own attempt as the failed
+                        # attempt's raw output, so _validate can still see a hijack in it.
+                        raw = attempt or message.result or message.subtype
+        except sdk.ResultError as error:
+            if not raw:
+                # No answer at all: a CLI or API failure, never stored as the model's reply.
+                self._check_limit_text(str(error))
+                raise LiveCallFailed(f"The live call failed: {str(error)[:200]}") from error
+        return LLMResponse(
+            tool=tool,
+            raw_output=raw,
+            model_id=reported,
+            input_tokens=sum(
+                usage.get(key, 0) or 0
+                for key in (
+                    "input_tokens",
+                    "cache_creation_input_tokens",
+                    "cache_read_input_tokens",
+                )
+            ),
+            output_tokens=usage.get("output_tokens", 0) or 0,
+            headroom=headroom,
+        )
+
+    def _check_limit_text(self, text: str) -> None:
+        """Only ever called on the CLI's own error text, never on the model's reply: an attack
+        could otherwise write the words and pause the run."""
+        if any(phrase in text.lower() for phrase in self._LIMIT_PHRASES):
+            raise self._limit(text[:200])
+
+
+def _open_schema(schema: dict) -> dict:
+    """The schema without `additionalProperties`, at every depth, so unknown fields reach
+    `_validate` instead of being refused and re-asked by the SDK."""
+    if isinstance(schema, dict):
+        return {
+            key: _open_schema(value)
+            for key, value in schema.items()
+            if key != "additionalProperties"
+        }
+    if isinstance(schema, list):
+        return [_open_schema(item) for item in schema]
+    return schema
 
 
 class RecordBackend:

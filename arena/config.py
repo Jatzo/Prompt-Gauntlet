@@ -108,6 +108,8 @@ class ArenaConfig(_Frozen):
     backoff_max_seconds: float = 60.0
     agent_concurrency: int = 2
     detector_concurrency: int = 8
+    # Live calls at once: each is one CLI process of about 1 GB, on a 15 GB machine. Proposal.
+    live_concurrency: int = 4
 
     # Target and detector sampling
     trials_per_pair: int = 5
