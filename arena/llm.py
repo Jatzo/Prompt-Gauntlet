@@ -242,6 +242,8 @@ class MockBackend:
     block_at_step: str | None = None
     block_marker: Path | None = None
     name: str = "mock"
+    # A rough average for English text, good enough for usage accounting in tests.
+    CHARS_PER_TOKEN = 4
 
     def __post_init__(self):
         self._queues = {step: deque(outputs) for step, outputs in self.script.items()}
@@ -280,8 +282,8 @@ class MockBackend:
             tool=tool,
             raw_output=raw,
             model_id=self.model_ids.get(role, model_id),
-            input_tokens=len(request.system + request.user) // 4,
-            output_tokens=len(raw) // 4,
+            input_tokens=len(request.system + request.user) // self.CHARS_PER_TOKEN,
+            output_tokens=len(raw) // self.CHARS_PER_TOKEN,
         )
 
 
