@@ -14,3 +14,13 @@ measured.
   sensitivity row: dev FPR with each contested item counted as not flagged, and as flagged.
 - One labeller family is Claude, which also writes some attacks and runs the detectors under test. The
   second family, the attack-source rule and the contested slice limit that bias without removing it.
+
+## Novelty
+
+Novelty is measured on the text (containment over character 5-grams) and on a coarse behaviour
+signature (the channel and what the toy app did). A paraphrase of a known idea can count as new text,
+and a new idea that ends in the same action counts only as new text.
+
+The technique classifier is keyword rules. It cannot refuse a held-out idea it has no rule for, and an
+unclassified attack may be a classifier miss rather than a new technique. The operator triages every
+candidate finding; the system never adds a technique by itself.
