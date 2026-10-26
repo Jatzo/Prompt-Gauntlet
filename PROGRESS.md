@@ -27,17 +27,30 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 - The case-study writer and the grader have no tools.
 
 ## Phase 1 state
-- `make test-phase1`: ruff, format check, tracked-files guard, 432 tests, gitleaks. All green.
+- `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.
+- Review fixes after Phase 1: a placeholder test-set pin beside a real test set is a mismatch; a resumed
+  cycle pauses if its configuration or model ids changed since its manifest; every step runs through one
+  `_run_step` and logs one `step_done` event for the live feed.
 - Hostile dispatcher matrix: every role against every registered tool and 12 near-miss names, in `tests/test_dispatcher.py`.
 - Kill and resume: `tests/test_resume.py` kills the CLI during step 3 and restarts it. The plan step's model is called once across both processes, the Judge evaluates once, and the post-mortem is called once.
 - Constitution, Judge files and `data/test.sha256` are hash-pinned in `tests/test_integrity.py`. The constitution is a draft until the end of Phase 2.
 - `docs/references.md`: 12 sources verified, 2 corrected.
 
 ## Open items
+- Before Phase 3: stop two `run-cycle` processes from running at once (a runner lock). Until then the
+  step-writes check inside each write transaction is the only guard against a double write.
+- There is no command to abandon an open cycle. After a `config_mismatch` pause, the only way on is
+  to restore the original configuration. Add an abandon-cycle command before Phase 3.
+- `step_done` outcomes are fixed-format strings. Keep agent free text out of them, since the live feed
+  and later briefings read events.
 - `arena/judge/process.py` writes timestamps without milliseconds, unlike the rest of the code. It is pinned, so it changes only on instruction.
 - Phase 3: calibration must ignore predictions from rolled-back cycles. Lesson evidence already does.
 - Phase 2: the database integrity check scans the whole file on every connect, and usage totals are summed on every call. Both are fine at today's size; revisit when detector sweeps make thousands of calls.
 - Before release: re-check the OWASP LLM01 edition, and confirm the datamarking variant in the Spotlighting full text.
 
+## Phase 2 status
+Paused at the design stage. The synthesised design, its critique fixes and 12 open questions
+are in `private/architect/phase2-design.md`. Nothing is built.
+
 ## Next session
-Review Phase 1. Then start Phase 2 (measurement).
+Review the Phase 1 fixes. Then answer the Phase 2 design questions and approve or change the design.
