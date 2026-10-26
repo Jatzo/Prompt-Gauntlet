@@ -8,11 +8,13 @@ Every method must run inside the caller's transaction, so a step's memory writes
 with the record that the step's writes are done. A resumed step can then never write twice.
 """
 
+import hashlib
 import json
 import re
 import sqlite3
+from collections.abc import Sequence
 
-from arena import db
+from arena import db, novelty
 from arena.config import DEFAULTS, ArenaConfig
 from arena.detector.patch import fingerprint
 from arena.schemas import DetectorConfig, LessonProposal, Prediction
@@ -243,6 +245,49 @@ class Memory:
         )
         self._provenance("memory_operator_notes", row_id, "operator", 0, "operator")
         return row_id
+
+    def archive_texts(self) -> list[str]:
+        """The archive, leaving out anything from a rolled-back cycle, whose work was abandoned."""
+        return [text for _, text in self._archive_rows()]
+
+    def _archive_rows(self) -> list[tuple[int, str]]:
+        return self.conn.execute(
+            "SELECT a.id, a.text FROM novelty_archive a LEFT JOIN cycles c ON c.id = a.cycle_id"
+            " WHERE COALESCE(c.state, '') != 'rolled_back' ORDER BY a.id"
+        ).fetchall()
+
+    def offer_to_archive(
+        self, items: Sequence[tuple[str, str]], *, cycle_id: int, step: str, role: str
+    ) -> int:
+        """Add (cluster, text) pairs already picked by `novelty.archive_candidates`, then shrink
+        the archive to its cap: the member closest to another member goes first, ties on a hash
+        of the text, so the result depends only on the set offered, not its order. Returns the
+        archive size."""
+        self._require_transaction()
+        for cluster_id, text in items:
+            row_id = self._insert(
+                "INSERT INTO novelty_archive (cycle_id, cluster_id, text, created_at)"
+                " VALUES (?, ?, ?, ?)",
+                (cycle_id, cluster_id, text, db.now()),
+            )
+            self._provenance("novelty_archive", row_id, role, cycle_id, step)
+        members = {row_id: (text, novelty.grams(text)) for row_id, text in self._archive_rows()}
+        while len(members) > self.config.novelty_archive_size:
+
+            def crowding(member_id: int) -> tuple[float, str]:
+                text, grams = members[member_id]
+                others = [g for other, (_, g) in members.items() if other != member_id]
+                return novelty.nearest(grams, others), hashlib.sha256(text.encode()).hexdigest()
+
+            dropped = max(members, key=crowding)
+            self.conn.execute("DELETE FROM novelty_archive WHERE id = ?", (dropped,))
+            del members[dropped]
+        return len(members)
+
+    def clear_archive(self) -> None:
+        """Each run starts with an empty archive, so no arm inherits another run's state."""
+        self._require_transaction()
+        self.conn.execute("DELETE FROM novelty_archive")
 
     def _require_transaction(self) -> None:
         if not self.conn.in_transaction:

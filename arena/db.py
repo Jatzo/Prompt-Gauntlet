@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 CYCLE_STATES = ("planned", "running", "evaluating", "committed", "rolled_back")
 CONTROL_STATES = ("running", "paused", "stopped")
@@ -195,8 +195,20 @@ CREATE TABLE detector_configs (
 );
 """
 
+# Added in version 3: the run's novelty archive (PLAN section 10), written only through memory.py
+# and cleared at the start of each run.
+VERSION_3 = """
+CREATE TABLE novelty_archive (
+    id INTEGER PRIMARY KEY,
+    cycle_id INTEGER NOT NULL,
+    cluster_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+"""
+
 # Each entry upgrades a database from that version to the next.
-MIGRATIONS = {1: VERSION_2}
+MIGRATIONS = {1: VERSION_2, 2: VERSION_3}
 
 
 class DatabaseIntegrityError(RuntimeError):
@@ -253,7 +265,7 @@ def _create_or_migrate(conn: sqlite3.Connection) -> None:
 
 
 def _create(conn: sqlite3.Connection) -> None:
-    for statement in _statements(SCHEMA + VERSION_2):
+    for statement in _statements(SCHEMA + VERSION_2 + VERSION_3):
         conn.execute(statement)
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
     conn.execute(
