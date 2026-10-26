@@ -317,11 +317,27 @@ PILOT_REFUSAL = (
 )
 
 
+# The error that stopped the full build: a new model name and no policy link.
+BUILD_REFUSAL = (
+    "API Error: Opus 4.8's safeguards flagged this message. Our intentionally broad safeguards "
+    "allow us to deliver more capabilities faster, but can sometimes flag legitimate "
+    "cybersecurity work. Learn more"
+)
+
+
+def wrapped(result: str) -> str:
+    """How the SDK words a ResultError around the CLI's result text."""
+    return f"Claude Code returned an error result: {result} (exit code: 1)"
+
+
 @pytest.mark.parametrize(
     "script",
     [
         lambda sdk: [sdk.ResultMessage(is_error=True, api_error_status=None, result=PILOT_REFUSAL)],
         lambda sdk: [sdk.ResultError(PILOT_REFUSAL)],
+        lambda sdk: [sdk.ResultMessage(is_error=True, api_error_status=None, result=BUILD_REFUSAL)],
+        lambda sdk: [sdk.ResultMessage(is_error=True, api_error_status=400, result=BUILD_REFUSAL)],
+        lambda sdk: [sdk.ResultError(wrapped(BUILD_REFUSAL))],
     ],
 )
 def test_a_safeguards_refusal_is_its_own_failure(live, script):
@@ -329,6 +345,21 @@ def test_a_safeguards_refusal_is_its_own_failure(live, script):
     with pytest.raises(llm.ContentRefused, match="safeguards flagged"):
         complete(backend)
     assert issubclass(llm.ContentRefused, llm.LiveCallFailed)
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        # The words without the CLI's marker, as an echoed attack might carry them.
+        "Our safeguards flagged this message, so please stop.",
+        "API Error: Request timed out",
+    ],
+)
+def test_error_text_without_the_cli_refusal_line_is_not_a_refusal(live, result):
+    backend, _ = live(lambda sdk: [sdk.ResultError(wrapped(result))])
+    with pytest.raises(llm.LiveCallFailed) as raised:
+        complete(backend)
+    assert not isinstance(raised.value, llm.ContentRefused)
 
 
 def test_another_api_error_is_not_a_refusal(live):

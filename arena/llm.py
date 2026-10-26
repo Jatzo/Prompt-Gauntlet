@@ -24,6 +24,7 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import sys
 import threading
@@ -796,10 +797,16 @@ class LiveBackend:
         if any(phrase in text.lower() for phrase in self._LIMIT_PHRASES):
             raise self._limit(text[:200])
 
+    # The CLI's line for a safeguards refusal. The wording around it changes (the model name, the
+    # policy link), and the SDK may wrap the line, so only this part is matched.
+    _REFUSAL = re.compile(r"API Error: [^\n]*safeguards flagged", re.IGNORECASE)
+
     def _check_refusal(self, text: str) -> None:
         """The CLI's error text when the provider's safeguards refuse the input. Like the limit
-        check, never called on the model's reply."""
-        if "safeguards flagged" in text.lower() and "anthropic.com/legal/aup" in text:
+        check, never called on the model's reply. A batch that takes refusals as items stores
+        this one as refused and never asks again, so a wrong flag stays until its cache row is
+        removed."""
+        if self._REFUSAL.search(text):
             raise ContentRefused(text[:200])
 
 
