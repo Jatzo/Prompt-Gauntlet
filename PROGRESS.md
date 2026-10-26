@@ -31,6 +31,16 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 - Phase 2: an unscorable output counts against the defence: a miss for an attack, a false positive for benign text.
 - Phase 2: mock and replay runs are built here; the operator runs the live baseline after the terms check. Datasets wait on the shortlist in `private/data/dataset-shortlist.md`.
 - Phase 2: the recommended answers to design questions 5 to 12 (`private/architect/phase2-design.md`) are in use as defaults. Every new `config.py` value is a proposal until the operator approves it.
+- 2026-10-26, terms check done: automated use on the operator's plan is fine. The live backend is to
+  be wired up, keeping the `ARENA_ALLOW_LIVE=1` gate and the refusal under pytest; tests make no live
+  calls.
+- 2026-10-26, datasets: the shortlist is approved as its Recommendation column says. Tensor Trust is
+  out. Enron and CodeSearchNet are private only. A CLI command builds the real dataset.
+- 2026-10-26, labelling: no hand labels. Section 7's hand-labelling protocol is to be replaced by
+  checker labels where the toy app can confirm the action, and by two model families (Claude plus one
+  open-weights model) elsewhere, with Cohen's kappa reported and disagreements excluded. The human 5%
+  audit is dropped, and "no human labels" is a stated limitation. The replacement waits on a
+  critiqued plan and the operator's approval.
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.
