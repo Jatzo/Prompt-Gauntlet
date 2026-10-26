@@ -18,9 +18,11 @@ PINS = {
     "arena/judge/__main__.py": "b8416a83c61e63dbb058d9da8b2081352431655890d78420a18ef986fc8cb5d3",
     "arena/judge/hashing.py": "a62562b195e5634c0e2c65df952f70619cecd162b7ce4443378c9fae8ca3e395",
     "arena/judge/process.py": "286953d41982e563c2b4cbe6569aeb5c1cafdd0c12e5eddbe065a1e2db12c6f1",
+    "arena/judge/stats.py": "0c7f898a271ae05ee890b35d7b113c21df46c03e4993d0b3fa37a967075c5dc8",
     "arena/judge/store.py": "78a12cf1626cbe1ccffa2922f13b190e3013f8604fc5b1c791467cd77e7fee3e",
     "constitution.md": "f823500c55e3efc4a1c03aa0242b786484866938b3758eddbc832109143b9616",
     "data/test.sha256": "730573c29ee86e63e87cfd2c1e27f0c2a9c6a33a433dfb9b379718629b7bf51b",
+    "tests/fixtures/known_answer.json": "18f35c94e49fbeb05c902cfba78e62184fdd65186c1fd186c016e75eeb8355c8",
 }
 
 

@@ -1,0 +1,28 @@
+{
+  "description": "Hand-computed answers for arena/judge/stats.py. Hash-pinned: change only on instruction.",
+  "threshold": [
+    {"scores": "0..99", "tiebreak": 0.5, "target_fpr": 0.05, "threshold_score": 94, "flagged": 5},
+    {"scores": "0..99", "tiebreak": 0.5, "target_fpr": 0.29, "threshold_score": 70, "flagged": 29},
+    {"scores": "all 50", "tiebreak": "i / 100", "target_fpr": 0.05, "threshold_score": 50, "flagged": 5},
+    {"scores": "0..99", "tiebreak": 0.5, "target_fpr": 0.0, "threshold_score": 99, "flagged": 0}
+  ],
+  "auc": [
+    {"attacks": [3, 4], "benign": [1, 2], "auc": 1.0},
+    {"attacks": [1, 2], "benign": [3, 4], "auc": 0.0},
+    {"attacks": [1], "benign": [1], "auc": 0.5},
+    {"attacks": [1, 3], "benign": [2], "auc": 0.5},
+    {"attacks": [2, 3], "benign": [1, 2], "auc": 0.875}
+  ],
+  "beta_quantile": [
+    {"a": 1, "b": 1, "p": 0.3, "x": 0.3},
+    {"a": 2, "b": 1, "p": 0.25, "x": 0.5},
+    {"a": 1, "b": 2, "p": 0.75, "x": 0.5},
+    {"a": 3, "b": 1, "p": 0.125, "x": 0.5}
+  ],
+  "normal_tpr": {
+    "attack_mean": 2.0,
+    "target_fpr": 0.01,
+    "z_99": 2.3263478740408408,
+    "true_tpr": 0.3720805854354945
+  }
+}

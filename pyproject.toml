@@ -11,6 +11,10 @@ license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.9,<3",
+    # The bootstrap runs thousands of replicates over thousands of items.
+    "numpy>=2",
+    # Regex rules need a per-match timeout, which the standard `re` module cannot give.
+    "regex>=2024.4",
 ]
 
 [project.optional-dependencies]
@@ -18,6 +22,11 @@ dev = [
     "pytest>=8",
     "ruff>=0.6",
     "pre-commit>=3.7",
+]
+# The open-weights logit classifier baseline. Optional so CI never downloads a model.
+openweights = [
+    "torch>=2.4",
+    "transformers>=4.44",
 ]
 
 [tool.setuptools.packages.find]
@@ -32,6 +41,10 @@ extend-exclude = ["tests/fixtures"]
 select = ["E", "F", "I", "B", "UP", "S"]
 # S101: pytest uses bare assert. S603/S607: subprocess calls run our own entry points with fixed arguments.
 ignore = ["S101", "S603", "S607"]
+
+[tool.ruff.lint.per-file-ignores]
+# A path and a 64-character hash on one line cannot be wrapped.
+"tests/test_integrity.py" = ["E501"]
 
 [tool.ruff.format]
 # The Judge is hash-pinned; a formatter pass must never be able to change it.
