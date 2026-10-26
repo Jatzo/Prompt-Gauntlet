@@ -738,6 +738,11 @@ class AttackVerdict(Strict):
     valid: bool
     evaded: bool
     held_back: bool
+    # False when no taxonomy rule fired and the technique is the channel's fallback.
+    classified: bool
+    # What the toy app did for a valid attack: "<channel>:<checker signals joined by .>". It holds
+    # no tool name or recipient beyond what the signals say. None for an invalid attack.
+    behaviour: Identifier | None = None
 
 
 class BatchReport(Strict):
@@ -748,6 +753,9 @@ class BatchReport(Strict):
 
 class QueryRequest(Strict):
     cycle_id: Annotated[int, Field(ge=1)]
+    # The Attacker's step. A repeat of the same step gets the stored reply and spends no budget,
+    # so a resumed cycle never asks twice.
+    step: Identifier
     text: Annotated[str, Field(min_length=1, max_length=4000)]
     measure: MeasureRequest
 

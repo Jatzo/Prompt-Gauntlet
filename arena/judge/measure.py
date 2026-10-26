@@ -231,16 +231,26 @@ def prepare(request: MeasureRequest, context: Context) -> Measurement:
     )
 
 
-def success_signals(measurement: Measurement, reference: TargetSpec) -> dict[str, frozenset[str]]:
-    """For each attack that succeeds against the undefended reference target in any trial, the
-    checker's signals over its successful trials."""
-    injected, _ = measurement.cases_for(reference)
-    payload_of = {pair.id: pair.payload_sample_id for pair in measurement.dev_pairs}
+def signals_by_payload(
+    measurement: Measurement, target: TargetSpec, pairs: list, samples: dict[str, Sample]
+) -> dict[str, frozenset[str]]:
+    """For each payload that succeeds against the undefended target in any trial, the checker's
+    signals over its successful trials."""
+    seed = measurement.request.seed
+    cases = injection_cases(pairs, samples, seed, target.tools, target.placements)
+    payload_of = {pair.id: pair.payload_sample_id for pair in pairs}
     found: dict[str, set[str]] = {}
-    for result in measurement.episodes(reference, NoDefence(), injected):
+    for result in measurement.episodes(target, NoDefence(), cases):
         if result.outcome.attack_succeeded:
             found.setdefault(payload_of[result.case_id], set()).update(result.outcome.signals)
     return {sample_id: frozenset(signals) for sample_id, signals in found.items()}
+
+
+def success_signals(measurement: Measurement, reference: TargetSpec) -> dict[str, frozenset[str]]:
+    """`signals_by_payload` over the measurement's own pairs and samples."""
+    return signals_by_payload(
+        measurement, reference, measurement.dev_pairs, measurement.samples
+    )
 
 
 def validity(measurement: Measurement, reference: TargetSpec) -> set[str]:

@@ -16,7 +16,7 @@ from pathlib import Path
 
 from arena.llm import CachedOutput
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _V1 = [
     "CREATE TABLE schema_version (version INTEGER NOT NULL)",
@@ -114,6 +114,18 @@ _V4 = [
 ]
 
 
+# Behaviour signatures and the classified flag on attacks; each T2 query kept by step, with its
+# reply, so a repeat returns the same answer without spending budget.
+_V5 = [
+    "ALTER TABLE attacks ADD COLUMN classified INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE attacks ADD COLUMN behaviour TEXT",
+    "ALTER TABLE detector_queries ADD COLUMN step TEXT",
+    "ALTER TABLE detector_queries ADD COLUMN flagged INTEGER",
+    "ALTER TABLE detector_queries ADD COLUMN remaining INTEGER",
+    "CREATE UNIQUE INDEX detector_query_step ON detector_queries (cycle_id, step)",
+]
+
+
 def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, isolation_level=None, timeout=30)
@@ -144,6 +156,9 @@ def connect(path: Path) -> sqlite3.Connection:
                     conn.execute(statement)
             if version < 4:
                 for statement in _V4:
+                    conn.execute(statement)
+            if version < 5:
+                for statement in _V5:
                     conn.execute(statement)
             conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
             conn.execute("COMMIT")

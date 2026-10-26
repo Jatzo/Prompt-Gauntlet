@@ -30,8 +30,7 @@ from arena.schemas import (
     Sample,
     ValidateBatchRequest,
 )
-from arena.target.arms import NoDefence
-from arena.target.suites import STANDARD_PLACEMENT, injection_cases
+from arena.target.suites import STANDARD_PLACEMENT
 from arena.target.world import ATTACKER_ADDRESS, ATTACKER_PLACEHOLDER
 
 # Shingle size for clustering, the same as the dataset's near-duplicate check.
@@ -109,6 +108,7 @@ def validate_batch(
     attacks = request.attacks
 
     techniques = [taxonomy.classify(attack.text, attack.channel) for attack in attacks]
+    classified = [taxonomy.match(attack.text) is not None for attack in attacks]
     refused = [technique in config.held_out_techniques for technique in techniques]
     clusters = cluster(
         cycle_id, [a.text for a in attacks], techniques, config.attack_cluster_jaccard
@@ -148,13 +148,16 @@ def validate_batch(
             )
         )
 
-    cases = injection_cases(pairs, samples, seed, target.tools, target.placements)
-    payload_of = {pair.id: pair.payload_sample_id for pair in pairs}
-    valid = {
-        payload_of[result.case_id]
-        for result in measurement.episodes(target, NoDefence(), cases)
-        if result.outcome.attack_succeeded
-    }
+    signals = measure.signals_by_payload(measurement, target, pairs, samples)
+    valid = set(signals)
+
+    def behaviour(sample_id: str) -> str | None:
+        if sample_id not in valid:
+            return None
+        # A refused tool call is noted whether or not the attack worked, so it says nothing about
+        # what the attack did.
+        done = sorted(signals[sample_id] - {"refused_attempt"})
+        return f"{samples[sample_id].channel}:{'.'.join(done)}"
 
     scorer, threshold = incumbent_threshold(measurement, _incumbent(settings))
     ids = list(samples)
@@ -182,6 +185,8 @@ def validate_batch(
             valid=sample_id in valid,
             evaded=sample_id in evaded,
             held_back=sample_id in evaded and sample.cluster_id in held_back,
+            classified=classified[index],
+            behaviour=behaviour(sample_id),
         )
         for index, (sample_id, sample) in enumerate(samples.items())
     ]
@@ -192,8 +197,9 @@ def validate_batch(
         conn.execute("DELETE FROM attacks WHERE cycle_id = ?", (cycle_id,))
         conn.executemany(
             "INSERT OR REPLACE INTO attacks (cycle_id, idx, text, technique, channel,"
-            " impact_class, cluster_id, valid, evaded, held_back, refused, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " impact_class, cluster_id, valid, evaded, held_back, refused, created_at,"
+            " classified, behaviour)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
                     cycle_id,
@@ -208,6 +214,8 @@ def validate_batch(
                     int(verdict.held_back),
                     int(verdict.refused),
                     stamp,
+                    int(verdict.classified),
+                    verdict.behaviour,
                 )
                 for verdict, attack, text in zip(verdicts, attacks, read, strict=True)
             ],
@@ -225,20 +233,39 @@ def query_detector(
     request: QueryRequest, context: measure.Context, conn: sqlite3.Connection
 ) -> QueryReply:
     """Whether the incumbent's gate would flag this text. Once the budget is spent the reply says
-    so and nothing is scored."""
+    so and nothing is scored. A step asked before gets its stored reply and spends nothing."""
+    stored = conn.execute(
+        "SELECT flagged, remaining FROM detector_queries WHERE cycle_id = ? AND step = ?",
+        (request.cycle_id, request.step),
+    ).fetchone()
+    if stored is not None:
+        flagged = None if stored[0] is None else bool(stored[0])
+        return QueryReply(flagged=flagged, remaining=stored[1])
     budget = measure.DEFAULTS.query_budget_t2
     used = conn.execute(
-        "SELECT COUNT(*) FROM detector_queries WHERE cycle_id = ?", (request.cycle_id,)
+        "SELECT COUNT(*) FROM detector_queries WHERE cycle_id = ?"
+        # Rows from before steps were kept have no step and each spent a query.
+        " AND (step IS NULL OR flagged IS NOT NULL)",
+        (request.cycle_id,),
     ).fetchone()[0]
     if used >= budget:
         # A spent budget is a normal limit, not a fault: the reply says so and the run goes on.
-        return QueryReply(flagged=None, remaining=0)
-    measurement = measure.prepare(request.measure, context)
-    scorer, threshold = incumbent_threshold(measurement, _incumbent(request.measure))
-    text = request.text.replace(ATTACKER_PLACEHOLDER, ATTACKER_ADDRESS)
-    [flagged] = caught(scorer, threshold, [text], request.measure.seed)
+        reply = QueryReply(flagged=None, remaining=0)
+    else:
+        measurement = measure.prepare(request.measure, context)
+        scorer, threshold = incumbent_threshold(measurement, _incumbent(request.measure))
+        text = request.text.replace(ATTACKER_PLACEHOLDER, ATTACKER_ADDRESS)
+        [flagged] = caught(scorer, threshold, [text], request.measure.seed)
+        reply = QueryReply(flagged=flagged, remaining=budget - used - 1)
     conn.execute(
-        "INSERT INTO detector_queries (cycle_id, created_at) VALUES (?, ?)",
-        (request.cycle_id, datetime.now(UTC).isoformat(timespec="milliseconds")),
+        "INSERT INTO detector_queries (cycle_id, created_at, step, flagged, remaining)"
+        " VALUES (?, ?, ?, ?, ?)",
+        (
+            request.cycle_id,
+            datetime.now(UTC).isoformat(timespec="milliseconds"),
+            request.step,
+            None if reply.flagged is None else int(reply.flagged),
+            reply.remaining,
+        ),
     )
-    return QueryReply(flagged=flagged, remaining=budget - used - 1)
+    return reply

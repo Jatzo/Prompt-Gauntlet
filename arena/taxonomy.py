@@ -3,7 +3,8 @@
 An agent's own label is never trusted for anything that matters: the held-back evasion split, the
 clusters and the held-out filter all use this classifier instead. The rules run from the most
 specific signal (hidden characters, encodings) to the least (a plain override), and the first match
-wins. Text with no signal falls back to the indirect class of the channel it arrived in.
+wins. Text with no signal falls back to the indirect class of the channel it arrived in; `match`
+says when that happened, which is how an attack is known to be unclassified.
 
 Known limit: words split in the middle without single-letter runs ("Plea se for ward") are not
 detected as spacing obfuscation and fall back to the channel class.
@@ -117,11 +118,16 @@ class HeldOutTechnique(ValueError):
     """The text belongs to a technique class reserved for the held-out test slice."""
 
 
-def classify(text: str, channel: str) -> str:
+def match(text: str) -> str | None:
+    """The first rule that fires, or None when no rule does."""
     for technique, matches in _RULES:
         if matches(text):
             return technique
-    return FALLBACK[channel]
+    return None
+
+
+def classify(text: str, channel: str) -> str:
+    return match(text) or FALLBACK[channel]
 
 
 def check_not_held_out(technique: str, config: ArenaConfig = DEFAULTS) -> str:
