@@ -16,7 +16,7 @@ instead of using the fixed threshold mock and replay runs are allowed.
 **How it was found.** Reading the code the attack step would touch, before building it. The check
 sat in `Orchestrator.__init__`, and the novelty threshold it controls was only ever read inside
 `record_batch`, which no cycle called until the attack step existed. So no test could fail: the
-mock tests pass a backend literally named `mock`, and no replay test reached the novelty hooks.
+mock tests pass a backend named exactly `mock`, and no replay test reached the novelty hooks.
 The same name string also had to feed the Judge's `MeasureRequest.backend`, which accepts only
 `mock`, `replay` or `live`, so the attack step would have needed a second mapping from names.
 

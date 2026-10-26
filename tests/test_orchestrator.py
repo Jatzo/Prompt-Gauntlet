@@ -387,7 +387,8 @@ def test_a_replay_run_is_not_treated_as_live(conn, tmp_path):
     # A replay backend is named replay-<digest>, which the old name check read as live.
     assert orchestrator.backend.name.startswith("replay-")
     assert orchestrator.novelty.live is False
-    assert orchestrator._measure_settings(REGEX_RULES).backend == "replay"
+    # The Judge measures a replay run with its simulated models, as it does a mock run.
+    assert orchestrator._measure_settings(REGEX_RULES).backend == "mock"
 
 
 def test_a_backend_with_an_unknown_kind_is_refused(conn):

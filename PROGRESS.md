@@ -101,9 +101,6 @@ cybersecurity structure in PLAN.md section 13. No case study has been written ye
 - Phase 3 debug log: one entry, a replay run treated as live, fixed with the attack step.
 
 ## Open questions for the operator
-- Replay with the Attacker: a replay cycle whose plan runs the Attacker cannot finish, because the
-  Judge has no recorded target or detector answers to replay (docs/limitations.md). Phase 3's
-  done-when needs a 30-cycle replay run, so this needs a decision before then.
 - A CLAUDE.md line on call storage: "Agent calls are stored by `(cycle, step)`; detector and target calls by request hash in the Judge DB."
 - Which open-weights classifier, which embedding model for dedup, and which non-Claude generator family stays test-only.
 - Approval of the new `config.py` defaults.

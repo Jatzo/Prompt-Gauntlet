@@ -256,14 +256,17 @@ class Orchestrator:
 
     def _measure_settings(self, detector: DetectorConfig) -> MeasureRequest:
         """What the Judge measures a query or a batch against: the incumbent detector at its
-        calibrated threshold, on the reference target, with the run's own backend kind."""
-        replay = self.backend.kind == "replay"
+        calibrated threshold, on the reference target.
+
+        A live run measures live. A mock or replay run measures with the Judge's simulated models:
+        a cassette holds the agents' calls but not the Judge's target and detector answers, so a
+        replayed cycle could not finish otherwise. The Judge's numbers in a replay run are therefore
+        simulated, as in a mock run (docs/limitations.md)."""
         return MeasureRequest(
             arms=[ArmSpec(name="incumbent", kind="detector", detector=detector)],
             targets=[REFERENCE_TARGET],
             reference_target=REFERENCE_TARGET,
-            backend=self.backend.kind,
-            cassette=str(self.backend.cassette.resolve()) if replay else None,
+            backend="live" if self.backend.kind == "live" else "mock",
             trials=self.config.trials_per_pair,
             seed=self.config.seed,
         )

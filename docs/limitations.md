@@ -36,7 +36,7 @@ candidate finding; the system never adds a technique by itself.
 ## Replaying a run
 
 A replay run plays back the agents' recorded calls, but not the Judge's. A recording run calls the
-real target and detector inside the Judge, and the Judge keeps those answers in its own cache under
-the live backend's name, not in the cassette. So a cycle whose plan runs the Attacker cannot be
-replayed whole from a cassette: its queries and batch check need the Judge's target and detector
-answers, which the cassette does not hold. Mock runs cover the attack step end to end instead.
+real target and detector inside the Judge, and the Judge keeps those answers in its own cache, not
+in the cassette. So in a replay run the Judge answers the Attacker's queries and checks its batch
+with the same simulated models it uses in a mock run. The agents' outputs are the recorded ones; the
+Judge's labels and numbers in a replay run are simulated and say nothing about the live run.

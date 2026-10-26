@@ -7,7 +7,7 @@ import pydantic
 import pytest
 
 from arena import db, llm
-from arena.config import REPO_ROOT
+from arena.config import DEFAULTS, REPO_ROOT
 from arena.judge.data import pin_lines
 from arena.judge.hashing import sha256_text
 from arena.judge_client import JudgeClient, JudgeError
@@ -162,3 +162,44 @@ def test_one_attack_cycle_gives_the_same_shape_from_the_fake_and_the_real_judge(
     assert attacks == len(verdicts)
     assert valid == sum(verdict.valid for verdict in verdicts)
     assert evading == len({verdict.cluster_id for verdict in verdicts if verdict.evaded})
+
+
+def cassette_from(script, path):
+    """A cassette holding exactly what the mock script would answer, step by step."""
+    tools = {"plan": ("ceo", "propose_plan"), "postmortem": ("ceo", "write_postmortem")}
+    models = DEFAULTS.models
+    with path.open("w") as out:
+        for step, outputs in script.items():
+            role, tool = tools.get(step, ("attacker", "query_detector"))
+            if step == "attack.submit":
+                tool = "submit_attack_batch"
+            for raw in outputs:
+                entry = {
+                    "role": role,
+                    "step": step,
+                    "tool": tool,
+                    "raw_output": raw,
+                    "model_id": getattr(models, role),
+                }
+                out.write(json.dumps(entry) + "\n")
+    return path
+
+
+@pytest.mark.parametrize("which", ["fake", "real"])
+def test_a_replayed_cycle_with_the_attacker_commits(which, conn, built_judge, tmp_path):
+    """Phase 3's replay runs: the agents' calls come from the cassette, and the Judge measures with
+    its simulated models, since the cassette holds none of its answers."""
+    from tests.conftest import FakeJudge
+
+    cassette = cassette_from(phase1_mock_script(), tmp_path / "cycle.cassette.jsonl")
+    backend = llm.ReplayBackend(cassette)
+    if which == "fake":
+        judge = FakeJudge()
+        outcome = Orchestrator(conn, backend=backend, judge=judge).run_cycle()
+        assert {batch.measure.backend for batch in judge.batches} == {"mock"}
+    else:
+        with JudgeClient(REPO_ROOT, built_judge) as judge:
+            outcome = Orchestrator(conn, backend=backend, judge=judge).run_cycle()
+    assert outcome.status == "committed", outcome.detail
+    kinds = [row[0] for row in conn.execute("SELECT kind FROM memory_episodic ORDER BY id")]
+    assert "attack_batch" in kinds
