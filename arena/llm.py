@@ -22,6 +22,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import sys
 import threading
 import time
 from collections import deque
@@ -359,6 +360,9 @@ def call_batch[Model: pydantic.BaseModel](
             cache.store_many(unstored)
             outputs.update({output.key: output for output in unstored})
             unstored.clear()
+            # Progress for long runs. stderr only: the Judge's stdout carries its JSON replies.
+            done = sum(key in outputs for key in missing)
+            print(f"{role}: {done}/{len(missing)} new calls stored", file=sys.stderr)
 
         pool = ThreadPoolExecutor(max_workers=config.detector_concurrency)
         read: set[Future] = set()

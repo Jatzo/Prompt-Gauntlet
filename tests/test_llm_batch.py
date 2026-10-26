@@ -287,3 +287,10 @@ def test_two_replay_cassettes_do_not_share_cached_answers(tmp_path):
     first.write_text(json.dumps({**entry, "raw_output": VALID}))
     second.write_text(json.dumps({**entry, "raw_output": VALID.replace("80.0", "10.0")}))
     assert llm.ReplayBackend(first).name != llm.ReplayBackend(second).name
+
+
+def test_each_stored_chunk_reports_progress_on_stderr(capsys):
+    batch([keyed("a", "one"), keyed("b", "two")], MemoryEvalCache(), CountingBackend())
+    captured = capsys.readouterr()
+    assert "detector: 2/2 new calls stored" in captured.err
+    assert captured.out == ""

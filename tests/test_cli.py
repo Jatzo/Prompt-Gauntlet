@@ -61,3 +61,43 @@ def test_status_reports_the_same_token_total_as_the_usage_ledger(db_path, capsys
     total = usage.total_tokens(db.connect(Path(db_path)))
     assert total > 0
     assert f"Tokens used: {total}" in capsys.readouterr().out
+
+
+def test_run_cycle_refuses_while_another_process_holds_the_runner(db_path, capsys):
+    cli.main(["--db", db_path, "control", "start"])
+    conn = db.connect(Path(db_path))
+    conn.execute(
+        "INSERT INTO runner (id, pid, host, claimed_at) VALUES (1, 1, 'another-machine', 'then')"
+    )
+    conn.close()
+    assert cli.main(["--db", db_path, "run-cycle", "--backend", "mock"]) == 1
+    assert "another-machine" in capsys.readouterr().err
+
+
+def test_abandon_cycle_rolls_back_the_open_cycle_and_keeps_its_outputs(db_path, capsys):
+    from arena import cycle
+
+    conn = db.connect(Path(db_path))
+    cycle_id = cycle.open_cycle(conn, "default")
+    conn.execute(
+        "INSERT INTO llm_calls (cycle_id, step, attempt, role, model_id, backend, raw_output,"
+        " valid, created_at) VALUES (?, 'plan', 0, 'ceo', 'm', 'mock', '{}', 1, 't')",
+        (cycle_id,),
+    )
+    assert cli.main(["--db", db_path, "abandon-cycle", "--reason", "config changed"]) == 0
+    assert cycle.state(conn, cycle_id) == "rolled_back"
+    assert conn.execute("SELECT COUNT(*) FROM llm_calls").fetchone()[0] == 1
+    event = conn.execute("SELECT detail FROM events WHERE kind = 'cycle_abandoned'").fetchone()
+    assert "config changed" in event["detail"]
+    assert cli.main(["--db", db_path, "abandon-cycle", "--reason", "again"]) == 0
+    assert "no open cycle" in capsys.readouterr().out
+
+
+def test_data_build_writes_the_synthetic_dataset_and_reports_its_shortfalls(tmp_path, capsys):
+    judge_dir = tmp_path / "judge"
+    args = ["data", "build", "--synthetic", "--judge-dir", str(judge_dir)]
+    code = cli.main([*args, "--private-dir", str(tmp_path / "private")])
+    assert (judge_dir / "partitions" / "dev.jsonl").exists()
+    # 440 synthetic samples cannot fill the default partition sizes, and the command says so.
+    assert code == 3
+    assert "Short: dev has" in capsys.readouterr().out

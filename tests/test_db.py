@@ -1,4 +1,8 @@
+import os
+import socket
 import sqlite3
+import subprocess
+import sys
 
 import pytest
 
@@ -19,6 +23,8 @@ EXPECTED_TABLES = {
     "memory_backlog",
     "memory_predictions",
     "memory_provenance",
+    "runner",
+    "detector_configs",
 }
 
 
@@ -138,3 +144,61 @@ def test_a_failed_integrity_check_raises_and_pauses(tmp_path):
         db.connect(path, factory=_CorruptConnection)
 
     assert db.control_state(db.connect(path))[0] == "paused"
+
+
+def hold_runner(conn, pid, host=None):
+    conn.execute(
+        "INSERT OR REPLACE INTO runner (id, pid, host, claimed_at) VALUES (1, ?, ?, 'then')",
+        (pid, host or socket.gethostname()),
+    )
+
+
+def test_a_live_runner_keeps_a_second_one_out(conn):
+    # The trailing argument puts "arena" in its command line, as a real runner's would be.
+    other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", "arena"])
+    try:
+        hold_runner(conn, other.pid)
+        with pytest.raises(db.RunnerBusy, match=str(other.pid)), db.runner(conn):
+            pass
+    finally:
+        other.kill()
+        other.wait()
+
+
+def test_a_runner_left_by_a_dead_process_is_taken_over_and_released(conn):
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    hold_runner(conn, dead.pid)
+    with db.runner(conn):
+        row = conn.execute("SELECT pid FROM runner").fetchone()
+        assert row["pid"] == os.getpid()
+    assert conn.execute("SELECT COUNT(*) FROM runner").fetchone()[0] == 0
+
+
+def test_a_version_1_database_gains_the_runner_table_and_keeps_its_rows(tmp_path):
+    path = tmp_path / "arena.db"
+    old = sqlite3.connect(path, isolation_level=None)
+    for statement in db._statements(db.SCHEMA):
+        old.execute(statement)
+    old.execute("INSERT INTO schema_version (version) VALUES (1)")
+    old.execute(
+        "INSERT INTO cycles (run_id, state, created_at, updated_at)"
+        " VALUES ('r', 'planned', 't', 't')"
+    )
+    old.close()
+    conn = db.connect(path)
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == db.SCHEMA_VERSION
+    assert conn.execute("SELECT COUNT(*) FROM cycles").fetchone()[0] == 1
+    with db.runner(conn):
+        pass
+
+
+def test_a_reused_pid_that_is_not_an_arena_process_does_not_hold_the_runner(conn):
+    unrelated = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        hold_runner(conn, unrelated.pid)
+        with db.runner(conn):
+            assert conn.execute("SELECT pid FROM runner").fetchone()["pid"] == os.getpid()
+    finally:
+        unrelated.kill()
+        unrelated.wait()

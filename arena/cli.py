@@ -3,7 +3,9 @@
 python -m arena.cli status
 python -m arena.cli control start|pause|resume|stop
 python -m arena.cli run-cycle --backend mock|replay [--cassette PATH]
+python -m arena.cli abandon-cycle --reason TEXT
 python -m arena.cli baseline --backend mock|replay|live [--profile clean|low_asr]
+python -m arena.cli data build --synthetic --judge-dir PATH
 
 Exit codes are listed in arena/exit_codes.py.
 """
@@ -15,8 +17,10 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from arena import baselines, db, llm, usage
+from arena import baselines, cycle, db, llm, usage
 from arena.config import DEFAULTS, REPO_ROOT, agent_db_path
+from arena.data.build import build_dataset
+from arena.data.templates import synthetic_corpus
 from arena.exit_codes import ExitCode
 from arena.judge_client import JudgeClient, JudgeError
 from arena.orchestrator import Orchestrator, phase1_mock_script
@@ -56,7 +60,7 @@ def cmd_run_cycle(conn, backend_name: str, cassette: Path | None, run_id: str) -
         print(f"The run is {state} ({reason}). Start it with: python -m arena.cli control start")
         return ExitCode.NEEDS_OPERATOR
     backend = llm.get_backend(backend_name, mock_script=phase1_mock_script(), cassette=cassette)
-    with JudgeClient() as judge:
+    with db.runner(conn), JudgeClient() as judge:
         outcome = Orchestrator(conn, backend=backend, judge=judge, run_id=run_id).run_cycle()
     print(f"Cycle {outcome.cycle_id}: {outcome.status} ({outcome.detail})")
     codes = {
@@ -65,6 +69,44 @@ def cmd_run_cycle(conn, backend_name: str, cassette: Path | None, run_id: str) -
         "stopped": ExitCode.NEEDS_OPERATOR,
     }
     return codes.get(outcome.status, ExitCode.FAILED)
+
+
+def cmd_abandon_cycle(conn, run_id: str, reason: str) -> int:
+    """Roll back the run's open cycle, so a run paused on a cycle that cannot finish can go on.
+
+    Its stored outputs stay as evidence. Holding the runner row means no cycle is running meanwhile.
+    """
+    with db.runner(conn):
+        row = conn.execute(
+            "SELECT id FROM cycles WHERE run_id = ? AND state NOT IN (?, ?) ORDER BY id DESC",
+            (run_id, *cycle.FINISHED),
+        ).fetchone()
+        if row is None:
+            print(f"Run {run_id} has no open cycle.")
+            return ExitCode.OK
+        with db.transaction(conn):
+            cycle.advance(conn, row["id"], "rolled_back")
+            db.log_event(conn, "cycle_abandoned", {"reason": reason}, cycle_id=row["id"])
+    print(f"Cycle {row['id']} rolled back: {reason}")
+    return ExitCode.OK
+
+
+def cmd_data_build(args) -> int:
+    """Build the Judge directory. Only the synthetic corpus exists until the datasets are
+    approved, and it is never a valid benchmark, so it must be asked for by name and pointed at a
+    directory."""
+    summary = build_dataset(
+        synthetic_corpus(),
+        judge_dir=args.judge_dir,
+        private_dir=args.private_dir or REPO_ROOT / "private" / "data",
+    )
+    for partition, labels in sorted(summary.counts.items()):
+        print(f"{partition}: " + ", ".join(f"{n} {label}" for label, n in sorted(labels.items())))
+    print(f"Removed: {summary.exact_removed} exact and {summary.near_removed} near duplicates.")
+    print("Pairs: " + ", ".join(f"{n} {name}" for name, n in sorted(summary.pairs.items())))
+    for shortfall in summary.feasibility.shortfalls:
+        print(f"Short: {shortfall}")
+    return ExitCode.OK if summary.feasibility.ok else ExitCode.NEEDS_OPERATOR
 
 
 def cmd_baseline(args) -> int:
@@ -136,10 +178,20 @@ def main(argv: list[str] | None = None) -> int:
     baseline.add_argument("--replicates", type=int, default=None)
     baseline.add_argument("--judge-dir", type=Path, default=None)
     baseline.add_argument("--out", type=Path, default=None, help="default runs/baseline")
+    abandon = commands.add_parser("abandon-cycle")
+    abandon.add_argument("--reason", required=True)
+    abandon.add_argument("--run-id", default="default")
+    data = commands.add_parser("data").add_subparsers(dest="data_command", required=True)
+    build = data.add_parser("build")
+    build.add_argument("--synthetic", action="store_true", required=True)
+    build.add_argument("--judge-dir", type=Path, required=True)
+    build.add_argument("--private-dir", type=Path, default=None)
     args = parser.parse_args(argv)
 
     if args.command == "baseline":
         return cmd_baseline(args)
+    if args.command == "data":
+        return cmd_data_build(args)
 
     conn = db.connect(args.db or agent_db_path())
     try:
@@ -147,7 +199,12 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_status(conn)
         if args.command == "control":
             return cmd_control(conn, args.action)
+        if args.command == "abandon-cycle":
+            return cmd_abandon_cycle(conn, args.run_id, args.reason)
         return cmd_run_cycle(conn, args.backend, args.cassette, args.run_id)
+    except db.RunnerBusy as busy:
+        print(busy, file=sys.stderr)
+        return ExitCode.FAILED
     finally:
         conn.close()
 
