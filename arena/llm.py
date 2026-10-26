@@ -162,22 +162,26 @@ def _pinned_model(role: str, config: ArenaConfig) -> str:
     return pinned
 
 
-# At most this share of a batch (and at least one item) may come back from another model.
+# At most this share of a whole batch (and at least one item) may come back from another model.
 _SWITCH_SHARE = 0.05
-# New results seen before the share is also checked while the batch runs, so a run-wide switch
-# stops early instead of after every call is spent.
+# While the batch runs, once this many new results are in, more than half of them switched is a
+# run-wide fault and stops the queue early instead of after every call is spent. The 5% rule is
+# judged on the whole batch only, since items from one source cluster in any early window.
 _SWITCH_EARLY = 40
+_SWITCH_RUNAWAY = 0.5
 
 
-def _check_switches(role: str, pinned: str, batch: Sequence["CachedOutput"]) -> None:
+def _check_switches(
+    role: str, pinned: str, batch: Sequence["CachedOutput"], share: float = _SWITCH_SHARE
+) -> None:
     """A model switch is a refusal only for single items. A batch with no answer from the pinned
-    model, or with more switches than `_SWITCH_SHARE` allows, is a configuration fault and stops,
-    stored rows included, so a rerun stops the same way until the cause is fixed."""
+    model, or with more switches than `share` allows, is a configuration fault and stops, stored
+    rows included, so a rerun stops the same way until the cause is fixed."""
     switched = [o for o in batch if o.failure == REFUSED and o.model_id != pinned]
     if not switched:
         return
     answered = sum(o.model_id == pinned and o.failure != REFUSED for o in batch)
-    if not answered or len(switched) > max(1, int(len(batch) * _SWITCH_SHARE)):
+    if not answered or len(switched) > max(1, int(len(batch) * share)):
         raise ModelIdMismatch(
             f"{role}: {len(switched)} of {len(batch)} items answered by {switched[0].model_id}, "
             f"pinned id is {pinned}. Too many to be single flagged items.",
@@ -453,7 +457,9 @@ def call_batch[Model: pydantic.BaseModel](
         pool = ThreadPoolExecutor(max_workers=config.detector_concurrency)
         read: set[Future] = set()
         try:
-            futures = [pool.submit(attempt, key, keyed) for key, keyed in missing.items()]
+            # Sent in cache-key order: the key is a hash, so the order is repeatable but mixes
+            # sources, and no early window is all one kind of item.
+            futures = [pool.submit(attempt, key, missing[key]) for key in sorted(missing)]
             fresh: list[CachedOutput] = []
             for future in as_completed(futures):
                 read.add(future)
@@ -461,7 +467,7 @@ def call_batch[Model: pydantic.BaseModel](
                     unstored.append(future.result())
                     fresh.append(unstored[-1])
                     if len(fresh) >= _SWITCH_EARLY:
-                        _check_switches(role, pinned, fresh)
+                        _check_switches(role, pinned, fresh, share=_SWITCH_RUNAWAY)
                 except Exception as failure:
                     error = failure
                     # Stop reading here: as_completed never yields a future that shutdown

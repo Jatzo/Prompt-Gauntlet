@@ -442,3 +442,24 @@ def test_a_run_wide_switch_stops_early_instead_of_spending_the_whole_batch():
         refusable(items(400), cache, backend)
     # Concurrency lets a few more finish, but nowhere near the whole batch.
     assert sum(backend.calls.values()) < 100
+
+
+def test_calls_go_out_in_key_order_not_source_order():
+    backend = CountingBackend()
+    requests = [keyed(f"i{n}", f"text {n}") for n in range(30)]
+    batch(requests, MemoryEvalCache(), backend, ArenaConfig(detector_concurrency=1))
+    pinned = DEFAULTS.models.detector
+    by_text = {
+        r.request.user: llm.request_key("detector", pinned, r, backend.name) for r in requests
+    }
+    sent = list(backend.calls)
+    assert [by_text[text] for text in sent] == sorted(by_text.values())
+    assert sent != [r.request.user for r in requests]
+
+
+def test_an_early_cluster_of_switches_is_judged_on_the_whole_batch():
+    # Five switches among the first items would trip a 5% rule on any early window; across 200
+    # items they are 2.5%, so the batch completes.
+    backend = SwitchingBackend()
+    results = refusable(items(200, flagged={0, 1, 2, 3, 4}), MemoryEvalCache(), backend)
+    assert sum(r == Unscorable(llm.REFUSED) for r in results) == 5
