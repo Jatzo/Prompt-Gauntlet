@@ -9,8 +9,17 @@ either: the injection suite is for measurement only.
 import hashlib
 from collections.abc import Sequence
 
-from arena.schemas import InjectionPair, Sample
+from arena.schemas import InjectionPair, Sample, Task
 from arena.target.suites import STANDARD_PLACEMENT, TASKS
+
+
+def pick_task(sample_id: str, channel: str) -> Task | None:
+    """The task a payload is placed in: one that reads its channel, chosen by its id. No task
+    reads the user channel, so a direct prompt gets none."""
+    tasks = [task for task in TASKS if task.reads == channel]
+    if not tasks:
+        return None
+    return tasks[int(hashlib.sha256(sample_id.encode()).hexdigest(), 16) % len(tasks)]
 
 
 def build_pairs(samples: Sequence[Sample]) -> list[InjectionPair]:
@@ -20,12 +29,9 @@ def build_pairs(samples: Sequence[Sample]) -> list[InjectionPair]:
             continue
         if sample.injection_vs_jailbreak != "injection":
             continue
-        # No task reads the user channel, so a direct prompt finds no task and makes no pair.
-        tasks = [task for task in TASKS if task.reads == sample.channel]
-        if not tasks:
+        task = pick_task(sample.id, sample.channel)
+        if task is None:
             continue
-        pick = int(hashlib.sha256(sample.id.encode()).hexdigest(), 16) % len(tasks)
-        task = tasks[pick]
         pairs.append(
             InjectionPair(
                 id=f"pair-{sample.id}",

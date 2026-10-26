@@ -265,8 +265,21 @@ ReasonCode = Literal[
     "regression_reopened",
     "failed_fold_two",
     "missed_fresh_evasions",
+    "target_fpr_unreachable",
     "not_implemented",
 ]
+
+# The keep rule's conditions (PLAN section 8), named once so the report and the Judge agree.
+ConditionName = Literal[
+    "asr", "utility", "tpr_gain", "category_fpr", "regression", "fold_two", "fresh_evasions"
+]
+
+
+class Condition(Strict):
+    # None when the condition does not apply this cycle.
+    passed: bool | None
+    value: float | None
+    limit: float | None
 
 
 class JudgeReport(Strict):
@@ -299,6 +312,7 @@ class JudgeReport(Strict):
     regression_status: Literal["pass", "fail", "not_run"]
     decision: Literal["keep", "reject", "none"]
     reason_code: ReasonCode
+    conditions: dict[ConditionName, Condition] = {}
 
 
 class LessonProposal(Strict):
@@ -648,6 +662,62 @@ class BaselineReport(Strict):
     # system prompt and a growing history, so a mean over the whole cache would overstate it.
     detector_tokens_per_call: Annotated[float, Field(ge=0)]
     fingerprints: dict[CategoryKey, Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]]
+
+
+# Attacker batches and T2 queries, checked inside the Judge.
+
+
+class ValidateBatchRequest(Strict):
+    cycle_id: Annotated[int, Field(ge=1)]
+    attacks: Annotated[
+        list[AttackCandidate], Field(min_length=1, max_length=DEFAULTS.attacker_batch_size)
+    ]
+    # Run settings: the first arm carries the incumbent detector, and the reference target is the
+    # one the attacks are checked against.
+    measure: MeasureRequest
+
+
+class AttackVerdict(Strict):
+    """One of the Attacker's own items. Never a dataset sample."""
+
+    index: Annotated[int, Field(ge=0)]
+    technique: Identifier
+    cluster_id: Identifier
+    # A held-out technique class: dropped before any check.
+    refused: bool
+    valid: bool
+    evaded: bool
+    held_back: bool
+
+
+class BatchReport(Strict):
+    verdicts: Annotated[list[AttackVerdict], Field(max_length=DEFAULTS.attacker_batch_size)]
+    evading_clusters: Annotated[int, Field(ge=0)]
+    held_back_clusters: Annotated[int, Field(ge=0)]
+
+
+class QueryRequest(Strict):
+    cycle_id: Annotated[int, Field(ge=1)]
+    text: Annotated[str, Field(min_length=1, max_length=4000)]
+    measure: MeasureRequest
+
+
+class QueryReply(Strict):
+    """A label only, as T2 allows (PLAN section 7)."""
+
+    # None when the cycle's budget is spent: the query was refused and nothing was scored.
+    flagged: bool | None
+    remaining: Annotated[int, Field(ge=0)]
+
+
+class EvaluateRequest(Strict):
+    cycle_id: Annotated[int, Field(ge=1)]
+    candidate: DetectorConfig
+    # The fold the TPR gain is tested on; the other one must replicate it. Rotated each checkpoint.
+    primary_fold: Literal[1, 2]
+    # Run settings: the first arm carries the incumbent, and the reference target runs the dev
+    # injection suite.
+    measure: MeasureRequest
 
 
 ALL_MODELS: tuple[type[BaseModel], ...] = (

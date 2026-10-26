@@ -16,7 +16,7 @@ from pathlib import Path
 
 from arena.llm import CachedOutput
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _V1 = [
     "CREATE TABLE schema_version (version INTEGER NOT NULL)",
@@ -79,6 +79,40 @@ _V2 = [
 # Rows cached before version 3 have no recorded backend.
 _V3 = ["ALTER TABLE eval_cache ADD COLUMN backend TEXT NOT NULL DEFAULT ''"]
 
+# The Attacker's payloads by cycle for keep condition (f), the T2 query count, and the regression
+# library for condition (d).
+_V4 = [
+    """CREATE TABLE attacks (
+        cycle_id INTEGER NOT NULL,
+        idx INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        technique TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        impact_class TEXT NOT NULL,
+        cluster_id TEXT NOT NULL,
+        valid INTEGER NOT NULL,
+        evaded INTEGER NOT NULL,
+        held_back INTEGER NOT NULL,
+        refused INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (cycle_id, idx)
+    )""",
+    """CREATE TABLE detector_queries (
+        id INTEGER PRIMARY KEY,
+        cycle_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+    )""",
+    # Evasions from closed findings. A kept change may never let one through again.
+    """CREATE TABLE regression (
+        id INTEGER PRIMARY KEY,
+        text TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        technique TEXT NOT NULL,
+        cycle_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+    )""",
+]
+
 
 def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -107,6 +141,9 @@ def connect(path: Path) -> sqlite3.Connection:
                     conn.execute(statement)
             if version < 3:
                 for statement in _V3:
+                    conn.execute(statement)
+            if version < 4:
+                for statement in _V4:
                     conn.execute(statement)
             conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
             conn.execute("COMMIT")

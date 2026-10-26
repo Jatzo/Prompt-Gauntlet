@@ -297,3 +297,127 @@ def test_trials_that_move_together_show_a_high_icc():
         for _ in range(5)
     ]
     assert stats.icc(independent) < 0.1
+
+
+def scored(scores, attack, cluster_prefix, valid=True):
+    return [
+        ScoredItem(
+            score=float(s),
+            is_attack=attack,
+            valid=valid,
+            cluster=f"{cluster_prefix}{n}",
+            tiebreak=0.5,
+        )
+        for n, s in enumerate(scores)
+    ]
+
+
+def test_a_config_against_itself_shows_no_gain():
+    calibration = scored(range(200), False, "b")
+    evaluation = scored([150] * 30 + [10] * 30, True, "a")
+    same = (calibration, evaluation)
+    result = stats.paired_tpr_difference(
+        same, same, target_fpr=0.05, replicates=300, confidence=0.95, seed=1
+    )
+    assert result.difference == 0.0 and result.lower == 0.0
+    assert result.clusters == 60
+
+
+def test_a_candidate_that_catches_every_attack_clears_the_bound():
+    calibration = scored(range(200), False, "b")
+    misses = scored([10] * 60, True, "a")
+    catches = scored([500] * 60, True, "a")
+    result = stats.paired_tpr_difference(
+        (calibration, misses),
+        (calibration, catches),
+        target_fpr=0.05,
+        replicates=300,
+        confidence=0.95,
+        seed=1,
+    )
+    assert result.difference == pytest.approx(1.0) and result.lower == pytest.approx(1.0)
+
+
+def test_a_small_gain_on_few_clusters_has_a_lower_bound_below_zero_or_near_it():
+    calibration = scored(range(200), False, "b")
+    before = scored([10] * 20, True, "a")
+    after = scored([500] + [10] * 19, True, "a")
+    result = stats.paired_tpr_difference(
+        (calibration, before),
+        (calibration, after),
+        target_fpr=0.05,
+        replicates=500,
+        confidence=0.95,
+        seed=3,
+    )
+    assert result.difference == pytest.approx(0.05)
+    assert result.lower <= 0.0
+
+
+def test_configs_scored_on_different_items_are_refused():
+    calibration = scored(range(50), False, "b")
+    with pytest.raises(ValueError, match="same items"):
+        stats.paired_tpr_difference(
+            (calibration, scored([1] * 5, True, "a")),
+            (calibration, scored([1] * 5, True, "z")),
+            target_fpr=0.05,
+            replicates=10,
+            confidence=0.95,
+            seed=1,
+        )
+
+
+def test_replicates_where_the_candidate_cannot_be_calibrated_count_against_it():
+    # 9 unscorable benign items against a budget of 10 at 5% of 200: the full sample calibrates,
+    # but many resamples draw more than 10 unscorable items and cannot.
+    incumbent_cal = scored(range(200), False, "b")
+    fragile_cal = [
+        item
+        if n >= 9
+        else ScoredItem(
+            score=0.0,
+            is_attack=False,
+            valid=True,
+            cluster=item.cluster,
+            tiebreak=0.5,
+            scorable=False,
+        )
+        for n, item in enumerate(incumbent_cal)
+    ]
+    result = stats.paired_tpr_difference(
+        (incumbent_cal, scored([10] * 60, True, "a")),
+        (fragile_cal, scored([500] * 60, True, "a")),
+        target_fpr=0.05,
+        replicates=400,
+        confidence=0.95,
+        seed=5,
+    )
+    assert result.difference == pytest.approx(1.0)
+    assert result.lower == -1.0
+
+
+def test_a_candidate_that_fixes_a_fragile_incumbent_can_still_clear_the_bound():
+    robust_cal = scored(range(200), False, "b")
+    fragile_cal = [
+        item
+        if n >= 9
+        else ScoredItem(
+            score=0.0,
+            is_attack=False,
+            valid=True,
+            cluster=item.cluster,
+            tiebreak=0.5,
+            scorable=False,
+        )
+        for n, item in enumerate(robust_cal)
+    ]
+    result = stats.paired_tpr_difference(
+        (fragile_cal, scored([10] * 60, True, "a")),
+        (robust_cal, scored([500] * 60, True, "a")),
+        target_fpr=0.05,
+        replicates=400,
+        confidence=0.95,
+        seed=5,
+    )
+    assert result.difference == pytest.approx(1.0)
+    assert result.lower == pytest.approx(1.0)

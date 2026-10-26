@@ -39,7 +39,8 @@ def test_a_version_1_database_migrates_forward_and_keeps_its_rows(tmp_path):
     conn.close()
 
     migrated = store.connect(path)
-    assert migrated.execute("SELECT version FROM schema_version").fetchone()[0] == 3
+    version = migrated.execute("SELECT version FROM schema_version").fetchone()[0]
+    assert version == store.SCHEMA_VERSION
     assert migrated.execute("SELECT cycle_id FROM evaluations").fetchall() == [(7,)]
     store.EvalCache(migrated).store_many([output("k")])
 

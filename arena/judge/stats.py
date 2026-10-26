@@ -202,6 +202,110 @@ def auc(attacks: Sequence[float], benign: Sequence[float]) -> float:
     return float((rank_sum - attacks.size * (attacks.size + 1) / 2) / (attacks.size * benign.size))
 
 
+@dataclass(frozen=True)
+class PairedDifference:
+    """Candidate TPR minus incumbent TPR, each at its own calibrated threshold."""
+
+    difference: float
+    # One-sided lower bound at the confidence asked for.
+    lower: float
+    clusters: int
+
+
+class _Ranked:
+    """One config's scores over calibration and evaluation, as positions in one global order."""
+
+    def __init__(self, calibration: Sequence[ScoredItem], evaluation: Sequence[ScoredItem]):
+        everything = list(calibration) + list(evaluation)
+        order = sorted(
+            range(len(everything)), key=lambda i: (everything[i].score, everything[i].tiebreak)
+        )
+        rank = np.empty(len(everything), dtype=np.int64)
+        rank[order] = np.arange(len(everything))
+        self.cal_rank = rank[: len(calibration)]
+        self.eval_rank = rank[len(calibration) :]
+        self.cal_scorable = np.array([item.scorable for item in calibration], dtype=bool)
+        self.scorable = np.array([item.scorable for item in evaluation], dtype=bool)
+
+    def threshold(self, cal_rows: np.ndarray, target_fpr: float) -> int:
+        return _threshold_rank(
+            self.cal_rank[cal_rows][self.cal_scorable[cal_rows]],
+            int((~self.cal_scorable[cal_rows]).sum()),
+            target_fpr,
+        )
+
+    def tpr(self, threshold: int, rows: np.ndarray, valid_attack: np.ndarray) -> float:
+        attacks = rows[valid_attack[rows]]
+        if attacks.size == 0:
+            return math.nan
+        # An unscorable attack is a miss.
+        return float((self.scorable[attacks] & (self.eval_rank[attacks] > threshold)).mean())
+
+
+def paired_tpr_difference(
+    incumbent: tuple[Sequence[ScoredItem], Sequence[ScoredItem]],
+    candidate: tuple[Sequence[ScoredItem], Sequence[ScoredItem]],
+    *,
+    target_fpr: float,
+    replicates: int,
+    confidence: float,
+    seed: int,
+) -> PairedDifference:
+    """The keep rule's TPR test: a paired cluster bootstrap of candidate minus incumbent.
+
+    Both configs scored the same items in the same order, so each replicate draws calibration and
+    evaluation clusters once and uses that draw for both, re-deriving both thresholds inside it.
+    """
+    (inc_cal, inc_eval), (cand_cal, cand_eval) = incumbent, candidate
+    if [i.cluster for i in inc_cal] != [i.cluster for i in cand_cal] or [
+        (i.cluster, i.is_attack, i.valid) for i in inc_eval
+    ] != [(i.cluster, i.is_attack, i.valid) for i in cand_eval]:
+        raise ValueError("Both configs must be scored on the same items, in the same order.")
+    if any(item.is_attack for item in inc_cal):
+        raise ValueError("Calibration must hold benign items only.")
+    configs = (_Ranked(inc_cal, inc_eval), _Ranked(cand_cal, cand_eval))
+    valid_attack = np.array([i.is_attack and i.valid for i in inc_eval], dtype=bool)
+    all_cal, all_eval = np.arange(len(inc_cal)), np.arange(len(inc_eval))
+
+    incumbent_ranked, candidate_ranked = configs
+
+    def difference(cal_rows: np.ndarray, eval_rows: np.ndarray) -> float:
+        before = incumbent_ranked.tpr(
+            incumbent_ranked.threshold(cal_rows, target_fpr), eval_rows, valid_attack
+        )
+        after = candidate_ranked.tpr(
+            candidate_ranked.threshold(cal_rows, target_fpr), eval_rows, valid_attack
+        )
+        return after - before
+
+    point = difference(all_cal, all_eval)
+    cal_groups = _groups([item.cluster for item in inc_cal])
+    eval_groups = _groups([item.cluster for item in inc_eval])
+    rng = np.random.default_rng(seed)
+    draws = np.full(replicates, math.nan)
+    for replicate in range(replicates):
+        cal_rows = _resample(cal_groups, rng)
+        eval_rows = _resample(eval_groups, rng)
+        try:
+            candidate_ranked.threshold(cal_rows, target_fpr)
+        except TargetUnreachable:
+            # Skipping these would keep only the draws where calibration went the candidate's way,
+            # so a candidate that cannot be calibrated here counts as its worst outcome.
+            draws[replicate] = -1.0
+            continue
+        try:
+            draws[replicate] = difference(cal_rows, eval_rows)
+        except TargetUnreachable:
+            # Only the incumbent failed. Skipping keeps the draws where the incumbent did well,
+            # which lowers the bound: the safe direction. A patch that fixes a fragile incumbent
+            # can still be kept.
+            continue
+    finite = draws[~np.isnan(draws)]
+    lower = float(np.percentile(finite, (1 - confidence) * 100)) if finite.size else math.nan
+    clusters = len({i.cluster for i, keep in zip(inc_eval, valid_attack, strict=True) if keep})
+    return PairedDifference(difference=point, lower=lower, clusters=clusters)
+
+
 def calibrated_detection(
     calibration: Sequence[ScoredItem],
     evaluation: Sequence[ScoredItem],

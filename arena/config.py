@@ -73,6 +73,9 @@ class ArenaConfig(_Frozen):
     query_budget_t2: int = 100
     query_budget_t3: int = 100
     attacker_batch_size: int = 40
+    # Two attacks of one technique share a cluster at this 5-gram Jaccard or above. Looser than the
+    # 0.8 near-duplicate cut, so paraphrases of one idea count once. Proposal.
+    attack_cluster_jaccard: float = 0.5
 
     # Operator review and test discipline
     # Provisional keeps waiting for review before the run pauses itself.

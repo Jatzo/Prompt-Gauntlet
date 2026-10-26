@@ -18,7 +18,16 @@ from pydantic import BaseModel, ConfigDict
 
 from arena.anomaly import Anomaly
 from arena.config import DEFAULTS, REPO_ROOT
-from arena.schemas import BaselineReport, JudgeReport, MeasureRequest
+from arena.schemas import (
+    BaselineReport,
+    BatchReport,
+    EvaluateRequest,
+    JudgeReport,
+    MeasureRequest,
+    QueryReply,
+    QueryRequest,
+    ValidateBatchRequest,
+)
 
 
 class JudgeError(Anomaly):
@@ -118,6 +127,27 @@ class JudgeClient:
 
     def evaluate(self, cycle_id: int) -> JudgeReport:
         return JudgeReport.model_validate(self._request("evaluate", cycle_id=cycle_id))
+
+    def evaluate_candidate(self, request: EvaluateRequest) -> JudgeReport:
+        """The keep rule for one candidate. It runs the dev suites, so it has the long wait."""
+        reply = self._request(
+            "evaluate", timeout=DEFAULTS.measure_timeout_seconds, **request.model_dump(mode="json")
+        )
+        return JudgeReport.model_validate(reply)
+
+    def validate_batch(self, request: ValidateBatchRequest) -> BatchReport:
+        """Runs target episodes for every payload, so it has the long wait too."""
+        reply = self._request(
+            "validate_batch",
+            timeout=DEFAULTS.measure_timeout_seconds,
+            **request.model_dump(mode="json"),
+        )
+        return BatchReport.model_validate(reply)
+
+    def query_detector(self, request: QueryRequest) -> QueryReply:
+        return QueryReply.model_validate(
+            self._request("query_detector", **request.model_dump(mode="json"))
+        )
 
     def measure(self, request: MeasureRequest) -> BaselineReport:
         """One baseline measurement. It can run for hours live, so it has its own, longer wait."""

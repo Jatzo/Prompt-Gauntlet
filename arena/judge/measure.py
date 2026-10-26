@@ -23,7 +23,7 @@ from arena import llm
 from arena.config import DEFAULTS, ArenaConfig, config_hash
 from arena.detector.probes import PROBES, fit_probe
 from arena.detector.rules import RuleSet
-from arena.detector.scorer import build_scorer
+from arena.detector.scorer import Scorer, build_scorer
 from arena.judge import data as judge_data
 from arena.judge import stats
 from arena.judge.hashing import sha256_text
@@ -57,6 +57,9 @@ DATA_FILES = (
 EXECUTOR_PATHS = (
     "arena/detector",
     "arena/target",
+    "arena/taxonomy.py",
+    "arena/data/dedup.py",
+    "arena/data/pairs.py",
     "arena/llm.py",
     "arena/simulated.py",
     "arena/sim_profiles.py",
@@ -241,11 +244,15 @@ def validity(measurement: Measurement, reference: TargetSpec) -> set[str]:
 @dataclass
 class ArmResult:
     row: DetectionRow
-    rules: RuleSet
+    scorer: Scorer
     # None when unscorable calibration items alone used up the FPR budget.
     gate: DetectorGate | None
     calibration_items: list[stats.ScoredItem]
     evaluation_items: list[stats.ScoredItem]
+
+    @property
+    def rules(self) -> RuleSet:
+        return self.scorer.rules
 
 
 def calibrate_arm(measurement: Measurement, arm: ArmSpec, valid: set[str]) -> ArmResult:
@@ -300,7 +307,7 @@ def calibrate_arm(measurement: Measurement, arm: ArmSpec, valid: set[str]) -> Ar
             benign=len(calibration),
             target_unreachable=True,
         )
-        return ArmResult(row, scorer.rules, None, cal_items, eval_items)
+        return ArmResult(row, scorer, None, cal_items, eval_items)
     gate = DetectorGate(
         scorer=scorer.segment_scores,
         threshold=stats.threshold_at_fpr(cal_items, config.target_fpr),
@@ -335,7 +342,7 @@ def calibrate_arm(measurement: Measurement, arm: ArmSpec, valid: set[str]) -> Ar
         hijacked=hijacked,
         benign=found.n_benign,
     )
-    return ArmResult(row, scorer.rules, gate, cal_items, eval_items)
+    return ArmResult(row, scorer, gate, cal_items, eval_items)
 
 
 def end_to_end(
