@@ -41,6 +41,17 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   open-weights model) elsewhere, with Cohen's kappa reported and disagreements excluded. The human 5%
   audit is dropped, and "no human labels" is a stated limitation. The replacement waits on a
   critiqued plan and the operator's approval.
+- 2026-10-26, Phase 3 order: a minimal read-only live feed (`arena/server.py`, `make dashboard`)
+  comes before step 6. Step 15 grows it into the four panels with controls. After it: the real data
+  build, the labelling replacement, then step 6.
+- 2026-10-26, novelty in Phase 3: a small version of v2's novelty work moves into v1. An
+  "unclassified" classifier result, a behaviour signature per attack stored by the Judge, candidate
+  technique findings the operator triages, an `explore` focus, a per-run novelty archive, a coarse
+  novelty band for the Attacker (archive plus train, the same in every arm) and an honest novelty
+  count in reports, zero included. The keep rule does not change. Built inside steps 6, 10, 11, 14
+  and 15.
+- 2026-10-26: `fastapi` and `uvicorn` are core dependencies. fastapi stays below 0.142, whose
+  `opentelemetry-api>=1.44` requirement clashes with semgrep's pin in the same environment.
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.
