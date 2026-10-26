@@ -71,6 +71,10 @@ def token_set_jaccard(left: str, right: str) -> float:
     return len(a & b) / len(a | b)
 
 
+# Every kind the episodic log accepts. A new kind is added here on purpose, together with a decision
+# on whether agents may read it; `record_episode` refuses anything else.
+EPISODE_KINDS = ("plan", "postmortem", "judge_report", "attack_batch", "novelty_closed")
+
 # Episodes that hold the Attacker's batches, held-back attacks included. No briefing, recall or
 # other agent-facing read may select them.
 PRIVATE_EPISODE_KINDS = ("attack_batch", "novelty_closed")
@@ -84,6 +88,8 @@ class Memory:
     def record_episode(self, *, kind: str, body: dict, cycle_id: int, step: str, role: str) -> int:
         """Append to the episodic log. Nothing is ever updated or deleted there."""
         self._require_transaction()
+        if kind not in EPISODE_KINDS:
+            raise MemoryWriteRejected(f"Unknown episode kind {kind!r}. Known: {EPISODE_KINDS}.")
         row_id = self._insert(
             "INSERT INTO memory_episodic (cycle_id, kind, body, created_at) VALUES (?, ?, ?, ?)",
             (cycle_id, kind, json.dumps(body, sort_keys=True), db.now()),

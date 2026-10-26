@@ -4,7 +4,13 @@ import pytest
 
 from arena import db
 from arena.config import ArenaConfig
-from arena.memory.memory import Memory, MemoryWriteRejected, token_set_jaccard
+from arena.memory.memory import (
+    EPISODE_KINDS,
+    PRIVATE_EPISODE_KINDS,
+    Memory,
+    MemoryWriteRejected,
+    token_set_jaccard,
+)
 from arena.schemas import LessonProposal, Prediction
 
 WHERE = {"cycle_id": 1, "step": "postmortem", "role": "ceo"}
@@ -19,7 +25,7 @@ def conn(tmp_path):
 
 def episode(memory, cycle_id=1):
     return memory.record_episode(
-        kind="experiment", body={"result": "x"}, **dict(WHERE, cycle_id=cycle_id)
+        kind="plan", body={"result": "x"}, **dict(WHERE, cycle_id=cycle_id)
     )
 
 
@@ -36,6 +42,20 @@ def count(conn, table):
 def test_writes_outside_a_transaction_are_refused(conn):
     with pytest.raises(RuntimeError):
         Memory(conn).record_episode(kind="x", body={}, **WHERE)
+
+
+def test_the_episode_kinds_are_pinned_and_the_private_ones_are_among_them():
+    # Adding a kind is a decision about whether agents may read it, so it fails here first.
+    assert EPISODE_KINDS == ("plan", "postmortem", "judge_report", "attack_batch", "novelty_closed")
+    assert set(PRIVATE_EPISODE_KINDS) <= set(EPISODE_KINDS)
+
+
+def test_an_unknown_episode_kind_is_rejected_and_nothing_is_written(conn):
+    memory = Memory(conn)
+    with pytest.raises(MemoryWriteRejected, match="Unknown episode kind"), db.transaction(conn):
+        memory.record_episode(kind="experiment", body={}, **WHERE)
+    assert count(conn, "memory_episodic") == 0
+    assert count(conn, "memory_provenance") == 0
 
 
 def test_a_lesson_backed_by_a_real_experiment_is_stored_with_provenance(conn):
