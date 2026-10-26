@@ -76,10 +76,11 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 - `open_classifier` is listed as not configured until an open-weights model is chosen.
 
 ## Operator-only steps (Phase 2 step 8)
-- Approve the dataset shortlist, then run the real build. The build has no CLI command yet (see the
-  senior review items below).
+- Fetch the approved sources: `python -m arena.cli data fetch`. Set `HF_TOKEN` first for the gated
+  Tatoeba files; Enron alone is 443 MB. Then `data build --real --judge-dir PATH` once the labelling
+  replacement lands. Install the `data` extra for the parquet sources.
 - Hand labels and the 5% audit; record the label-error rates.
-- Check the plan's terms for automated use, then run the live baseline and the ASR gate.
+- Run `python -m arena.cli live-check`, then the live baseline and the ASR gate.
 - Finalise and hash the constitution, write the real `data/test.sha256`, and commit and tag the
   pre-registration `docs/experiments/001`.
 
@@ -105,8 +106,8 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 - Saved baseline reports from before `detector_tokens_per_call` no longer load. None exist yet.
 
 ### Senior review, for the operator
-- Structure: the data build and labelling have no CLI command, and `open_partitions` reads a missing
-  file as an empty partition (needs a Judge change to raise instead).
+- Structure: `open_partitions` reads a missing file as an empty partition (needs a Judge change to
+  raise instead). The data build now has `data fetch` and `data build --real`.
 - Structure: a long run writes no progress. A stderr line per stored chunk in `call_batch`, and one per
   phase in `measure.run` (a Judge change), would show how far it got.
 - Dead, held because they reverse a decision: `config.audit_share` and
@@ -119,5 +120,6 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 - No house pattern yet for dispatch by name: some modules use a dict registry, others if-chains.
 
 ## Next session
-Review Phase 2 and answer the open questions. Then write the Phase 3 plan and have it critiqued
-before any Phase 3 code.
+Part 3 of the operator-decisions plan (checker and two-family model labels in place of hand labels),
+then Phase 3 step 6 with the approved novelty work. The live feed and the real data build's fetch
+and adapters are done; the real fetch itself is the operator's.
