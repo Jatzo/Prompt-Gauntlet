@@ -16,7 +16,7 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 ## Decisions made
 - Repo name: `prompt-gauntlet` (public), MIT licence.
 - Headline metric: end-to-end attack success under an adaptive attacker, with utility cost. Detection TPR@1%FPR is secondary.
-- Models: Opus 5.5 for CEO and case-study writer; Sonnet 5.5 for other agents; detector and weak target on Haiku 4.5 (`claude-haiku-4-5-20251001`), because there is no Haiku 5.5.
+- Models: Opus 5.5 for CEO and case-study writer; Sonnet 5.5 for other agents; detector and weak target on Haiku 5.5 (`claude-haiku-5-5`).
 - No fixed usage cap by default; operator starts, pauses and stops the run (optional hard cap available, off by default).
 - v1 defender search space is data-only (`DetectorConfig`); no code execution, no Docker in v1.
 - Develop in WSL2 on the Linux filesystem, repo at `~/code/prompt-gauntlet`.

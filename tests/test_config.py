@@ -67,3 +67,8 @@ def test_every_role_has_a_pinned_model_id():
 def test_the_config_hash_is_stable_and_changes_with_any_value():
     assert config_hash() == config_hash(ArenaConfig())
     assert config_hash() != config_hash(ArenaConfig(max_patch_ops=6))
+
+
+def test_the_detector_and_weak_target_run_on_haiku_5_5():
+    assert DEFAULTS.models.detector == "claude-haiku-5-5"
+    assert DEFAULTS.models.target_weak == "claude-haiku-5-5"

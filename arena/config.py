@@ -27,9 +27,8 @@ class ModelIds(_Frozen):
     attacker: str = "claude-sonnet-5-5"
     defender: str = "claude-sonnet-5-5"
     grader: str = "claude-sonnet-5-5"
-    # There is no Haiku 5.5; Haiku 4.5 is the current small fast model.
-    detector: str = "claude-haiku-4-5-20251001"
-    target_weak: str = "claude-haiku-4-5-20251001"
+    detector: str = "claude-haiku-5-5"
+    target_weak: str = "claude-haiku-5-5"
     target_strong: str = "claude-sonnet-5-5"
 
 
