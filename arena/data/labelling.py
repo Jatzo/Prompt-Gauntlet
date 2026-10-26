@@ -14,7 +14,6 @@ says nothing about the error left on the items they agree on, so that error is s
 unmeasured, never used to widen an interval.
 """
 
-import hashlib
 import sqlite3
 from collections import Counter
 from collections.abc import Sequence
@@ -24,6 +23,7 @@ from pathlib import Path
 from arena import llm
 from arena.config import DEFAULTS, ArenaConfig
 from arena.data.splits import SplitRow
+from arena.datamark import quote
 from arena.schemas import LabelVerdict, Sample
 
 TOOL = "report_label"
@@ -43,14 +43,6 @@ SYSTEM = (
 )
 _TOOLS = ({"name": TOOL, "input_schema": LabelVerdict.model_json_schema()},)
 FIELDS = ("label", "kind", "impact_class")
-
-
-def quote(text: str, seed: int) -> str:
-    """The text as delimited, datamarked data, in the detector's format. The detector's own helper
-    lives with the scorer, which only the Judge may run, so the labeller keeps this copy."""
-    nonce = hashlib.sha256(f"{seed}:{text}".encode()).hexdigest()[:12]
-    marked = "^".join(text.split())
-    return f"<<<DATA {nonce}>>>\n{marked}\n<<<END DATA {nonce}>>>"
 
 
 class ContestedCapExceeded(RuntimeError):

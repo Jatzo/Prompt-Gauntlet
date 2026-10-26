@@ -23,7 +23,7 @@ from arena.anomaly import Anomaly, ConfigMismatch, HashMismatch, HijackDetected
 from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig, config_hash
 from arena.judge_client import HashReport
 from arena.memory.memory import Memory, MemoryWriteRejected
-from arena.schemas import CEOPlan, JudgeReport, PostMortem
+from arena.schemas import CEOPlan, JudgeReport, PostMortem, QueryReply
 
 STEPS = ("plan", "judge", "postmortem")
 
@@ -219,7 +219,13 @@ class Orchestrator:
         self._write_once(cycle_id, step, role, tool, lambda memory: write(memory, result))
 
     def _agent_call[Model: pydantic.BaseModel](
-        self, role: str, tool: str, cycle_id: int, step: str, response_model: type[Model]
+        self,
+        role: str,
+        tool: str,
+        cycle_id: int,
+        step: str,
+        response_model: type[Model],
+        user: str | None = None,
     ) -> Model:
         """One forced tool call: the model is shown only its role's tools, and the result goes
         through the dispatcher like any other agent tool call."""
@@ -227,7 +233,7 @@ class Orchestrator:
             tool=tool,
             tools=dispatcher.tool_schemas_for(role),
             system=self._system_prompt(role),
-            user=f"Cycle {cycle_id}. Call {tool}.",
+            user=user or f"Cycle {cycle_id}. Call {tool}.",
         )
         output = llm.call(
             role,
@@ -280,6 +286,30 @@ class Orchestrator:
                 " VALUES (?, ?, 'memory', ?)",
                 (cycle_id, step, db.now()),
             )
+
+
+class CyclePorts:
+    """The Attacker's two ports for one cycle: agent calls stored and dispatched by step, and the
+    Judge's T2 label, which the Judge itself keeps by step. Both survive a crash, so a resumed cycle
+    makes no new model call and spends no query twice."""
+
+    def __init__(
+        self,
+        orchestrator: Orchestrator,
+        cycle_id: int,
+        judge_query: Callable[[int, str, str], QueryReply],
+        role: str = "attacker",
+    ):
+        self.orchestrator, self.cycle_id, self.role = orchestrator, cycle_id, role
+        self.judge_query = judge_query
+
+    def ask[Model: pydantic.BaseModel](
+        self, step: str, tool: str, user: str, model: type[Model]
+    ) -> Model:
+        return self.orchestrator._agent_call(self.role, tool, self.cycle_id, step, model, user=user)
+
+    def query(self, step: str, text: str) -> QueryReply:
+        return self.judge_query(self.cycle_id, step, text)
 
 
 def _git_sha(root: Path) -> str:

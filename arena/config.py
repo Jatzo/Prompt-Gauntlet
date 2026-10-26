@@ -81,6 +81,9 @@ class ArenaConfig(_Frozen):
     query_budget_t2: int = 100
     query_budget_t3: int = 100
     attacker_batch_size: int = 40
+    # Detector queries the Attacker makes a cycle, one model turn each. Never above the T2 budget.
+    # Proposal.
+    attacker_query_turns: int = 8
     # Novelty (PLAN section 10). The archive size and percentile are approved; the calibration
     # sample is a proposal, sized so the quadratic comparison takes seconds.
     novelty_archive_size: int = 50
