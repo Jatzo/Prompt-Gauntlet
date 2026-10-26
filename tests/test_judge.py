@@ -6,6 +6,7 @@ import pytest
 
 from arena import db, llm
 from arena.config import REPO_ROOT
+from arena.judge.data import pin_lines
 from arena.judge.hashing import sha256_text
 from arena.judge_client import JudgeClient, JudgeError
 from arena.orchestrator import Orchestrator, phase1_mock_script
@@ -50,24 +51,28 @@ def test_a_changed_constitution_fails_verification(root, judge_dir):
     assert report.constitution == "mismatch"
 
 
+def seal(root, judge_dir):
+    """Write both test files and their real pin lines, as a sealed Phase 2 test set would."""
+    judge_dir.mkdir(exist_ok=True)
+    (judge_dir / "test.jsonl").write_text('{"id": "t1"}\n')
+    (judge_dir / "test_pairs.jsonl").write_text('{"id": "p1"}\n')
+    (root / "data" / "test.sha256").write_text(pin_lines(judge_dir))
+    return judge_dir / "test.jsonl"
+
+
 def test_a_tampered_test_set_fails_verification(root, judge_dir):
-    judge_dir.mkdir()
-    test_set = judge_dir / "test.jsonl"
-    test_set.write_text('{"id": "t1"}\n')
-    (root / "data" / "test.sha256").write_text(f"{sha256_text(test_set)}  12  test.jsonl\n")
+    test_set = seal(root, judge_dir)
     with JudgeClient(root, judge_dir) as judge:
         assert judge.verify_hashes().test_set == "ok"
-        test_set.write_text('{"id": "t1", "label": "benign"}\n')
+        # Same length, different bytes: the hash must catch what the size cannot.
+        test_set.write_text('{"id": "t9"}\n')
         report = judge.verify_hashes()
     assert not report.ok
     assert report.test_set == "mismatch"
 
 
 def test_a_tampered_test_set_pauses_the_orchestrator(root, judge_dir, conn):
-    judge_dir.mkdir()
-    test_set = judge_dir / "test.jsonl"
-    test_set.write_text('{"id": "t1"}\n')
-    (root / "data" / "test.sha256").write_text(f"{sha256_text(test_set)}  12  test.jsonl\n")
+    test_set = seal(root, judge_dir)
     test_set.write_text('{"id": "t2"}\n')
     with JudgeClient(root, judge_dir) as judge:
         backend = llm.MockBackend(script=phase1_mock_script())

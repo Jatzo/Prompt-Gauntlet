@@ -3,10 +3,14 @@
 PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 GITLEAKS ?= gitleaks
 
-.PHONY: test-phase1 test lint guard secrets ci
+.PHONY: test-phase1 test-phase2 test lint guard secrets ci
 
 test-phase1: lint guard test secrets
 	@echo "Phase 1 checks passed."
+
+# Phase 2 adds no new tools: the same checks, now covering measurement.
+test-phase2: lint guard test secrets
+	@echo "Phase 2 checks passed."
 
 test:
 	ARENA_LLM_BACKEND=mock $(PYTHON) -m pytest
@@ -27,4 +31,4 @@ secrets:
 		echo "No commits yet, so only the working tree was scanned."; \
 	fi
 
-ci: test-phase1
+ci: test-phase2

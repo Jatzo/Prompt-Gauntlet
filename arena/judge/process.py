@@ -16,13 +16,10 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from arena.judge import store
+from arena.judge import measure, store
+from arena.judge.data import verify_test_set
 from arena.judge.hashing import read_pin, sha256_text
-from arena.schemas import JudgeReport
-
-# Written in data/test.sha256 until Phase 2 builds the real test set. Accepted only while no test
-# set file exists: a real file beside a placeholder pin means the pin was never written or reverted.
-PLACEHOLDER_PREFIX = "PLACEHOLDER"
+from arena.schemas import JudgeReport, MeasureRequest
 
 
 def judge_dir() -> Path:
@@ -37,18 +34,7 @@ def verify_hashes(root: Path, data_dir: Path) -> dict:
     expected = read_pin(constitution_pin) if constitution_pin.exists() else None
     constitution_status = "ok" if actual is not None and actual == expected else "mismatch"
 
-    test_pin = root / "data" / "test.sha256"
-    test_file = data_dir / "test.jsonl"
-    if not test_pin.exists():
-        test_status = "missing_pin"
-    elif test_pin.read_text().startswith(PLACEHOLDER_PREFIX):
-        test_status = "mismatch" if test_file.exists() else "placeholder"
-    elif not test_file.exists():
-        test_status = "missing_test_set"
-    elif sha256_text(test_file) == read_pin(test_pin):
-        test_status = "ok"
-    else:
-        test_status = "mismatch"
+    test_status = verify_test_set(root, data_dir)
 
     return {
         "ok": constitution_status == "ok" and test_status in ("ok", "placeholder"),
@@ -85,6 +71,9 @@ def handle(request: dict, root: Path, data_dir: Path, conn) -> dict:
         return verify_hashes(root, data_dir)
     if method == "evaluate":
         return evaluate(conn, params)
+    if method == "measure":
+        context = measure.Context(root, data_dir, store.EvalCache(conn))
+        return measure.run(MeasureRequest.model_validate(params), context).model_dump(mode="json")
     raise ValueError(f"unknown method {method!r}")
 
 

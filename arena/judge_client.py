@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict
 
 from arena.anomaly import Anomaly
 from arena.config import DEFAULTS, REPO_ROOT
-from arena.schemas import JudgeReport
+from arena.schemas import BaselineReport, JudgeReport, MeasureRequest
 
 
 class JudgeError(Anomaly):
@@ -33,7 +33,9 @@ class HashReport(BaseModel):
     ok: bool
     constitution: Literal["ok", "mismatch"]
     constitution_hash: str | None
-    test_set: Literal["ok", "placeholder", "mismatch", "missing_pin", "missing_test_set"]
+    test_set: Literal[
+        "ok", "placeholder", "mismatch", "size_mismatch", "missing_pin", "missing_test_set"
+    ]
 
 
 class JudgeClient:
@@ -82,17 +84,18 @@ class JudgeClient:
             self._replies.put(line)
         self._replies.put("")  # end of output: the Judge has exited
 
-    def _request(self, method: str, **params) -> dict:
+    def _request(self, method: str, timeout: float | None = None, **params) -> dict:
         self._next_id += 1
         line = json.dumps({"id": self._next_id, "method": method, "params": params})
         try:
             self._process.stdin.write(line + "\n")
             self._process.stdin.flush()
-            reply_line = self._replies.get(timeout=self._timeout)
+            reply_line = self._replies.get(timeout=timeout or self._timeout)
         except (BrokenPipeError, OSError) as error:
             raise JudgeError(f"The Judge process is not reachable: {error}") from error
         except queue.Empty as error:
-            raise JudgeError(f"The Judge did not answer {method} in {self._timeout}s.") from error
+            waited = timeout or self._timeout
+            raise JudgeError(f"The Judge did not answer {method} in {waited}s.") from error
         if not reply_line:
             raise JudgeError("The Judge process closed without replying.")
         try:
@@ -115,3 +118,10 @@ class JudgeClient:
 
     def evaluate(self, cycle_id: int) -> JudgeReport:
         return JudgeReport.model_validate(self._request("evaluate", cycle_id=cycle_id))
+
+    def measure(self, request: MeasureRequest) -> BaselineReport:
+        """One baseline measurement. It can run for hours live, so it has its own, longer wait."""
+        reply = self._request(
+            "measure", timeout=DEFAULTS.measure_timeout_seconds, **request.model_dump(mode="json")
+        )
+        return BaselineReport.model_validate(reply)

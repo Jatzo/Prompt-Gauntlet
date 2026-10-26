@@ -103,3 +103,65 @@ def test_the_checker_catches_every_break_in_the_bad_fixture():
 )
 def test_the_allowed_routes_pass(source):
     assert violations(source) == []
+
+
+# The executors the Judge drives: everything reaches them as arguments, so they need no storage,
+# no environment and no Judge internals.
+EXECUTORS = [
+    *sorted((ROOT / "arena" / "detector").glob("*.py")),
+    *sorted((ROOT / "arena" / "target").glob("*.py")),
+    ROOT / "arena" / "simulated.py",
+    ROOT / "arena" / "sim_profiles.py",
+]
+EXECUTOR_FORBIDDEN = ("arena.judge", "sqlite3", "os")
+# Only the Judge and the executors themselves may run detectors and target episodes.
+SCORING = ("arena.detector.scorer", "arena.target.app", "arena.target.arms")
+
+
+def _imports(source: str) -> list[str]:
+    names = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            names += [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names += [node.module] + [f"{node.module}.{alias.name}" for alias in node.names]
+    return names
+
+
+def _writes_files(source: str) -> list[str]:
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == "open":
+                found.append("open()")
+            if isinstance(func, ast.Attribute) and func.attr in (
+                "write_text",
+                "write_bytes",
+                "open",
+            ):
+                found.append(f".{func.attr}()")
+    return found
+
+
+@pytest.mark.parametrize("path", EXECUTORS, ids=lambda p: p.relative_to(ROOT).as_posix())
+def test_an_executor_touches_no_storage_and_no_judge_internals(path):
+    source = path.read_text()
+    bad = [
+        name
+        for name in _imports(source)
+        if any(name == f or name.startswith(f + ".") for f in EXECUTOR_FORBIDDEN)
+    ]
+    assert bad == [] and _writes_files(source) == []
+
+
+def test_only_the_judge_and_executors_run_detectors_and_episodes():
+    allowed = {path.resolve() for path in EXECUTORS}
+    offenders = []
+    for path in (ROOT / "arena").rglob("*.py"):
+        if "judge" in path.relative_to(ROOT / "arena").parts or path.resolve() in allowed:
+            continue
+        for name in _imports(path.read_text()):
+            if any(name == s or name.startswith(s + ".") for s in SCORING):
+                offenders.append(f"{path.relative_to(ROOT).as_posix()}: {name}")
+    assert offenders == []
