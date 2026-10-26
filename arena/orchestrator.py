@@ -1,0 +1,248 @@
+"""Runs one cycle: plan, judge, post-mortem.
+
+Phase 1 steps are stubs that exercise the real machinery: stored outputs, idempotent writes,
+controls checked at every step boundary, the Judge's hash check and a run manifest per cycle.
+
+Each step stores its model output first, then makes its writes in one transaction together with a
+`step_writes` row. A step resumed after a crash reuses the stored output and, if that row exists,
+skips the writes, so nothing is ever written twice.
+"""
+
+import json
+import sqlite3
+import subprocess
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal, Protocol
+
+import pydantic
+
+from arena import cycle, db, dispatcher, llm
+from arena.anomaly import Anomaly, HashMismatch, HijackDetected
+from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig, config_hash
+from arena.judge_client import HashReport
+from arena.memory.memory import Memory, MemoryWriteRejected
+from arena.schemas import CEOPlan, JudgeReport, PostMortem
+
+STEPS = ("plan", "judge", "postmortem")
+
+
+class Judge(Protocol):
+    def verify_hashes(self) -> HashReport: ...
+    def evaluate(self, cycle_id: int) -> JudgeReport: ...
+
+
+@dataclass(frozen=True)
+class CycleOutcome:
+    status: Literal["committed", "rolled_back", "paused", "stopped"]
+    cycle_id: int | None
+    detail: str
+
+
+class Orchestrator:
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        backend: llm.Backend,
+        judge: Judge,
+        run_id: str = "default",
+        root: Path = REPO_ROOT,
+        config: ArenaConfig = DEFAULTS,
+    ):
+        self.conn = conn
+        self.backend = backend
+        self.judge = judge
+        self.run_id = run_id
+        self.root = root
+        self.config = config
+
+    def run_cycle(self) -> CycleOutcome:
+        halted = self._halted(None)
+        if halted:
+            return halted
+        cycle_id = cycle.open_cycle(self.conn, self.run_id)
+        try:
+            self._check_hashes_and_write_manifest(cycle_id)
+            for step in STEPS:
+                halted = self._halted(cycle_id)
+                if halted:
+                    return halted
+                getattr(self, f"_step_{step}")(cycle_id)
+            cycle.reach(self.conn, cycle_id, "committed")
+            return CycleOutcome("committed", cycle_id, "all steps done")
+        except Anomaly as anomaly:
+            detail = {"message": str(anomaly), **_jsonable(anomaly.detail)}
+            with db.transaction(self.conn):
+                if not anomaly.recorded:
+                    db.raise_anomaly(self.conn, anomaly.kind, detail, cycle_id=cycle_id)
+                # A hijacked agent's work cannot be trusted, so the whole cycle is abandoned.
+                if isinstance(anomaly, HijackDetected):
+                    cycle.advance(self.conn, cycle_id, "rolled_back")
+            return CycleOutcome("paused", cycle_id, f"anomaly: {anomaly.kind}: {anomaly}")
+        except llm.SchemaFailure as failure:
+            with db.transaction(self.conn):
+                cycle.advance(self.conn, cycle_id, "rolled_back")
+                db.log_event(
+                    self.conn, "cycle_skipped", {"reason": str(failure)}, cycle_id=cycle_id
+                )
+            return CycleOutcome("rolled_back", cycle_id, str(failure))
+
+    def _halted(self, cycle_id: int | None) -> CycleOutcome | None:
+        state, reason = db.control_state(self.conn)
+        if state == "running":
+            return None
+        return CycleOutcome(state, cycle_id, reason)
+
+    def _check_hashes_and_write_manifest(self, cycle_id: int) -> None:
+        hashes = self.judge.verify_hashes()
+        if not hashes.ok:
+            raise HashMismatch(
+                "A pinned file does not match its hash.",
+                constitution=hashes.constitution,
+                test_set=hashes.test_set,
+            )
+        self.conn.execute(
+            "INSERT OR IGNORE INTO manifests (run_id, cycle_id, model_ids, seed, config_hash,"
+            " git_sha, constitution_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                self.run_id,
+                cycle_id,
+                json.dumps(self.config.models.model_dump(), sort_keys=True),
+                self.config.seed,
+                config_hash(self.config),
+                _git_sha(self.root),
+                hashes.constitution_hash,
+                db.now(),
+            ),
+        )
+
+    # Steps
+
+    def _step_plan(self, cycle_id: int) -> None:
+        cycle.reach(self.conn, cycle_id, "running")
+        plan = self._agent_call("ceo", "propose_plan", cycle_id, "plan", CEOPlan)
+
+        def write(memory: Memory) -> None:
+            where = {"cycle_id": cycle_id, "step": "plan", "role": "ceo"}
+            memory.record_episode(kind="plan", body=plan.model_dump(mode="json"), **where)
+            memory.record_prediction(plan.prediction, **where)
+
+        self._write_once(cycle_id, "plan", write)
+
+    def _step_judge(self, cycle_id: int) -> None:
+        cycle.reach(self.conn, cycle_id, "evaluating")
+        if self._written(cycle_id, "judge"):
+            return
+        report = self.judge.evaluate(cycle_id)
+
+        def write(memory: Memory) -> None:
+            memory.record_episode(
+                kind="judge_report",
+                body=report.model_dump(mode="json"),
+                cycle_id=cycle_id,
+                step="judge",
+                role="judge",
+            )
+
+        self._write_once(cycle_id, "judge", write)
+
+    def _step_postmortem(self, cycle_id: int) -> None:
+        postmortem = self._agent_call("ceo", "write_postmortem", cycle_id, "postmortem", PostMortem)
+
+        def write(memory: Memory) -> None:
+            where = {"cycle_id": cycle_id, "step": "postmortem", "role": "ceo"}
+            memory.record_episode(
+                kind="postmortem", body=postmortem.model_dump(mode="json"), **where
+            )
+            # A rejected lesson is logged, not raised: the stored output would be replayed on every
+            # resume and hit the same rejection, so raising would stop the run for good. The memory
+            # checks all run before any insert, so a rejection leaves nothing half-written.
+            for proposal in postmortem.lesson_candidates:
+                try:
+                    memory.add_lesson(proposal, **where)
+                except MemoryWriteRejected as rejected:
+                    detail = {"reason": str(rejected), "text": proposal.text}
+                    db.log_event(self.conn, "lesson_rejected", detail, cycle_id=cycle_id)
+
+        self._write_once(cycle_id, "postmortem", write)
+
+    # Helpers
+
+    def _agent_call[Model: pydantic.BaseModel](
+        self, role: str, tool: str, cycle_id: int, step: str, response_model: type[Model]
+    ) -> Model:
+        """One forced tool call: the model is shown only its role's tools, and the result goes
+        through the dispatcher like any other agent tool call."""
+        request = llm.LLMRequest(
+            tool=tool,
+            tools=dispatcher.tool_schemas_for(role),
+            system=self._system_prompt(role),
+            user=f"Cycle {cycle_id}. Call {tool}.",
+        )
+        output = llm.call(
+            role,
+            (cycle_id, step),
+            request,
+            response_model,
+            self.conn,
+            backend=self.backend,
+            config=self.config,
+        )
+        dispatched = dispatcher.dispatch(
+            self.conn, role, tool, output.model_dump(mode="json"), cycle_id=cycle_id
+        )
+        if not isinstance(dispatched, response_model):
+            raise TypeError(f"{tool} is registered with a different schema than {response_model}.")
+        return dispatched
+
+    def _system_prompt(self, role: str) -> str:
+        constitution = (self.root / "constitution.md").read_text()
+        prompt = (self.root / "prompts" / f"{role}.md").read_text()
+        return f"{constitution}\n\n{prompt}"
+
+    def _written(self, cycle_id: int, step: str) -> bool:
+        return (
+            self.conn.execute(
+                "SELECT 1 FROM step_writes WHERE cycle_id = ? AND step = ? AND kind = 'memory'",
+                (cycle_id, step),
+            ).fetchone()
+            is not None
+        )
+
+    def _write_once(self, cycle_id: int, step: str, write: Callable[[Memory], None]) -> None:
+        with db.transaction(self.conn):
+            if self._written(cycle_id, step):
+                return
+            write(Memory(self.conn, self.config))
+            self.conn.execute(
+                "INSERT INTO step_writes (cycle_id, step, kind, created_at)"
+                " VALUES (?, ?, 'memory', ?)",
+                (cycle_id, step, db.now()),
+            )
+
+
+def _git_sha(root: Path) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=True
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return "no-commit"
+    return result.stdout.strip()
+
+
+def _jsonable(detail: dict) -> dict:
+    return json.loads(json.dumps(detail, default=str))
+
+
+def phase1_mock_script() -> dict[str, list]:
+    """Outputs for the stub cycle: one valid plan and one valid post-mortem."""
+
+    def example(model: type[pydantic.BaseModel]) -> str:
+        return json.dumps(model.model_config["json_schema_extra"]["examples"][0])
+
+    postmortem = json.loads(example(PostMortem))
+    postmortem["operator_notes_acknowledged"] = []
+    return {"plan": [example(CEOPlan)], "postmortem": [json.dumps(postmortem)]}
