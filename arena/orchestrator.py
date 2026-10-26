@@ -19,7 +19,7 @@ from typing import Literal, Protocol
 import pydantic
 
 from arena import cycle, db, dispatcher, llm
-from arena.anomaly import Anomaly, HashMismatch, HijackDetected
+from arena.anomaly import Anomaly, ConfigMismatch, HashMismatch, HijackDetected
 from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig, config_hash
 from arena.judge_client import HashReport
 from arena.memory.memory import Memory, MemoryWriteRejected
@@ -103,15 +103,31 @@ class Orchestrator:
                 constitution=hashes.constitution,
                 test_set=hashes.test_set,
             )
+        model_ids = json.dumps(self.config.models.model_dump(), sort_keys=True)
+        current = {"config_hash": config_hash(self.config), "model_ids": model_ids}
+        recorded = self.conn.execute(
+            "SELECT config_hash, model_ids FROM manifests WHERE cycle_id = ?", (cycle_id,)
+        ).fetchone()
+        if recorded is not None:
+            # A resumed cycle must finish under the configuration it started with, or its stored
+            # outputs and its manifest describe a different run from the one being completed.
+            changed = sorted(field for field in current if recorded[field] != current[field])
+            if changed:
+                raise ConfigMismatch(
+                    f"Cycle {cycle_id} started under a different configuration: {changed} changed. "
+                    "Restore the original configuration to finish this cycle.",
+                    changed=changed,
+                )
+            return
         self.conn.execute(
-            "INSERT OR IGNORE INTO manifests (run_id, cycle_id, model_ids, seed, config_hash,"
+            "INSERT INTO manifests (run_id, cycle_id, model_ids, seed, config_hash,"
             " git_sha, constitution_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 self.run_id,
                 cycle_id,
-                json.dumps(self.config.models.model_dump(), sort_keys=True),
+                model_ids,
                 self.config.seed,
-                config_hash(self.config),
+                current["config_hash"],
                 _git_sha(self.root),
                 hashes.constitution_hash,
                 db.now(),

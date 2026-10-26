@@ -3,6 +3,7 @@ import json
 import pytest
 
 from arena import cycle, db, llm
+from arena.config import ArenaConfig, ModelIds
 from arena.judge_client import JudgeError
 from arena.memory.memory import Memory
 from arena.orchestrator import Orchestrator, phase1_mock_script
@@ -161,3 +162,30 @@ def test_an_anomaly_is_recorded_once(conn):
     script["plan"] = [json.dumps(dict(plan, exfiltrate="canary"))]
     make(conn, script=script).run_cycle()
     assert conn.execute("SELECT COUNT(*) FROM events WHERE severity = 'anomaly'").fetchone()[0] == 1
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        ArenaConfig(max_patch_ops=6),
+        ArenaConfig(models=ModelIds(ceo="claude-sonnet-5-5")),
+    ],
+    ids=["config", "model_ids"],
+)
+def test_resuming_under_a_different_config_pauses_the_run(conn, changed):
+    class PausingJudge(FakeJudge):
+        def evaluate(self, cycle_id):
+            db.set_control(conn, "paused", "operator")
+            return super().evaluate(cycle_id)
+
+    first = make(conn, judge=PausingJudge()).run_cycle()
+    assert first.status == "paused"
+    db.set_control(conn, "running", "operator")
+
+    # Nothing scripted: any model call after the check would fail loudly.
+    resumed = Orchestrator(
+        conn, backend=llm.MockBackend(script={}), judge=FakeJudge(), config=changed
+    ).run_cycle()
+    assert resumed.status == "paused"
+    assert db.control_state(conn) == ("paused", "anomaly: config_mismatch")
+    assert episodes(conn) == ["plan", "judge_report"]

@@ -41,3 +41,9 @@ class HashMismatch(Anomaly):
 
 class ForbiddenTool(Anomaly):
     kind = "forbidden_tool"
+
+
+class ConfigMismatch(Anomaly):
+    """A resumed cycle's configuration differs from the one recorded in its manifest."""
+
+    kind = "config_mismatch"
