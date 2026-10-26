@@ -1,0 +1,12 @@
+* text=auto
+
+# Hash pins are taken over LF bytes, so these always check out with LF on every platform.
+*.py      text eol=lf
+*.md      text eol=lf
+*.sha256  text eol=lf
+*.toml    text eol=lf
+*.json    text eol=lf
+*.jsonl   text eol=lf
+*.sh      text eol=lf
+*.yml     text eol=lf
+Makefile  text eol=lf

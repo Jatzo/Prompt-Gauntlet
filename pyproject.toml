@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prompt-gauntlet"
+version = "0.1.0"
+description = "Self-improving prompt-injection defence, measured end to end against an adaptive attacker."
+readme = "PLAN.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.9,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "pre-commit>=3.7",
+]
+
+[tool.setuptools.packages.find]
+include = ["arena*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["tests/fixtures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+# S101: pytest uses bare assert. S603/S607: subprocess calls run our own entry points with fixed arguments.
+ignore = ["S101", "S603", "S607"]
+
+[tool.ruff.format]
+# The Judge is hash-pinned; a formatter pass must never be able to change it.
+exclude = ["arena/judge/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"

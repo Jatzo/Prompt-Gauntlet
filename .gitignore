@@ -1,0 +1,40 @@
+# Secrets
+.env
+.env.*
+*.key
+*.pem
+
+# Private data (never commit)
+private/
+[Vv][Oo][Ii][Cc][Ee].md
+CLAUDE.md
+data/test.jsonl
+data/test_*.jsonl
+
+# Runtime output
+runs/
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node (if the UI gains a build step)
+node_modules/

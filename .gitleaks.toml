@@ -1,0 +1,15 @@
+title = "prompt-gauntlet"
+
+[extend]
+useDefault = true
+
+# Local tool and runtime folders are never committed and hold third-party code, so they are not ours to scan.
+[allowlist]
+description = "Local environments and caches"
+paths = [
+    '''(^|/)\.venv/''',
+    '''(^|/)\.git/''',
+    '''(^|/)\.pytest_cache/''',
+    '''(^|/)\.ruff_cache/''',
+    '''(^|/)__pycache__/''',
+]
