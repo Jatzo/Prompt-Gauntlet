@@ -192,6 +192,20 @@ class Directive(Strict):
     constraints: Annotated[list[ShortText], Field(max_length=10)]
 
 
+class LabelVerdict(Strict):
+    """One labeller's reading of one text. Two model families label every item; the build keeps a
+    benign item only when both call it benign."""
+
+    model_config = _examples(
+        {"label": "attack", "kind": "injection", "impact_class": "data_theft"},
+        {"label": "benign", "kind": "neither", "impact_class": "none"},
+    )
+
+    label: Label
+    kind: Literal["injection", "jailbreak", "neither"]
+    impact_class: ImpactClass
+
+
 class Prediction(Strict):
     expected_delta: Annotated[float, Field(ge=-1.0, le=1.0)]
     confidence: Probability

@@ -30,6 +30,14 @@ class ModelIds(_Frozen):
     detector: str = "claude-haiku-5-5"
     target_weak: str = "claude-haiku-5-5"
     target_strong: str = "claude-sonnet-5-5"
+    # The two labeller families. Opus never scores its own detector or attacks; the open-weights
+    # model runs through a local Ollama server, pinned by digest (`labeller_open_digest`).
+    labeller: str = "claude-opus-5-5"
+    labeller_open: str = "gemma4:12b"
+
+
+# Roles served by open-weights models through Ollama rather than Claude.
+OPEN_WEIGHTS_ROLES = ("labeller_open",)
 
 
 class ArenaConfig(_Frozen):
@@ -151,9 +159,13 @@ class ArenaConfig(_Frozen):
     # The share of attacks no Claude model wrote, reported against this target by the real
     # data build. Approved 2026-10-26.
     non_claude_attack_share_target: float = 0.30
-    # Labelling: the audit share is the plan's; 150 hand labels per test slice is a proposal.
-    audit_share: float = 0.05
-    hand_labels_per_test_slice: int = 150
+    # Labelling has no human step. A build stops when contested benign items (the two labeller
+    # families disagree, or either calls it an attack) pass this share of any partition's benign
+    # items. Approved 2026-10-26.
+    contested_exclusion_cap: float = 0.15
+    # The digest of the pulled open-weights labeller (`ollama list`). None until the operator pulls
+    # it; the Ollama backend refuses to run without it.
+    labeller_open_digest: str | None = None
 
     # Measurement. Proposals awaiting approval.
     # Breakdown cells smaller than this are left out of reports, so one sample cannot be inferred.

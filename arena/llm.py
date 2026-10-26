@@ -16,6 +16,7 @@ Backends:
   because recorded output can contain anything a model said.
 - live: the Claude Agent SDK on the operator's plan, behind ARENA_ALLOW_LIVE=1 and always refused
   under pytest.
+- ollama: a local open-weights model, for the second labeller family only, pinned by digest.
 """
 
 import asyncio
@@ -27,6 +28,8 @@ import sqlite3
 import sys
 import threading
 import time
+import urllib.parse
+import urllib.request
 from collections import deque
 from collections.abc import Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
@@ -705,6 +708,79 @@ def _open_schema(schema: dict) -> dict:
     if isinstance(schema, list):
         return [_open_schema(item) for item in schema]
     return schema
+
+
+class OllamaBackend:
+    """Open-weights models through a local Ollama server: the second labeller family.
+
+    Refused in tests, and until the config pins the digest of the pulled model; the digest is
+    checked against the server once, when the backend is made, so a re-pulled model cannot change
+    labels quietly. The server must be on this machine. Temperature is sent as the request sets it,
+    and the tool's schema goes in as Ollama's structured-output `format`.
+    """
+
+    name = "ollama"
+    _HOSTS = ("127.0.0.1", "localhost")
+
+    def __init__(
+        self,
+        *,
+        model_id: str = DEFAULTS.models.labeller_open,
+        digest: str | None = DEFAULTS.labeller_open_digest,
+        url: str = "http://127.0.0.1:11434",
+        post=None,
+    ):
+        if post is None and os.environ.get("PYTEST_CURRENT_TEST"):
+            raise LiveCallRefused("Ollama calls are never made from tests. Pass a fake.")
+        if not digest or len(digest) < 12:
+            raise LiveCallRefused(
+                f"No digest is pinned for {model_id}. Pull it, then set labeller_open_digest in "
+                "config.py to the digest `ollama list` shows (at least its first 12 characters)."
+            )
+        if urllib.parse.urlsplit(url).hostname not in self._HOSTS:
+            raise LiveCallRefused(f"The Ollama server must be local, not {url}.")
+        self._url, self._post = url.rstrip("/"), post or _post_json
+        found = {
+            entry.get("name"): entry.get("digest", "")
+            for entry in self._post(f"{self._url}/api/tags", None).get("models", [])
+        }
+        if not found.get(model_id, "").startswith(digest):
+            raise LiveCallRefused(
+                f"{model_id} on the server has digest {found.get(model_id) or 'none'}, and the "
+                f"config pins {digest}."
+            )
+
+    def complete(self, *, role, model_id, step_key, request):
+        [tool] = [tool for tool in request.tools if tool["name"] == request.tool]
+        body = {
+            "model": model_id,
+            "stream": False,
+            "format": tool["input_schema"],
+            "options": {"temperature": request.temperature},
+            "messages": [
+                {"role": "system", "content": request.system},
+                {"role": "user", "content": request.user},
+            ],
+        }
+        try:
+            reply = self._post(f"{self._url}/api/chat", body)
+        except (OSError, ValueError) as error:
+            raise LiveCallFailed(f"The Ollama call failed: {str(error)[:200]}") from error
+        return LLMResponse(
+            tool=request.tool,
+            raw_output=(reply.get("message") or {}).get("content", ""),
+            model_id=reply.get("model", ""),
+            input_tokens=reply.get("prompt_eval_count", 0) or 0,
+            output_tokens=reply.get("eval_count", 0) or 0,
+        )
+
+
+def _post_json(url: str, body: dict | None) -> dict:
+    """GET when there is no body, POST JSON otherwise. Only ever called on the local server."""
+    data = None if body is None else json.dumps(body).encode()
+    request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})  # noqa: S310
+    with urllib.request.urlopen(request, timeout=600) as response:  # noqa: S310
+        return json.loads(response.read())
 
 
 class RecordBackend:

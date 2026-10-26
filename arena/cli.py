@@ -5,7 +5,7 @@ python -m arena.cli control start|pause|resume|stop
 python -m arena.cli run-cycle --backend mock|replay [--cassette PATH]
 python -m arena.cli abandon-cycle --reason TEXT
 python -m arena.cli baseline --backend mock|replay|live [--profile clean|low_asr]
-python -m arena.cli data build --synthetic|--real --judge-dir PATH
+python -m arena.cli data build --synthetic|--real --judge-dir PATH [--pilot N]
 python -m arena.cli data fetch [--only SOURCE ...]
 python -m arena.cli live-check [--calls N]
 
@@ -15,15 +15,19 @@ Exit codes are listed in arena/exit_codes.py.
 import argparse
 import json
 import os
+import random
 import sys
 from dataclasses import asdict
 from datetime import UTC, date, datetime
+from functools import partial
 from pathlib import Path
 
 from arena import baselines, cycle, db, llm, usage
-from arena.config import DEFAULTS, REPO_ROOT, agent_db_path
+from arena.config import DEFAULTS, OPEN_WEIGHTS_ROLES, REPO_ROOT, agent_db_path
 from arena.data.build import build_dataset
 from arena.data.fetch import ChangedSource, fetch_all
+from arena.data.labelling import ContestedCapExceeded, LabelCache, label_rows
+from arena.data.splits import SplitRow
 from arena.data.templates import synthetic_corpus
 from arena.exit_codes import ExitCode
 from arena.judge_client import JudgeClient, JudgeError
@@ -123,45 +127,31 @@ def cmd_data_build(args) -> int:
     a valid benchmark and so must be asked for by name."""
     private_dir = args.private_dir or REPO_ROOT / "private" / "data"
     samples = synthetic_corpus()
+    label = None
     if args.real:
-        from arena.data.sources import real_corpus
-        from arena.data.sources.adapters import SourceFormatChanged
-
-        judge_dir = args.judge_dir.resolve()
-        if judge_dir.is_relative_to(REPO_ROOT) and not judge_dir.is_relative_to(
-            REPO_ROOT / "private"
-        ):
-            print(
-                "The real test set may not be written inside the repo outside private/.",
-                file=sys.stderr,
-            )
+        samples = _real_samples(args)
+        if samples is None:
             return ExitCode.FAILED
         try:
-            corpus = real_corpus(args.raw_dir)
-        except (ChangedSource, SourceFormatChanged) as broken:
-            print(broken, file=sys.stderr)
+            claude, open_weights = _labellers()
+        except llm.LiveCallRefused as refused:
+            print(refused, file=sys.stderr)
             return ExitCode.FAILED
-        except ModuleNotFoundError as missing:
-            print(
-                f"{missing.name} is not installed. Install the data extra: "
-                'pip install -e ".[data]"',
-                file=sys.stderr,
-            )
-            return ExitCode.FAILED
-        for report in corpus.reports:
-            print(
-                f"{report.name}: {report.status}, {report.kept} kept of {report.read} read "
-                f"({report.unusable} unusable, {report.duplicates} duplicates)"
-            )
-        share = corpus.non_claude_attack_share
-        target = DEFAULTS.non_claude_attack_share_target
-        print(
-            "Non-Claude attack share: "
-            + (f"{share:.0%}" if share is not None else "no attacks")
-            + f" (target {target:.0%})"
+        cache = LabelCache(private_dir / "labels-cache.db")
+        if args.pilot:
+            return _pilot(samples, args.pilot, claude, open_weights, cache)
+        label = partial(
+            label_rows, claude=claude, open_weights=open_weights, cache=cache, seed=DEFAULTS.seed
         )
-        samples = corpus.samples
-    summary = build_dataset(samples, judge_dir=args.judge_dir, private_dir=private_dir)
+    try:
+        summary = build_dataset(
+            samples, judge_dir=args.judge_dir, private_dir=private_dir, label=label
+        )
+    except ContestedCapExceeded as capped:
+        print(capped, file=sys.stderr)
+        return ExitCode.NEEDS_OPERATOR
+    if summary.labels is not None:
+        _print_labels(summary.labels)
     for partition, labels in sorted(summary.counts.items()):
         print(f"{partition}: " + ", ".join(f"{n} {label}" for label, n in sorted(labels.items())))
     print(f"Removed: {summary.exact_removed} exact and {summary.near_removed} near duplicates.")
@@ -169,6 +159,88 @@ def cmd_data_build(args) -> int:
     for shortfall in summary.feasibility.shortfalls:
         print(f"Short: {shortfall}")
     return ExitCode.OK if summary.feasibility.ok else ExitCode.NEEDS_OPERATOR
+
+
+def _real_samples(args) -> list | None:
+    """The fetched sources as samples, with a line per source; None after printing why not."""
+    from arena.data.sources import real_corpus
+    from arena.data.sources.adapters import SourceFormatChanged
+
+    judge_dir = args.judge_dir.resolve()
+    if judge_dir.is_relative_to(REPO_ROOT) and not judge_dir.is_relative_to(REPO_ROOT / "private"):
+        print(
+            "The real test set may not be written inside the repo outside private/.",
+            file=sys.stderr,
+        )
+        return None
+    try:
+        corpus = real_corpus(args.raw_dir)
+    except (ChangedSource, SourceFormatChanged) as broken:
+        print(broken, file=sys.stderr)
+        return None
+    except ModuleNotFoundError as missing:
+        print(
+            f'{missing.name} is not installed. Install the data extra: pip install -e ".[data]"',
+            file=sys.stderr,
+        )
+        return None
+    for report in corpus.reports:
+        print(
+            f"{report.name}: {report.status}, {report.kept} kept of {report.read} read "
+            f"({report.unusable} unusable, {report.duplicates} duplicates)"
+        )
+    share = corpus.non_claude_attack_share
+    target = DEFAULTS.non_claude_attack_share_target
+    print(
+        "Non-Claude attack share: "
+        + (f"{share:.0%}" if share is not None else "no attacks")
+        + f" (target {target:.0%})"
+    )
+    return corpus.samples
+
+
+def _labellers() -> tuple[llm.Backend, llm.Backend]:
+    """The two labeller families: Claude on the operator's plan, the open model through Ollama."""
+    return llm.LiveBackend(), llm.OllamaBackend()
+
+
+def _share(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.2f}"
+
+
+def _print_labels(result) -> None:
+    for name, found in result.agreement.items():
+        first, second = found.prevalence
+        print(
+            f"Agreement on {name}: {found.n} items, raw {_share(found.raw)}, "
+            f"kappa {_share(found.kappa)}; prevalence "
+            + ", ".join(f"{value} {first[value]:.2f}/{second[value]:.2f}" for value in first)
+        )
+    for key in ("partition", "category", "source"):
+        counts = result.contested_by(key)
+        if counts:
+            print(
+                f"Contested by {key}: " + ", ".join(f"{n} {k}" for k, n in sorted(counts.items()))
+            )
+    for (family, name), count in sorted(result.disagreements.items()):
+        print(f"Attack {name} not agreed, source default kept: {count} from {family}")
+    for family, count in sorted(result.attacks_called_benign.items()):
+        print(
+            "Attack-source items both families called benign (kept as attacks): "
+            f"{count} from {family}"
+        )
+
+
+def _pilot(samples, count: int, claude, open_weights, cache) -> int:
+    """Label a seeded sample before the full build and print what the full build would see."""
+    # A seeded, repeatable sample, not a secret.
+    picked = random.Random(DEFAULTS.seed).sample(samples, min(count, len(samples)))  # noqa: S311
+    rows = [SplitRow(sample, None) for sample in picked]
+    _print_labels(
+        label_rows(rows, claude=claude, open_weights=open_weights, cache=cache, seed=DEFAULTS.seed)
+    )
+    print(f"Pilot of {len(picked)} items. Nothing was written.")
+    return ExitCode.OK
 
 
 def cmd_live_check(calls: int) -> int:
@@ -202,6 +274,9 @@ def cmd_live_check(calls: int) -> int:
 
     healthy = True
     for role, model_id in sorted(DEFAULTS.models.model_dump().items()):
+        if role in OPEN_WEIGHTS_ROLES:
+            # Served by the local Ollama server, not the operator's plan.
+            continue
         for _ in range(calls):
             response, seconds = one(model_id)
             matches = response.model_id == model_id
@@ -317,6 +392,9 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--judge-dir", type=Path, required=True)
     build.add_argument("--private-dir", type=Path, default=None)
     build.add_argument("--raw-dir", type=Path, default=raw_dir)
+    build.add_argument(
+        "--pilot", type=int, default=0, metavar="N", help="label N items, print, write nothing"
+    )
     fetch = data.add_parser("fetch")
     fetch.add_argument("--only", nargs="+", default=None, metavar="SOURCE")
     fetch.add_argument("--raw-dir", type=Path, default=raw_dir)

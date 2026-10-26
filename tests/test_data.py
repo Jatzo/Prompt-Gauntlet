@@ -6,7 +6,6 @@ from arena.config import ArenaConfig
 from arena.data.build import build_dataset
 from arena.data.dedup import deduplicate
 from arena.data.feasibility import check_feasible
-from arena.data.labels import audit_sample, blind_queue, score_audit
 from arena.data.pairs import build_pairs
 from arena.data.splits import split
 from arena.data.templates import synthetic_corpus
@@ -120,19 +119,6 @@ def test_feasibility_names_every_shortfall():
     report = check_feasible(rows, ArenaConfig())
     assert not report.ok
     assert any("dev has" in line and "needs 1000" in line for line in report.shortfalls)
-
-
-def test_an_audit_is_blind_and_counts_label_errors():
-    samples = corpus()
-    picked = audit_sample(samples, 0.05, seed=1)
-    assert len(picked) == 22
-    assert all(set(item) == {"id", "text"} for item in blind_queue(picked))
-    answers = {s.id: s.label for s in picked}
-    answers[picked[0].id] = "benign" if picked[0].label == "attack" else "attack"
-    noise = score_audit(picked, answers)
-    assert (noise.errors, noise.audited) == (1, 22)
-    with pytest.raises(ValueError):
-        score_audit(picked, {"not-in-queue": "attack"})
 
 
 # The written dataset and the Judge's custody of it
@@ -252,21 +238,22 @@ def test_partition_rows_round_trip_as_samples(built):
     assert row["fold"] in (1, 2)
 
 
-def test_a_rebuild_without_an_audit_clears_the_old_label_error_and_the_fingerprint_sees_it(
-    tmp_path,
-):
+def test_every_build_clears_any_old_label_error_and_the_fingerprint_sees_it(tmp_path):
     from arena.judge import measure
-    from arena.judge.stats import LabelNoise
 
     judge_dir = tmp_path / "judge"
     build = dict(judge_dir=judge_dir, private_dir=tmp_path / "private", config=SMALL)
-    build_dataset(corpus(), label_noise={"dev": LabelNoise(errors=3, audited=50)}, **build)
+    build_dataset(corpus(), **build)
+    clean = measure._fingerprint(judge_dir, measure.DATA_FILES)
+    # A label-error rate left from an older, audited build must not survive a rebuild.
+    (judge_dir / "labels.json").write_text(json.dumps({"dev": {"errors": 3, "audited": 50}}))
     assert judge_data.label_noise(judge_dir)
-    audited = measure._fingerprint(judge_dir, measure.DATA_FILES)
+    assert measure._fingerprint(judge_dir, measure.DATA_FILES) != clean
 
     build_dataset(corpus(), **build)
     assert judge_data.label_noise(judge_dir) == {}
-    assert measure._fingerprint(judge_dir, measure.DATA_FILES) != audited
+    assert json.loads((judge_dir / "contested.json").read_text()) == {}
+    assert measure._fingerprint(judge_dir, measure.DATA_FILES) == clean
 
 
 def test_a_rebuild_cannot_replace_a_sealed_test_set(sealed, tmp_path):

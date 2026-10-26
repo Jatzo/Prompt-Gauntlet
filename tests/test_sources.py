@@ -11,6 +11,7 @@ import tarfile
 import urllib.error
 
 import pytest
+from fakes import FakeLabeller
 
 from arena import cli
 from arena.config import REPO_ROOT
@@ -386,8 +387,9 @@ def test_cli_build_real_refuses_a_judge_dir_in_the_public_repo(tmp_path, capsys)
     assert "inside the repo" in capsys.readouterr().err
 
 
-def test_cli_build_real_writes_the_judge_dir_and_prints_the_sources(tmp_path, capsys):
+def test_cli_build_real_writes_the_judge_dir_and_prints_the_sources(tmp_path, capsys, monkeypatch):
     pytest.importorskip("pyarrow")
+    monkeypatch.setattr(cli, "_labellers", lambda: (FakeLabeller("a"), FakeLabeller("b")))
     raw = tmp_path / "raw"
     _fetch_everything(raw)
     code = cli.main(
@@ -406,8 +408,11 @@ def test_cli_build_real_writes_the_judge_dir_and_prints_the_sources(tmp_path, ca
     out = capsys.readouterr().out
     assert code in (0, 3)
     assert "llmail: ok" in out and "Non-Claude attack share" in out
+    assert "Agreement on label" in out
     assert (tmp_path / "judge" / "labels.json").exists()
+    assert (tmp_path / "judge" / "contested.json").exists()
     assert (tmp_path / "private" / "train.jsonl").exists()
+    assert (tmp_path / "private" / "labels-cache.db").exists()
 
 
 def test_cli_build_real_names_the_missing_extra(tmp_path, capsys, monkeypatch):
@@ -430,3 +435,33 @@ def test_cli_build_real_names_the_missing_extra(tmp_path, capsys, monkeypatch):
     )
     assert code == 1
     assert 'pip install -e ".[data]"' in capsys.readouterr().err
+
+
+def test_cli_pilot_labels_a_sample_prints_agreement_and_writes_nothing(
+    tmp_path, capsys, monkeypatch
+):
+    pytest.importorskip("pyarrow")
+    labellers = (FakeLabeller("a"), FakeLabeller("b"))
+    monkeypatch.setattr(cli, "_labellers", lambda: labellers)
+    raw = tmp_path / "raw"
+    _fetch_everything(raw)
+    code = cli.main(
+        [
+            "data",
+            "build",
+            "--real",
+            "--pilot",
+            "5",
+            "--judge-dir",
+            str(tmp_path / "judge"),
+            "--private-dir",
+            str(tmp_path / "private"),
+            "--raw-dir",
+            str(raw),
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Agreement on label: 5 items" in out and "Nothing was written" in out
+    assert [labeller.calls for labeller in labellers] == [5, 5]
+    assert not (tmp_path / "judge").exists()

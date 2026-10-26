@@ -1,23 +1,26 @@
-"""Builds the dataset end to end and writes it out: deduplicate, split, pair, check, write.
+"""Builds the dataset end to end and writes it out: deduplicate, split, label, pair, check, write.
 
 Every partition the agents must not see goes to the Judge data directory, in the layout
 `arena.judge.data` reads. Train goes to `private/data/`. Nothing here decides validity: whether an
-attack succeeds against the undefended target is measured by the Judge, per target rung.
+attack succeeds against the undefended target is measured by the Judge, per target rung. Labels
+come from `arena.data.labelling`; contested items never reach a partition, and their counts go to
+`contested.json` for the reports' FPR sensitivity row.
 """
 
 import json
 import tempfile
-from collections.abc import Sequence
+from collections import Counter
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig
 from arena.data.dedup import deduplicate
 from arena.data.feasibility import Feasibility, check_feasible
+from arena.data.labelling import LabelResult, check_cap
 from arena.data.pairs import build_pairs
-from arena.data.splits import split
+from arena.data.splits import SplitRow, split
 from arena.judge.data import MEASURABLE, PLACEHOLDER_PREFIX, pin_lines, verify_test_set
-from arena.judge.stats import LabelNoise
 from arena.schemas import Sample
 
 
@@ -33,6 +36,7 @@ class BuildSummary:
     pairs: dict[str, int]
     feasibility: Feasibility
     test_pin: str
+    labels: LabelResult | None = None
 
 
 def _write_jsonl(path: Path, rows: Sequence[dict]) -> None:
@@ -48,11 +52,18 @@ def build_dataset(
     judge_dir: Path,
     private_dir: Path,
     config: ArenaConfig = DEFAULTS,
-    label_noise: dict[str, LabelNoise] | None = None,
+    label: Callable[[list[SplitRow]], LabelResult] | None = None,
     root: Path = REPO_ROOT,
 ) -> BuildSummary:
+    """`label` runs after the split, so contested items are counted by partition; the synthetic
+    corpus has no labeller and keeps its template labels."""
     report = deduplicate(samples, config)
     rows = split(report.kept, config)
+    labels = None
+    if label is not None:
+        labels = label(rows)
+        check_cap(labels, config)
+        rows = labels.kept
     split_samples = [row.sample for row in rows]
     pairs = build_pairs(split_samples)
 
@@ -94,11 +105,17 @@ def build_dataset(
         else:
             _write_jsonl(judge_dir / "partitions" / f"{partition}.jsonl", records[partition])
             _write_jsonl(judge_dir / "pairs" / f"{partition}.jsonl", partition_pairs[partition])
-    # Written on every build, empty when there is no audit, so a rebuild never keeps old rates.
-    noise = {
-        name: {"errors": n.errors, "audited": n.audited} for name, n in (label_noise or {}).items()
-    }
-    (judge_dir / "labels.json").write_text(json.dumps(noise, sort_keys=True))
+    # There is no human audit, so no label-error rate widens any interval: written empty on every
+    # build, so a rebuild never keeps old rates.
+    (judge_dir / "labels.json").write_text("{}")
+    contested: dict[str, Counter] = {}
+    for sample in labels.contested if labels else []:
+        if sample.partition != "train":
+            category = sample.technique.removeprefix("benign.")
+            contested.setdefault(sample.partition, Counter())[category] += 1
+    (judge_dir / "contested.json").write_text(
+        json.dumps({name: dict(counts) for name, counts in contested.items()}, sort_keys=True)
+    )
 
     pair_counts: dict[str, int] = {}
     for pair in pairs:
@@ -111,4 +128,5 @@ def build_dataset(
         pairs=pair_counts,
         feasibility=feasibility,
         test_pin=pin_lines(judge_dir),
+        labels=labels,
     )

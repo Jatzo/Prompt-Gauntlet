@@ -1,7 +1,7 @@
 import pydantic
 import pytest
 
-from arena.config import DEFAULTS, ArenaConfig, config_hash
+from arena.config import DEFAULTS, OPEN_WEIGHTS_ROLES, ArenaConfig, config_hash
 
 # Every tunable PLAN.md section 6 names for the defaults table.
 SECTION_6_TUNABLES = [
@@ -61,7 +61,10 @@ def test_an_unknown_setting_is_rejected():
 
 def test_every_role_has_a_pinned_model_id():
     for role, model_id in DEFAULTS.models.model_dump().items():
-        assert model_id.startswith("claude-"), role
+        if role in OPEN_WEIGHTS_ROLES:
+            assert model_id and not model_id.startswith("claude-"), role
+        else:
+            assert model_id.startswith("claude-"), role
 
 
 def test_the_config_hash_is_stable_and_changes_with_any_value():
