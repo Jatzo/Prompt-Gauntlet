@@ -1,8 +1,13 @@
-"""The one door every model call goes through.
+"""Every model call goes through this module, by one of two doors.
 
-`call()` stores every raw output keyed by (cycle, step, attempt) before anything else happens to
-it. On a resumed cycle the last valid stored output is returned with no call at all, which is what
-makes a crash cheap and a rerun deterministic.
+`call()` is the door for agent steps. It stores every raw output keyed by (cycle, step, attempt)
+before anything else happens to it, and on a resumed cycle returns the last valid stored output
+with no call at all, which is what makes a crash cheap and a rerun deterministic.
+
+`call_batch()` is the door for evaluation: detector scores and target-app turns, thousands per
+experiment. Each call is keyed by the hash of its fully rendered request plus the trial number, so
+a change to the prompt, tools, model or conversation can never reuse a stale answer, and a rerun of
+the same measurement makes no calls. Both doors share one validation rule and one model-id check.
 
 Backends:
 - mock: scripted outputs, used by tests and the Phase 1 cycle.
@@ -12,11 +17,16 @@ Backends:
 - live: behind ARENA_ALLOW_LIVE=1 and always refused under pytest. Not wired up yet.
 """
 
+import contextlib
+import hashlib
 import json
 import os
 import sqlite3
+import threading
 import time
 from collections import deque
+from collections.abc import Sequence
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -24,7 +34,7 @@ from typing import Protocol
 import pydantic
 
 from arena import db, usage
-from arena.anomaly import HijackDetected, ModelIdMismatch, SchemaFailureSpike
+from arena.anomaly import HijackDetected, ModelIdMismatch, SchemaFailureSpike, UsageCapReached
 from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig
 
 
@@ -35,6 +45,8 @@ class LLMRequest:
     tools: tuple[dict, ...]
     system: str
     user: str
+    # Part of every evaluation cache key, and sent to the live model.
+    temperature: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -92,10 +104,7 @@ def call[Model: pydantic.BaseModel](
     if stored is not None:
         return response_model.model_validate_json(stored[0])
 
-    pinned = getattr(config.models, role, None)
-    if pinned is None:
-        raise ValueError(f"No pinned model for role {role!r}. Add it to ModelIds in config.py.")
-
+    pinned = _pinned_model(role, config)
     for _ in range(config.retries + 1):
         usage.check_cap(store, config)
         response = backend.complete(role=role, model_id=pinned, step_key=step_key, request=request)
@@ -103,12 +112,7 @@ def call[Model: pydantic.BaseModel](
             _store(
                 store, role, step_key, backend, response, failure="wrong_model_id", config=config
             )
-            raise ModelIdMismatch(
-                f"{role} answered as {response.model_id}, pinned id is {pinned}.",
-                role=role,
-                expected=pinned,
-                reported=response.model_id,
-            )
+            raise _wrong_model(role, pinned, response)
         parsed, failure = _validate(response, request, response_model)
         _store(store, role, step_key, backend, response, failure=failure, config=config)
         if parsed is not None:
@@ -123,6 +127,22 @@ def call[Model: pydantic.BaseModel](
 
     raise SchemaFailure(
         f"{role} produced no valid output for step {step} in {config.retries + 1} attempts."
+    )
+
+
+def _pinned_model(role: str, config: ArenaConfig) -> str:
+    pinned = getattr(config.models, role, None)
+    if pinned is None:
+        raise ValueError(f"No pinned model for role {role!r}. Add it to ModelIds in config.py.")
+    return pinned
+
+
+def _wrong_model(role: str, pinned: str, response: LLMResponse) -> ModelIdMismatch:
+    return ModelIdMismatch(
+        f"{role} answered as {response.model_id}, pinned id is {pinned}.",
+        role=role,
+        expected=pinned,
+        reported=response.model_id,
     )
 
 
@@ -191,6 +211,219 @@ def _store(
             headroom=response.headroom,
             config=config,
         )
+
+
+@dataclass(frozen=True)
+class KeyedRequest:
+    """One evaluation call. `item_id` is kept for evidence; the cache key ignores it, so two items
+    with identical rendered requests share one answer."""
+
+    item_id: str
+    trial: int
+    request: LLMRequest
+
+
+@dataclass(frozen=True)
+class Unscorable:
+    """No valid output after every attempt, or an output outside its schema. The caller counts it
+    against the defence; it never raises, because attack texts will try to break the classifier."""
+
+    reason: str
+
+
+@dataclass(frozen=True)
+class CachedOutput:
+    """The final result for one cache key, valid or not. Invalid output is kept as evidence."""
+
+    key: str
+    item_id: str
+    raw_output: str
+    valid: bool
+    failure: str | None
+    model_id: str
+    input_tokens: int
+    output_tokens: int
+    # The backend that answered, so usage can be priced per backend.
+    backend: str = ""
+
+
+class EvalCacheStore(Protocol):
+    """Where evaluation outputs live. The Judge's database implements it; llm.py names no table."""
+
+    def lookup_many(self, keys: Sequence[str]) -> dict[str, CachedOutput]: ...
+
+    def store_many(self, outputs: Sequence[CachedOutput]) -> None: ...
+
+    def tokens(self) -> tuple[int, int]: ...
+
+
+class MemoryEvalCache:
+    """An in-memory EvalCacheStore, for tests and for building the pieces before the Judge store."""
+
+    def __init__(self):
+        self.outputs: dict[str, CachedOutput] = {}
+
+    def lookup_many(self, keys: Sequence[str]) -> dict[str, CachedOutput]:
+        return {key: self.outputs[key] for key in keys if key in self.outputs}
+
+    def store_many(self, outputs: Sequence[CachedOutput]) -> None:
+        for output in outputs:
+            self.outputs[output.key] = output
+
+    def tokens(self) -> tuple[int, int]:
+        return (
+            sum(output.input_tokens for output in self.outputs.values()),
+            sum(output.output_tokens for output in self.outputs.values()),
+        )
+
+
+def request_key(role: str, model_id: str, keyed: KeyedRequest, backend: str) -> str:
+    """SHA-256 of everything that decides the answer: the backend, role, pinned model, the rendered
+    request and the trial number. The backend is in the key so a simulated or mock answer is never
+    reused by a live run, nor one simulated profile's answer by another."""
+    request = keyed.request
+    rendered = json.dumps(
+        {
+            "backend": backend,
+            "role": role,
+            "model_id": model_id,
+            "tool": request.tool,
+            "tools": request.tools,
+            "system": request.system,
+            "user": request.user,
+            "temperature": request.temperature,
+            "trial": keyed.trial,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(rendered.encode()).hexdigest()
+
+
+# Finished calls call_batch holds before writing them: a killed run loses at most this many.
+_STORE_EVERY = 200
+
+
+def call_batch[Model: pydantic.BaseModel](
+    role: str,
+    requests: Sequence[KeyedRequest],
+    response_model: type[Model],
+    cache: EvalCacheStore,
+    *,
+    backend: Backend,
+    config: ArenaConfig = DEFAULTS,
+) -> list[Model | Unscorable]:
+    """Results in the order of `requests`. A cached key makes no call, valid or not.
+
+    Unlike `call()`, a schema failure or an out-of-schema output on one item does not raise and does
+    not count towards the schema-failure pause: the item comes back `Unscorable`. A wrong model id
+    still raises, because that is a configuration fault rather than an item fault. Misses run on a
+    thread pool; only the calling thread writes the cache, in chunks as calls finish. When a call
+    raises, the queued calls are cancelled, every finished one is stored, and then the error is
+    raised, so a rerun pays only for what did not finish.
+
+    The hard cap counts the cache's own tokens: the Judge's database is separate from the agents'
+    usage table, and each database is capped on its own.
+    """
+    pinned = _pinned_model(role, config)
+    keys = [request_key(role, pinned, keyed, backend.name) for keyed in requests]
+    outputs = cache.lookup_many(list(dict.fromkeys(keys)))
+    missing: dict[str, KeyedRequest] = {}
+    for key, keyed in zip(keys, requests, strict=True):
+        if key not in outputs:
+            missing.setdefault(key, keyed)
+
+    cap = config.hard_cap_tokens
+    spent = [sum(cache.tokens()) if cap is not None else 0]
+    spent_lock = threading.Lock()
+
+    def attempt(key: str, keyed: KeyedRequest) -> CachedOutput:
+        for _ in range(config.retries + 1):
+            if cap is not None:
+                with spent_lock:
+                    if spent[0] >= cap:
+                        raise UsageCapReached(
+                            f"{spent[0]} evaluation tokens used, hard cap is {cap}. "
+                            "Raise the cap or resume after the limit resets.",
+                            used=spent[0],
+                            cap=cap,
+                        )
+            response = backend.complete(
+                role=role, model_id=pinned, step_key=(0, key), request=keyed.request
+            )
+            with spent_lock:
+                spent[0] += response.input_tokens + response.output_tokens
+            if response.model_id != pinned:
+                raise _wrong_model(role, pinned, response)
+            parsed, failure = _validate(response, keyed.request, response_model)
+            output = CachedOutput(
+                key=key,
+                item_id=keyed.item_id,
+                raw_output=response.raw_output,
+                valid=parsed is not None,
+                failure=failure,
+                model_id=response.model_id,
+                input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens,
+                backend=backend.name,
+            )
+            # A hijack is not retried: asking again only gives the attack another go.
+            if parsed is not None or failure.startswith("hijack"):
+                break
+        return output
+
+    if missing:
+        unstored: list[CachedOutput] = []
+        error: Exception | None = None
+
+        def store() -> None:
+            cache.store_many(unstored)
+            outputs.update({output.key: output for output in unstored})
+            unstored.clear()
+
+        pool = ThreadPoolExecutor(max_workers=config.detector_concurrency)
+        read: set[Future] = set()
+        try:
+            futures = [pool.submit(attempt, key, keyed) for key, keyed in missing.items()]
+            for future in as_completed(futures):
+                read.add(future)
+                try:
+                    unstored.append(future.result())
+                except Exception as failure:
+                    error = failure
+                    # Stop reading here: as_completed never yields a future that shutdown
+                    # cancels, so reading on would wait forever.
+                    break
+                if len(unstored) >= _STORE_EVERY:
+                    store()
+        except BaseException:
+            # Ctrl-C or a failed cache write: stop the queue spending, keep what finished if the
+            # cache still takes it, and report the original error.
+            pool.shutdown(wait=False, cancel_futures=True)
+            with contextlib.suppress(Exception):
+                store()
+            raise
+        # After an error this cancels the queue and waits only for calls already running.
+        pool.shutdown(cancel_futures=True)
+        unstored += [
+            future.result()
+            for future in futures
+            if future not in read
+            and future.done()
+            and not future.cancelled()
+            and future.exception() is None
+        ]
+        store()
+        if error is not None:
+            raise error
+
+    results: list[Model | Unscorable] = []
+    for key in keys:
+        output = outputs[key]
+        if output.valid:
+            results.append(response_model.model_validate_json(output.raw_output))
+        else:
+            results.append(Unscorable(output.failure or "invalid"))
+    return results
 
 
 def schema_failure_rate(
@@ -290,9 +523,10 @@ class MockBackend:
 class ReplayBackend:
     """Plays back a hand-written cassette: one JSON object per line, matched by (role, step)."""
 
-    name = "replay"
-
     def __init__(self, cassette: Path):
+        # Part of every evaluation cache key, so two cassettes never share cached answers.
+        digest = hashlib.sha256(cassette.read_bytes()).hexdigest()[:8]
+        self.name = f"replay-{digest}"
         self._entries: dict[tuple[str, str], deque] = {}
         for number, line in enumerate(cassette.read_text().splitlines(), start=1):
             if not line.strip():
