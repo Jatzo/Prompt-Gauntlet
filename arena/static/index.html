@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prompt Gauntlet: live feed</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --ground: #f4f5f3;
+    --surface: #fbfbfa;
+    --ink: #1d2124;
+    --muted: #5b6268;
+    --rule: #d9dcd8;
+    --head: #eceeeb;
+    --warn-ink: #8a3b0d;
+    --warn-ground: #fbe6d6;
+    --focus: #8a3b0d;
+    --select: #f2cdb0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #15181a;
+      --surface: #1b1f22;
+      --ink: #e4e6e3;
+      --muted: #9aa1a6;
+      --rule: #2d3337;
+      --head: #22272a;
+      --warn-ink: #f6b48a;
+      --warn-ground: #3d2417;
+      --focus: #f6b48a;
+      --select: #5a3420;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--ground);
+    color: var(--ink);
+    font: 0.875rem/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  ::selection { background: var(--select); color: var(--ink); }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 1.5rem;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--rule);
+    background: var(--surface);
+  }
+  .bar h1 { margin: 0; font-size: 1rem; font-weight: 650; letter-spacing: -0.01em; }
+  .bar h1 span { font-weight: 400; color: var(--muted); }
+  .bar p { margin: 0; color: var(--muted); }
+  #status { font-weight: 600; color: var(--ink); }
+  #status[data-state="waiting"], #status[data-state="reconnecting"] { color: var(--warn-ink); }
+  .bar .counts { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .counts strong { color: var(--ink); font-weight: 600; }
+  .counts .anomalies[data-some] strong { color: var(--warn-ink); }
+
+  main { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #scroller {
+    flex: 1;
+    overflow: auto;
+    scrollbar-color: var(--rule) transparent;
+    background: var(--surface);
+  }
+  table { width: 100%; border-collapse: collapse; min-width: 40rem; }
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.4rem 0.75rem;
+    background: var(--head);
+    border-bottom: 1px solid var(--rule);
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-align: left;
+  }
+  td { padding: 0.3rem 0.75rem; vertical-align: top; border-bottom: 1px solid var(--rule); }
+  td.num, th.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  th.num:nth-child(2), td.num:nth-child(2) { text-align: right; }
+  td.quiet { color: var(--muted); }
+  tr.anomaly td { background: var(--warn-ground); color: var(--warn-ink); }
+  tr.anomaly .flag { font-weight: 700; }
+  col.time { width: 6.5rem; }
+  col.cycle { width: 4.5rem; }
+  col.agent { width: 9rem; }
+  col.tool { width: 13rem; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    tr.fresh { animation: arrive 150ms ease-out; }
+    @keyframes arrive { from { opacity: 0; } }
+  }
+
+  #empty { margin: 0; padding: 2rem 1.25rem; color: var(--muted); max-width: 65ch; }
+  #empty code { color: var(--ink); }
+  #dropped { margin: 0; padding: 0.4rem 1.25rem; color: var(--muted); font-size: 0.8125rem; }
+
+  #jump {
+    position: absolute;
+    right: 1.25rem;
+    bottom: 1rem;
+    padding: 0.45rem 0.9rem;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--ink);
+    color: var(--surface);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  }
+  #jump:hover { background: var(--muted); }
+  #jump:active { transform: translateY(1px); }
+
+  @media (max-width: 40rem) {
+    .bar { padding: 0.6rem 1rem; }
+    .bar .counts { margin-left: 0; }
+    /* The outcome matters most on a phone: drop the agent column and let cells wrap. */
+    table { min-width: 0; table-layout: fixed; }
+    th:nth-child(3), td:nth-child(3), col.agent { display: none; }
+    col.time { width: 4.75rem; }
+    col.cycle { width: 3.25rem; }
+    col.tool { width: 7.5rem; }
+    td, th { padding-inline: 0.5rem; overflow-wrap: anywhere; }
+  }
+</style>
+</head>
+<body>
+<header class="bar">
+  <h1>Prompt Gauntlet <span>live feed</span></h1>
+  <p id="status" role="status" data-state="connecting">Connecting</p>
+  <p class="counts"><span class="events"><strong id="event-count">0</strong> <span id="event-word">events</span></span>, <span class="anomalies" id="anomaly-wrap"><strong id="anomaly-count">0</strong> <span id="anomaly-word">anomalies</span></span></p>
+</header>
+<main>
+  <p id="dropped" hidden></p>
+  <div id="scroller" tabindex="0" aria-label="Events, oldest first">
+    <table>
+      <colgroup><col class="time"><col class="cycle"><col class="agent"><col class="tool"><col></colgroup>
+      <thead>
+        <tr><th class="num" scope="col">Time</th><th class="num" scope="col">Cycle</th><th scope="col">Agent</th><th scope="col">Tool</th><th scope="col">Outcome</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p id="empty">Connecting to the run's database.</p>
+    <div id="end" aria-hidden="true"></div>
+  </div>
+  <button id="jump" type="button" hidden>Jump to latest</button>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

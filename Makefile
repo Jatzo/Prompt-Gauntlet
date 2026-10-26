@@ -3,7 +3,7 @@
 PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 GITLEAKS ?= gitleaks
 
-.PHONY: test-phase1 test-phase2 test lint guard secrets ci
+.PHONY: test-phase1 test-phase2 test lint guard secrets ci dashboard
 
 test-phase1: lint guard test secrets
 	@echo "Phase 1 checks passed."
@@ -32,3 +32,7 @@ secrets:
 	fi
 
 ci: test-phase2
+
+# The read-only live feed, on 127.0.0.1 only. DB=path overrides the agent database.
+dashboard:
+	$(PYTHON) -m arena.server $(if $(DB),--db $(DB))

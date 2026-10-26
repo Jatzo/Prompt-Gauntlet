@@ -165,3 +165,23 @@ def test_only_the_judge_and_executors_run_detectors_and_episodes():
             if any(name == s or name.startswith(s + ".") for s in SCORING):
                 offenders.append(f"{path.relative_to(ROOT).as_posix()}: {name}")
     assert offenders == []
+
+
+# The live feed only reads events: no Judge, no memory API and no database writer.
+SERVER = ROOT / "arena" / "server.py"
+SERVER_FORBIDDEN = ("arena.judge", "arena.judge_client", "arena.memory", "arena.db")
+
+
+def test_the_live_feed_reaches_no_judge_memory_or_database_writer():
+    bad = [
+        name
+        for name in _imports(SERVER.read_text())
+        if any(name == f or name.startswith(f + ".") for f in SERVER_FORBIDDEN)
+    ]
+    assert bad == []
+
+
+@pytest.mark.parametrize("path", sorted(AGENTS.rglob("*.py")), ids=lambda p: p.name)
+def test_no_agent_imports_the_live_feed(path):
+    names = _imports(path.read_text())
+    assert not [n for n in names if n == "arena.server" or n.startswith("arena.server.")]
