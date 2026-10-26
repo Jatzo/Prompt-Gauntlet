@@ -136,22 +136,23 @@ class Orchestrator:
 
     def _step_plan(self, cycle_id: int) -> None:
         cycle.reach(self.conn, cycle_id, "running")
-        plan = self._agent_call("ceo", "propose_plan", cycle_id, "plan", CEOPlan)
 
-        def write(memory: Memory) -> None:
+        def write(memory: Memory, plan: CEOPlan) -> None:
             where = {"cycle_id": cycle_id, "step": "plan", "role": "ceo"}
             memory.record_episode(kind="plan", body=plan.model_dump(mode="json"), **where)
             memory.record_prediction(plan.prediction, **where)
 
-        self._write_once(cycle_id, "plan", write)
+        self._run_step(
+            cycle_id,
+            "plan",
+            lambda: self._agent_call("ceo", "propose_plan", cycle_id, "plan", CEOPlan),
+            write,
+        )
 
     def _step_judge(self, cycle_id: int) -> None:
         cycle.reach(self.conn, cycle_id, "evaluating")
-        if self._written(cycle_id, "judge"):
-            return
-        report = self.judge.evaluate(cycle_id)
 
-        def write(memory: Memory) -> None:
+        def write(memory: Memory, report: JudgeReport) -> None:
             memory.record_episode(
                 kind="judge_report",
                 body=report.model_dump(mode="json"),
@@ -160,12 +161,10 @@ class Orchestrator:
                 role="judge",
             )
 
-        self._write_once(cycle_id, "judge", write)
+        self._run_step(cycle_id, "judge", lambda: self.judge.evaluate(cycle_id), write)
 
     def _step_postmortem(self, cycle_id: int) -> None:
-        postmortem = self._agent_call("ceo", "write_postmortem", cycle_id, "postmortem", PostMortem)
-
-        def write(memory: Memory) -> None:
+        def write(memory: Memory, postmortem: PostMortem) -> None:
             where = {"cycle_id": cycle_id, "step": "postmortem", "role": "ceo"}
             memory.record_episode(
                 kind="postmortem", body=postmortem.model_dump(mode="json"), **where
@@ -180,7 +179,30 @@ class Orchestrator:
                     detail = {"reason": str(rejected), "text": proposal.text}
                     db.log_event(self.conn, "lesson_rejected", detail, cycle_id=cycle_id)
 
-        self._write_once(cycle_id, "postmortem", write)
+        self._run_step(
+            cycle_id,
+            "postmortem",
+            lambda: self._agent_call("ceo", "write_postmortem", cycle_id, "postmortem", PostMortem),
+            write,
+        )
+
+    def _run_step[Result](
+        self,
+        cycle_id: int,
+        step: str,
+        produce: Callable[[], Result],
+        write: Callable[[Memory, Result], None],
+    ) -> None:
+        """Run one step at most once per cycle.
+
+        A step whose writes are already committed is skipped whole, so a resumed cycle neither calls
+        the model or the Judge again nor re-runs the dispatcher on a stored output. Otherwise the
+        output is produced (from the store if a previous attempt saved it) and written once.
+        """
+        if self._written(cycle_id, step):
+            return
+        result = produce()
+        self._write_once(cycle_id, step, lambda memory: write(memory, result))
 
     def _agent_call[Model: pydantic.BaseModel](
         self, role: str, tool: str, cycle_id: int, step: str, response_model: type[Model]
