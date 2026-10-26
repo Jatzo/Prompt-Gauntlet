@@ -1,8 +1,9 @@
 """Conditions that must pause the run until the operator has looked.
 
 Code that detects one raises it; the orchestrator's step boundary records it as an anomaly event
-and pauses. Raising instead of recording in place keeps the pause in one spot, so no detector can
-forget it.
+and pauses, so no detector can forget the pause. The one exception is the dispatcher: it can be
+called outside a cycle, so it records and pauses itself, then raises with `recorded=True` so the
+step boundary does not log it twice.
 """
 
 

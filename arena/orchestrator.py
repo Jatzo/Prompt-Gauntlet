@@ -118,8 +118,6 @@ class Orchestrator:
             ),
         )
 
-    # Steps
-
     def _step_plan(self, cycle_id: int) -> None:
         cycle.reach(self.conn, cycle_id, "running")
         plan = self._agent_call("ceo", "propose_plan", cycle_id, "plan", CEOPlan)
@@ -167,8 +165,6 @@ class Orchestrator:
                     db.log_event(self.conn, "lesson_rejected", detail, cycle_id=cycle_id)
 
         self._write_once(cycle_id, "postmortem", write)
-
-    # Helpers
 
     def _agent_call[Model: pydantic.BaseModel](
         self, role: str, tool: str, cycle_id: int, step: str, response_model: type[Model]

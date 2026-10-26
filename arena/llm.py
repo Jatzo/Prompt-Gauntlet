@@ -35,7 +35,6 @@ class LLMRequest:
     tools: tuple[dict, ...]
     system: str
     user: str
-    temperature: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -226,9 +225,6 @@ def _check_failure_rate(store: sqlite3.Connection, role: str, config: ArenaConfi
             rate=rate,
             calls=calls,
         )
-
-
-# Backends
 
 
 @dataclass
