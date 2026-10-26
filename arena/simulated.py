@@ -21,6 +21,8 @@ Policy = Callable[[LLMRequest, np.random.Generator], tuple[str, str]]
 
 
 class SimulatedBackend:
+    kind = "mock"
+
     def __init__(
         self,
         policies: dict[str, Policy],

@@ -190,3 +190,29 @@ def test_low_headroom_alerts_once_until_it_recovers(conn):
             headroom=headroom,
         )
     assert conn.execute("SELECT COUNT(*) FROM events WHERE kind = 'usage_alert'").fetchone()[0] == 2
+
+
+def test_every_backend_declares_a_kind_the_run_and_the_judge_accept():
+    import inspect
+    from typing import get_args
+
+    from arena import simulated
+
+    backends = [
+        cls
+        for module in (llm, simulated)
+        for _, cls in inspect.getmembers(module, inspect.isclass)
+        if cls.__module__ == module.__name__
+        and callable(getattr(cls, "complete", None))
+        and not getattr(cls, "_is_protocol", False)
+    ]
+    assert {cls.__name__ for cls in backends} >= {
+        "MockBackend",
+        "ReplayBackend",
+        "LiveBackend",
+        "RecordBackend",
+        "OllamaBackend",
+        "SimulatedBackend",
+    }
+    for cls in backends:
+        assert getattr(cls, "kind", None) in get_args(llm.BackendKind), cls.__name__

@@ -1,13 +1,14 @@
 """The orchestrator's novelty hooks for one run (PLAN section 10).
 
 - `record_batch` bands a validated batch against train and the run's archive as it stood before the
-  batch, offers the candidates to the archive and records the batch, all in one transaction. A
-  resumed cycle gets its stored bands back instead of recording twice.
+  batch, offers the candidates to the archive and records the batch, inside the caller's transaction
+  (the attack step's write). A resumed cycle gets its stored bands back instead of recording twice.
 - `close_cycle` runs inside the transaction that commits the cycle and offers the held-back attacks
   only, once: a `novelty_closed` episode marks the cycle as done, since eviction may have removed
   the rows themselves. A held-back attack keeps the band it got when it was recorded. A rolled-back
   cycle never closes, so its held-back attacks never enter.
-- `last_view` is what the Attacker sees next: the newest committed cycle's valid attacks and bands.
+- `last_view` is what the Attacker sees next: the newest committed cycle's valid attacks and bands,
+  leaving out held-back ones, which no agent may see.
 
 The threshold and train's 5-grams load on first use, once per orchestrator. A live run with no
 calibrated threshold raises `NotCalibrated`, which pauses the run.
@@ -18,7 +19,7 @@ import sqlite3
 from functools import cached_property
 from pathlib import Path
 
-from arena import db, novelty
+from arena import novelty
 from arena.agents.attacker import ShownAttack
 from arena.config import ArenaConfig
 from arena.memory.memory import Memory
@@ -65,32 +66,31 @@ class RunNovelty:
         ]
 
     def record_batch(
-        self, cycle_id: int, texts: list[str], report: BatchReport
+        self, memory: Memory, cycle_id: int, texts: list[str], report: BatchReport
     ) -> list[novelty.Band]:
-        memory = Memory(self.conn, self.config)
+        """Called inside the attack step's write transaction."""
         stored = memory.episode(cycle_id, "attack_batch")
         if stored is not None:
             return stored["bands"]
         archive = [novelty.grams(text) for text in memory.archive_texts(self.run_id)]
         bands = novelty.bands(texts, self.train + archive, self.threshold)
-        with db.transaction(self.conn):
-            memory.offer_to_archive(
-                novelty.archive_candidates(report.verdicts, texts, bands),
-                cycle_id=cycle_id,
-                step=STEP,
-                role=ROLE,
-            )
-            memory.record_episode(
-                kind="attack_batch",
-                body={
-                    "texts": texts,
-                    "bands": bands,
-                    "verdicts": [verdict.model_dump(mode="json") for verdict in report.verdicts],
-                },
-                cycle_id=cycle_id,
-                step=STEP,
-                role=ROLE,
-            )
+        memory.offer_to_archive(
+            novelty.archive_candidates(report.verdicts, texts, bands),
+            cycle_id=cycle_id,
+            step=STEP,
+            role=ROLE,
+        )
+        memory.record_episode(
+            kind="attack_batch",
+            body={
+                "texts": texts,
+                "bands": bands,
+                "verdicts": [verdict.model_dump(mode="json") for verdict in report.verdicts],
+            },
+            cycle_id=cycle_id,
+            step=STEP,
+            role=ROLE,
+        )
         return bands
 
     def close_cycle(self, memory: Memory, cycle_id: int) -> None:
@@ -131,5 +131,5 @@ class RunNovelty:
             for verdict, text, found in zip(
                 batch["verdicts"], batch["texts"], batch["bands"], strict=True
             )
-            if verdict["valid"]
+            if verdict["valid"] and not verdict["held_back"]
         )

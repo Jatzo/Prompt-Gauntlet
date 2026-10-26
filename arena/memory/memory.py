@@ -270,6 +270,21 @@ class Memory:
             (run_id,),
         ).fetchall()
 
+    def lesson_texts(self, ids: Sequence[int]) -> list[str]:
+        """The texts of the cited lessons that are still active, in id order. A cited lesson that
+        was disputed or retired since is left out, so it cannot keep steering an agent."""
+        if not ids:
+            return []
+        placeholders = ",".join("?" * len(ids))
+        return [
+            row[0]
+            for row in self.conn.execute(
+                "SELECT text FROM memory_lessons WHERE status = 'active'"  # noqa: S608
+                f" AND id IN ({placeholders}) ORDER BY id",
+                list(ids),
+            )
+        ]
+
     def episode(self, cycle_id: int, kind: str) -> dict | None:
         """The newest episode of one kind for one cycle, or None."""
         row = self.conn.execute(

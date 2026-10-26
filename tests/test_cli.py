@@ -1,9 +1,11 @@
+import json
 from pathlib import Path
 
 import pytest
 
 from arena import cli, db, usage
 from arena.config import REPO_ROOT
+from arena.orchestrator import phase1_mock_script
 
 CASSETTE = REPO_ROOT / "tests" / "fixtures" / "phase1_cycle.cassette.jsonl"
 
@@ -29,7 +31,17 @@ def test_control_sets_the_run_state(db_path, action, state):
     assert db.control_state(conn)[0] == state
 
 
-def test_a_mock_cycle_commits_from_the_command_line(db_path, capsys):
+def defender_only_script():
+    """The mock cycle with a plan that does not run the Attacker. These tests cover the command
+    line; the attack step against a real Judge has its own tests, with a built data folder."""
+    script = phase1_mock_script()
+    plan = json.loads(script["plan"][0])
+    script["plan"] = [json.dumps(dict(plan, agents_to_run=["defender"]))]
+    return script
+
+
+def test_a_mock_cycle_commits_from_the_command_line(db_path, capsys, monkeypatch):
+    monkeypatch.setattr(cli, "phase1_mock_script", defender_only_script)
     cli.main(["--db", db_path, "control", "start"])
     assert cli.main(["--db", db_path, "run-cycle", "--backend", "mock"]) == 0
     assert "committed" in capsys.readouterr().out
@@ -42,7 +54,8 @@ def test_a_replay_cycle_commits_from_a_cassette(db_path, capsys):
     assert "committed" in capsys.readouterr().out
 
 
-def test_status_reports_the_run(db_path, capsys):
+def test_status_reports_the_run(db_path, capsys, monkeypatch):
+    monkeypatch.setattr(cli, "phase1_mock_script", defender_only_script)
     cli.main(["--db", db_path, "control", "start"])
     cli.main(["--db", db_path, "run-cycle"])
     capsys.readouterr()

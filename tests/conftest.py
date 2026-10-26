@@ -1,8 +1,18 @@
 import pytest
 
 from arena import db
+from arena.config import DEFAULTS
+from arena.data.build import build_dataset
+from arena.data.templates import synthetic_corpus
 from arena.judge_client import HashReport
-from arena.schemas import JudgeReport
+from arena.schemas import (
+    AttackVerdict,
+    BatchReport,
+    JudgeReport,
+    QueryReply,
+    QueryRequest,
+    ValidateBatchRequest,
+)
 
 STUB_REPORT = JudgeReport.model_validate(
     {
@@ -24,6 +34,10 @@ class FakeJudge:
     def __init__(self, hashes_ok: bool = True):
         self.hashes_ok = hashes_ok
         self.evaluations: list[int] = []
+        self.batches: list[ValidateBatchRequest] = []
+        self.queries: list[QueryRequest] = []
+        # Kept by (cycle, step), as the Judge keeps them, so a repeated step spends nothing.
+        self._replies: dict[tuple[int, str], QueryReply] = {}
 
     def verify_hashes(self) -> HashReport:
         return HashReport(
@@ -36,6 +50,65 @@ class FakeJudge:
     def evaluate(self, cycle_id: int) -> JudgeReport:
         self.evaluations.append(cycle_id)
         return STUB_REPORT
+
+    def query_detector(self, request: QueryRequest) -> QueryReply:
+        self.queries.append(request)
+        key = (request.cycle_id, request.step)
+        if key not in self._replies:
+            spent = sum(cycle == request.cycle_id for cycle, _ in self._replies)
+            remaining = DEFAULTS.query_budget_t2 - spent - 1
+            self._replies[key] = QueryReply(flagged=len(request.text) % 2 == 0, remaining=remaining)
+        return self._replies[key]
+
+    def validate_batch(self, request: ValidateBatchRequest) -> BatchReport:
+        """Every attack valid and one in three evading, each in its own cluster; the second
+        evading cluster is held back, as the Judge's seeded split would hold back half."""
+        self.batches.append(request)
+        evaded = [index % 3 == 0 for index in range(len(request.attacks))]
+        held = {index for index in range(len(evaded)) if evaded[index]}
+        held = set(sorted(held)[1::2])
+        verdicts = [
+            AttackVerdict(
+                index=index,
+                technique="override.direct",
+                cluster_id=f"c{request.cycle_id}-{index}",
+                refused=False,
+                valid=True,
+                evaded=evaded[index],
+                held_back=index in held,
+                classified=True,
+                behaviour=f"{attack.channel}:sent_to_attacker",
+            )
+            for index, attack in enumerate(request.attacks)
+        ]
+        return BatchReport(
+            verdicts=verdicts, evading_clusters=sum(evaded), held_back_clusters=len(held)
+        )
+
+
+@pytest.fixture(autouse=True)
+def no_real_private_data(tmp_path, monkeypatch):
+    """Point the private data folder at a temporary one, so no test reads the real build."""
+    monkeypatch.setenv("ARENA_PRIVATE_DATA", str(tmp_path / "private-data"))
+
+
+@pytest.fixture
+def built_judge(tmp_path):
+    """A Judge data folder built from the synthetic corpus, for tests that run the real Judge
+    process through a cycle. The sealed test files are removed, so the committed placeholder pin
+    still verifies; the Judge never opens test for a query or a batch check."""
+    from tests.test_baseline import SMALL
+
+    judge_dir = tmp_path / "judge"
+    build_dataset(
+        synthetic_corpus(),
+        judge_dir=judge_dir,
+        private_dir=tmp_path / "build-private",
+        config=SMALL,
+    )
+    for name in ("test.jsonl", "test_pairs.jsonl"):
+        (judge_dir / name).unlink(missing_ok=True)
+    return judge_dir
 
 
 @pytest.fixture

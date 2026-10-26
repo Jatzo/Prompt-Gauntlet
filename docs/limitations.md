@@ -32,3 +32,11 @@ and a new idea that ends in the same action counts only as new text.
 The technique classifier is keyword rules. It cannot refuse a held-out idea it has no rule for, and an
 unclassified attack may be a classifier miss rather than a new technique. The operator triages every
 candidate finding; the system never adds a technique by itself.
+
+## Replaying a run
+
+A replay run plays back the agents' recorded calls, but not the Judge's. A recording run calls the
+real target and detector inside the Judge, and the Judge keeps those answers in its own cache under
+the live backend's name, not in the cassette. So a cycle whose plan runs the Attacker cannot be
+replayed whole from a cassette: its queries and batch check need the Judge's target and detector
+answers, which the cassette does not hold. Mock runs cover the attack step end to end instead.

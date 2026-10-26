@@ -1,3 +1,5 @@
+import json
+import re
 import shutil
 import sqlite3
 
@@ -10,7 +12,7 @@ from arena.judge.data import pin_lines
 from arena.judge.hashing import sha256_text
 from arena.judge_client import JudgeClient, JudgeError
 from arena.orchestrator import Orchestrator, phase1_mock_script
-from arena.schemas import JudgeReport
+from arena.schemas import AttackVerdict, JudgeReport
 from tests.conftest import STUB_REPORT
 
 
@@ -124,3 +126,39 @@ def test_a_placeholder_pin_beside_a_real_test_set_is_a_mismatch(root, judge_dir)
         report = judge.verify_hashes()
     assert not report.ok
     assert report.test_set == "mismatch"
+
+
+@pytest.mark.parametrize("which", ["fake", "real"])
+def test_one_attack_cycle_gives_the_same_shape_from_the_fake_and_the_real_judge(
+    which, conn, built_judge
+):
+    """The contract the fake must keep: what the orchestrator stores from the real Judge."""
+    from tests.conftest import FakeJudge
+
+    backend = llm.MockBackend(script=phase1_mock_script())
+    if which == "fake":
+        outcome = Orchestrator(conn, backend=backend, judge=FakeJudge()).run_cycle()
+    else:
+        with JudgeClient(REPO_ROOT, built_judge) as judge:
+            outcome = Orchestrator(conn, backend=backend, judge=judge).run_cycle()
+    assert outcome.status == "committed", outcome.detail
+    [body] = [
+        json.loads(row[0])
+        for row in conn.execute("SELECT body FROM memory_episodic WHERE kind = 'attack_batch'")
+    ]
+    assert len(body["texts"]) == len(body["verdicts"]) == len(body["bands"]) == 1
+    verdicts = [AttackVerdict.model_validate(verdict) for verdict in body["verdicts"]]
+    for verdict in verdicts:
+        # Only a valid attack can evade, and only an evading one can be held back.
+        assert not verdict.evaded or verdict.valid
+        assert not verdict.held_back or verdict.evaded
+        assert verdict.valid == (verdict.behaviour is not None)
+    detail = json.loads(
+        conn.execute("SELECT detail FROM events WHERE kind = 'step_done'").fetchall()[1][0]
+    )
+    assert detail["step"] == "attack"
+    counts = re.fullmatch(r"(\d+) attacks, (\d+) valid, (\d+) evading clusters", detail["outcome"])
+    attacks, valid, evading = (int(group) for group in counts.groups())
+    assert attacks == len(verdicts)
+    assert valid == sum(verdict.valid for verdict in verdicts)
+    assert evading == len({verdict.cluster_id for verdict in verdicts if verdict.evaded})

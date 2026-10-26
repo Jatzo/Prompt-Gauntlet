@@ -35,7 +35,7 @@ from collections.abc import Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 import pydantic
 
@@ -72,8 +72,14 @@ class LLMResponse:
     headroom: float | None = None
 
 
+# What a backend is, for the run: scripted, played back from a cassette, or a real model. The
+# Judge's MeasureRequest takes the same three, and a live run needs a calibrated novelty threshold.
+BackendKind = Literal["mock", "replay", "live"]
+
+
 class Backend(Protocol):
     name: str
+    kind: BackendKind
 
     def complete(
         self, *, role: str, model_id: str, step_key: tuple[int, str], request: LLMRequest
@@ -558,6 +564,7 @@ class MockBackend:
     block_at_step: str | None = None
     block_marker: Path | None = None
     name: str = "mock"
+    kind = "mock"
     # A rough average for English text, good enough for usage accounting in tests.
     CHARS_PER_TOKEN = 4
 
@@ -606,10 +613,13 @@ class MockBackend:
 class ReplayBackend:
     """Plays back a hand-written cassette: one JSON object per line, matched by (role, step)."""
 
+    kind = "replay"
+
     def __init__(self, cassette: Path):
         # Part of every evaluation cache key, so two cassettes never share cached answers.
         digest = hashlib.sha256(cassette.read_bytes()).hexdigest()[:8]
         self.name = f"replay-{digest}"
+        self.cassette = cassette
         self._entries: dict[tuple[str, str], deque] = {}
         for number, line in enumerate(cassette.read_text().splitlines(), start=1):
             if not line.strip():
@@ -651,6 +661,7 @@ class LiveBackend:
     """
 
     name = "live"
+    kind = "live"
     # The plan may answer an input its safeguards flag from an older model instead of refusing.
     # `call_batch` reads this, for callers that take refusals as items.
     safeguard_fallback = True
@@ -816,6 +827,7 @@ class OllamaBackend:
     """
 
     name = "ollama"
+    kind = "live"
     _HOSTS = ("127.0.0.1", "localhost")
 
     def __init__(
@@ -893,6 +905,8 @@ class RecordBackend:
     """Wraps another backend and writes each response to a cassette under runs/ or private/."""
 
     name = "record"
+    # A recording run calls the real model.
+    kind = "live"
     allowed_roots = ("runs", "private")
 
     def __init__(self, inner: Backend, cassette: Path):

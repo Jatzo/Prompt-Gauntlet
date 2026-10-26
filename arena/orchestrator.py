@@ -1,4 +1,4 @@
-"""Runs one cycle: plan, judge, post-mortem.
+"""Runs one cycle: plan, attack, judge, post-mortem.
 
 Phase 1 steps are stubs that exercise the real machinery: stored outputs, idempotent writes,
 controls checked at every step boundary, the Judge's hash check and a run manifest per cycle.
@@ -14,24 +14,47 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Literal, Protocol, get_args
 
 import pydantic
 
 from arena import cycle, db, dispatcher, llm
+from arena.agents.attacker import SUBMIT_STEP, Attacker, AttackerView
 from arena.anomaly import Anomaly, ConfigMismatch, HashMismatch, HijackDetected
-from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig, config_hash
+from arena.baselines import REGEX_RULES
+from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig, config_hash, private_data_dir
 from arena.judge_client import HashReport
-from arena.memory.memory import Memory, MemoryWriteRejected
+from arena.memory.memory import Memory, MemoryWriteRejected, incumbent
 from arena.run_novelty import RunNovelty
-from arena.schemas import CEOPlan, JudgeReport, PostMortem, QueryReply
+from arena.schemas import (
+    STEP_OUTCOME,
+    ArmSpec,
+    AttackBatch,
+    BatchReport,
+    CEOPlan,
+    DetectorConfig,
+    DetectorQuery,
+    Directive,
+    JudgeReport,
+    MeasureRequest,
+    PostMortem,
+    QueryReply,
+    QueryRequest,
+    ValidateBatchRequest,
+)
+from arena.target.ladder import LADDER
 
-STEPS = ("plan", "judge", "postmortem")
+STEPS = ("plan", "attack", "judge", "postmortem")
+# The undefended target that decides which attacks are valid: the evaluation target, the same one
+# the data build's checker pass uses.
+REFERENCE_TARGET = LADDER[0]
 
 
 class Judge(Protocol):
     def verify_hashes(self) -> HashReport: ...
     def evaluate(self, cycle_id: int) -> JudgeReport: ...
+    def validate_batch(self, request: ValidateBatchRequest) -> BatchReport: ...
+    def query_detector(self, request: QueryRequest) -> QueryReply: ...
 
 
 @dataclass(frozen=True)
@@ -51,19 +74,27 @@ class Orchestrator:
         run_id: str = "default",
         root: Path = REPO_ROOT,
         config: ArenaConfig = DEFAULTS,
+        use_memory: bool = True,
     ):
+        if backend.kind not in get_args(llm.BackendKind):
+            raise ValueError(
+                f"Backend {backend.name!r} declares kind {backend.kind!r}; it must be one of "
+                f"{get_args(llm.BackendKind)}."
+            )
         self.conn = conn
         self.backend = backend
         self.judge = judge
         self.run_id = run_id
         self.root = root
         self.config = config
+        # The no-memory ablation arm: no lessons in the directive, no last batch for the Attacker.
+        self.use_memory = use_memory
         self.novelty = RunNovelty(
             conn,
             run_id=run_id,
-            # Mock and replay runs may use the fixed threshold; others need a calibrated one.
-            live=backend.name not in ("mock", "replay"),
-            private_dir=root / "private" / "data",
+            # Mock and replay runs may use the fixed threshold; a live one needs a calibrated one.
+            live=backend.kind == "live",
+            private_dir=private_data_dir(),
             config=config,
         )
 
@@ -163,6 +194,78 @@ class Orchestrator:
             "propose_plan",
             lambda: self._agent_call("ceo", "propose_plan", cycle_id, "plan", CEOPlan),
             write,
+        )
+
+    def _step_attack(self, cycle_id: int) -> None:
+        plan = CEOPlan.model_validate(Memory(self.conn, self.config).episode(cycle_id, "plan"))
+        if "attacker" not in plan.agents_to_run:
+            self._run_step(
+                cycle_id,
+                "attack",
+                "attacker",
+                "submit_attack_batch",
+                lambda: None,
+                lambda memory, _: "attacker not chosen",
+            )
+            return
+        stored = incumbent(self.conn)
+        # Before any config is stored, the regex rules are the incumbent; the write stores them.
+        detector = stored[1] if stored else REGEX_RULES
+
+        def produce() -> tuple[AttackBatch, BatchReport]:
+            settings = self._measure_settings(detector)
+
+            def judge_query(cycle: int, step: str, text: str) -> QueryReply:
+                request = QueryRequest(cycle_id=cycle, step=step, text=text, measure=settings)
+                return self.judge.query_detector(request)
+
+            memory = Memory(self.conn, self.config)
+            directive = Directive(
+                focus_technique_class=plan.focus,
+                hypothesis_text=plan.hypothesis_text,
+                cited_lesson_texts=(
+                    memory.lesson_texts(plan.cites_lesson_ids) if self.use_memory else []
+                ),
+                constraints=[],
+            )
+            view = AttackerView(directive, self.novelty.last_view() if self.use_memory else ())
+            # The Judge counts the query budget; the turns never ask for more than it allows.
+            turns = min(self.config.attacker_query_turns, DEFAULTS.query_budget_t2)
+            attacker = Attacker(turns=turns, seed=self.config.seed)
+            batch = attacker.run(cycle_id, view, CyclePorts(self, cycle_id, judge_query))
+            # Safe to repeat on resume: the Judge's cache holds every episode and score it ran.
+            report = self.judge.validate_batch(
+                ValidateBatchRequest(cycle_id=cycle_id, attacks=batch.attacks, measure=settings)
+            )
+            return batch, report
+
+        def write(memory: Memory, result: tuple[AttackBatch, BatchReport]) -> str:
+            batch, report = result
+            if incumbent(self.conn) is None:
+                memory.add_detector_config(
+                    detector, parent_id=None, cycle_id=cycle_id, step="attack", role="orchestrator"
+                )
+            texts = [attack.text for attack in batch.attacks]
+            self.novelty.record_batch(memory, cycle_id, texts, report)
+            valid = sum(verdict.valid for verdict in report.verdicts)
+            return (
+                f"{len(texts)} attacks, {valid} valid, {report.evading_clusters} evading clusters"
+            )
+
+        self._run_step(cycle_id, "attack", "attacker", "submit_attack_batch", produce, write)
+
+    def _measure_settings(self, detector: DetectorConfig) -> MeasureRequest:
+        """What the Judge measures a query or a batch against: the incumbent detector at its
+        calibrated threshold, on the reference target, with the run's own backend kind."""
+        replay = self.backend.kind == "replay"
+        return MeasureRequest(
+            arms=[ArmSpec(name="incumbent", kind="detector", detector=detector)],
+            targets=[REFERENCE_TARGET],
+            reference_target=REFERENCE_TARGET,
+            backend=self.backend.kind,
+            cassette=str(self.backend.cassette.resolve()) if replay else None,
+            trials=self.config.trials_per_pair,
+            seed=self.config.seed,
         )
 
     def _step_judge(self, cycle_id: int) -> None:
@@ -285,6 +388,8 @@ class Orchestrator:
             if self._written(cycle_id, step):
                 return
             outcome = write(Memory(self.conn, self.config))
+            if not STEP_OUTCOME.fullmatch(outcome):
+                raise ValueError(f"Step {step} returned an outcome the live feed cannot show.")
             # The live feed reads these. Outcomes are fixed-format strings, never agent free text.
             detail = {
                 "cycle": cycle_id,
@@ -340,11 +445,15 @@ def _jsonable(detail: dict) -> dict:
 
 
 def phase1_mock_script() -> dict[str, list]:
-    """Outputs for the stub cycle: one valid plan and one valid post-mortem."""
+    """Outputs for a mock cycle: a plan, the Attacker's queries and batch, and a post-mortem."""
 
     def example(model: type[pydantic.BaseModel]) -> str:
         return json.dumps(model.model_config["json_schema_extra"]["examples"][0])
 
     postmortem = json.loads(example(PostMortem))
     postmortem["operator_notes_acknowledged"] = []
-    return {"plan": [example(CEOPlan)], "postmortem": [json.dumps(postmortem)]}
+    turns = min(DEFAULTS.attacker_query_turns, DEFAULTS.query_budget_t2)
+    script = {"plan": [example(CEOPlan)], "postmortem": [json.dumps(postmortem)]}
+    script |= {f"attack.t{turn}": [example(DetectorQuery)] for turn in range(turns)}
+    script[SUBMIT_STEP] = [example(AttackBatch)]
+    return script

@@ -46,6 +46,12 @@ def hooks(conn, tmp_path, run_id="run", live=False):
     )
 
 
+def record(run, cycle_id):
+    """The attack step's write: record_batch inside the caller's transaction."""
+    with db.transaction(run.conn):
+        return run.record_batch(Memory(run.conn, CONFIG), cycle_id, TEXTS, REPORT)
+
+
 def open_cycle(conn, run_id="run"):
     with db.transaction(conn):
         return cycle.open_cycle(conn, run_id)
@@ -67,7 +73,7 @@ def test_a_live_run_without_a_calibrated_threshold_refuses_and_pauses(conn, tmp_
 def test_bands_come_first_and_only_non_held_back_candidates_enter_at_once(conn, tmp_path):
     run = hooks(conn, tmp_path)
     cycle_id = open_cycle(conn)
-    bands = run.record_batch(cycle_id, TEXTS, REPORT)
+    bands = record(run, cycle_id)
     # Against an empty train and archive, every text is far from everything.
     assert bands == ["high"] * 4
     archive = Memory(conn, CONFIG).archive_texts("run")
@@ -77,8 +83,8 @@ def test_bands_come_first_and_only_non_held_back_candidates_enter_at_once(conn, 
 def test_a_resumed_cycle_gets_its_stored_bands_and_records_nothing_twice(conn, tmp_path):
     run = hooks(conn, tmp_path)
     cycle_id = open_cycle(conn)
-    first = run.record_batch(cycle_id, TEXTS, REPORT)
-    again = hooks(conn, tmp_path).record_batch(cycle_id, TEXTS, REPORT)
+    first = record(run, cycle_id)
+    again = record(hooks(conn, tmp_path), cycle_id)
     assert again == first
     kinds = [row[0] for row in conn.execute("SELECT kind FROM memory_episodic")]
     assert kinds.count("attack_batch") == 1
@@ -88,7 +94,7 @@ def test_a_resumed_cycle_gets_its_stored_bands_and_records_nothing_twice(conn, t
 def test_held_back_attacks_enter_at_close_and_only_once(conn, tmp_path):
     run = hooks(conn, tmp_path)
     cycle_id = open_cycle(conn)
-    run.record_batch(cycle_id, TEXTS, REPORT)
+    record(run, cycle_id)
     close(conn, run, cycle_id)
     with db.transaction(conn):
         run.close_cycle(Memory(conn, CONFIG), cycle_id)
@@ -99,20 +105,21 @@ def test_held_back_attacks_enter_at_close_and_only_once(conn, tmp_path):
 def test_a_rolled_back_cycle_never_offers_its_held_back_attacks(conn, tmp_path):
     run = hooks(conn, tmp_path)
     cycle_id = open_cycle(conn)
-    run.record_batch(cycle_id, TEXTS, REPORT)
+    record(run, cycle_id)
     with db.transaction(conn):
         cycle.advance(conn, cycle_id, "rolled_back")
     assert Memory(conn, CONFIG).archive_texts("run") == []
 
 
-def test_the_last_view_shows_the_newest_committed_cycles_valid_attacks(conn, tmp_path):
+def test_the_last_view_shows_the_newest_committed_cycles_valid_unheld_attacks(conn, tmp_path):
     run = hooks(conn, tmp_path)
     assert run.last_view() == ()
     cycle_id = open_cycle(conn)
-    run.record_batch(cycle_id, TEXTS, REPORT)
+    record(run, cycle_id)
     assert run.last_view() == ()
     close(conn, run, cycle_id)
-    assert [shown.text for shown in run.last_view()] == TEXTS[:3]
+    # TEXTS[1] was held back and TEXTS[3] was invalid: neither reaches the Attacker.
+    assert [shown.text for shown in run.last_view()] == [TEXTS[0], TEXTS[2]]
     assert {shown.band for shown in run.last_view()} == {"high"}
 
 

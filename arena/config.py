@@ -208,6 +208,12 @@ def config_hash(config: ArenaConfig = DEFAULTS) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def private_data_dir() -> Path:
+    """Where the real data build writes train and the label cache, and where the novelty
+    threshold is read from. Overridable so tests never read real data."""
+    return Path(os.environ.get("ARENA_PRIVATE_DATA", REPO_ROOT / "private" / "data"))
+
+
 def agent_db_path() -> Path:
     """The agent-facing database, anchored on the repo so the working directory cannot change it.
 

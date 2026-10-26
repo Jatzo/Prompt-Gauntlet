@@ -25,7 +25,7 @@ from functools import partial
 from pathlib import Path
 
 from arena import baselines, cycle, db, llm, usage
-from arena.config import DEFAULTS, OPEN_WEIGHTS_ROLES, REPO_ROOT, agent_db_path
+from arena.config import DEFAULTS, OPEN_WEIGHTS_ROLES, REPO_ROOT, agent_db_path, private_data_dir
 from arena.data.build import build_dataset
 from arena.data.fetch import ChangedSource, fetch_all
 from arena.data.labelling import ContestedCapExceeded, LabelCache, label_rows
@@ -156,7 +156,7 @@ def cmd_data_check(args) -> int:
 def cmd_data_build(args) -> int:
     """Build the Judge directory from the real sources, or from the synthetic corpus, which is never
     a valid benchmark and so must be asked for by name."""
-    private_dir = args.private_dir or REPO_ROOT / "private" / "data"
+    private_dir = args.private_dir or private_data_dir()
     samples = synthetic_corpus()
     label = None
     if args.real:

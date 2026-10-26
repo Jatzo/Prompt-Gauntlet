@@ -3,11 +3,17 @@ import json
 import pytest
 
 from arena import cycle, db, llm
+from arena.agents import attacker
+from arena.agents.attacker import canary
+from arena.baselines import REGEX_RULES
 from arena.config import ArenaConfig, ModelIds
 from arena.judge_client import JudgeError
 from arena.memory.memory import Memory
-from arena.orchestrator import Orchestrator, phase1_mock_script
+from arena.orchestrator import REFERENCE_TARGET, Orchestrator, phase1_mock_script
 from tests.conftest import FakeJudge
+
+FULL_CYCLE = ["plan", "attack_batch", "judge_report", "postmortem", "novelty_closed"]
+UP_TO_JUDGE = ["plan", "attack_batch", "judge_report"]
 
 
 def make(conn, script=None, judge=None, **backend_kwargs):
@@ -24,7 +30,7 @@ def test_a_cycle_runs_every_step_and_commits(conn):
     outcome = make(conn, judge=judge).run_cycle()
     assert outcome.status == "committed"
     assert cycle.state(conn, outcome.cycle_id) == "committed"
-    assert episodes(conn) == ["plan", "judge_report", "postmortem"]
+    assert episodes(conn) == FULL_CYCLE
     assert judge.evaluations == [outcome.cycle_id]
     assert conn.execute("SELECT COUNT(*) FROM memory_predictions").fetchone()[0] == 1
 
@@ -56,7 +62,7 @@ def test_a_pause_is_honoured_at_the_next_step_boundary(conn):
 
     outcome = make(conn, judge=PausingJudge()).run_cycle()
     assert outcome.status == "paused"
-    assert episodes(conn) == ["plan", "judge_report"]
+    assert episodes(conn) == UP_TO_JUDGE
     assert cycle.state(conn, outcome.cycle_id) == "evaluating"
 
 
@@ -109,13 +115,13 @@ def test_a_crash_between_storing_an_output_and_writing_memory_writes_once(conn, 
         make(conn).run_cycle()
     stored = conn.execute("SELECT COUNT(*) FROM llm_calls WHERE step = 'postmortem'").fetchone()[0]
     assert stored == 1
-    assert episodes(conn) == ["plan", "judge_report"]
+    assert episodes(conn) == UP_TO_JUDGE
 
     monkeypatch.setattr(Memory, "record_episode", original)
     # Nothing scripted: any model call now would fail, so the outputs must come from the store.
     outcome = make(conn, script={}).run_cycle()
     assert outcome.status == "committed"
-    assert episodes(conn) == ["plan", "judge_report", "postmortem"]
+    assert episodes(conn) == FULL_CYCLE
 
 
 def test_a_resumed_cycle_never_writes_a_step_twice(conn):
@@ -125,7 +131,7 @@ def test_a_resumed_cycle_never_writes_a_step_twice(conn):
     cycle_id = conn.execute("SELECT id FROM cycles").fetchone()[0]
     conn.execute("UPDATE cycles SET state = 'evaluating' WHERE id = ?", (cycle_id,))
     make(conn, script={}, judge=judge).run_cycle()
-    assert episodes(conn) == ["plan", "judge_report", "postmortem"]
+    assert episodes(conn) == FULL_CYCLE
     assert judge.evaluations == [cycle_id]
 
 
@@ -188,7 +194,7 @@ def test_resuming_under_a_different_config_pauses_the_run(conn, changed):
     ).run_cycle()
     assert resumed.status == "paused"
     assert db.control_state(conn) == ("paused", "anomaly: config_mismatch")
-    assert episodes(conn) == ["plan", "judge_report"]
+    assert episodes(conn) == UP_TO_JUDGE
 
 
 def step_done_events(conn):
@@ -205,6 +211,13 @@ def test_each_step_logs_one_step_done_event(conn):
             "role": "ceo",
             "tool": "propose_plan",
             "outcome": "plan recorded",
+        },
+        {
+            "cycle": outcome.cycle_id,
+            "step": "attack",
+            "role": "attacker",
+            "tool": "submit_attack_batch",
+            "outcome": "1 attacks, 1 valid, 1 evading clusters",
         },
         {
             "cycle": outcome.cycle_id,
@@ -234,8 +247,151 @@ def test_a_crash_before_the_write_commits_leaves_no_step_done_event(conn, monkey
     monkeypatch.setattr(Memory, "record_episode", crash_on_postmortem)
     with pytest.raises(Crash):
         make(conn).run_cycle()
-    assert [event["step"] for event in step_done_events(conn)] == ["plan", "judge"]
+    assert [event["step"] for event in step_done_events(conn)] == ["plan", "attack", "judge"]
 
     monkeypatch.setattr(Memory, "record_episode", original)
     make(conn, script={}).run_cycle()
-    assert [event["step"] for event in step_done_events(conn)] == ["plan", "judge", "postmortem"]
+    steps = [event["step"] for event in step_done_events(conn)]
+    assert steps == ["plan", "attack", "judge", "postmortem"]
+
+
+def plan_with(**changes):
+    script = phase1_mock_script()
+    plan = json.loads(script["plan"][0])
+    script["plan"] = [json.dumps(dict(plan, **changes))]
+    return script
+
+
+def test_the_attack_step_queries_and_validates_against_the_incumbent_settings(conn):
+    judge = FakeJudge()
+    make(conn, judge=judge).run_cycle()
+    assert [query.step for query in judge.queries] == [f"attack.t{turn}" for turn in range(8)]
+    [batch] = judge.batches
+    for measured in [query.measure for query in judge.queries] + [batch.measure]:
+        assert measured.arms[0].detector == REGEX_RULES
+        assert measured.reference_target == measured.targets[0] == REFERENCE_TARGET
+        assert measured.backend == "mock" and measured.cassette is None
+
+
+def test_a_plan_without_the_attacker_skips_the_attack_step(conn):
+    judge = FakeJudge()
+    outcome = make(conn, script=plan_with(agents_to_run=["defender"]), judge=judge).run_cycle()
+    assert outcome.status == "committed"
+    assert "attack_batch" not in episodes(conn)
+    assert judge.queries == [] and judge.batches == []
+    assert step_done_events(conn)[1]["outcome"] == "attacker not chosen"
+
+
+def test_the_first_cycle_stores_the_regex_baseline_once(conn):
+    make(conn).run_cycle()
+    make(conn).run_cycle()
+    rows = conn.execute("SELECT status, parent_id FROM detector_configs").fetchall()
+    assert [tuple(row) for row in rows] == [("baseline", None)]
+
+
+def test_a_resumed_attack_step_calls_no_model_and_spends_no_query(conn, monkeypatch):
+    original = Memory.record_episode
+
+    def crash_on_batch(self, *, kind, **kwargs):
+        if kind == "attack_batch":
+            raise Crash
+        return original(self, kind=kind, **kwargs)
+
+    judge = FakeJudge()
+    monkeypatch.setattr(Memory, "record_episode", crash_on_batch)
+    with pytest.raises(Crash):
+        make(conn, judge=judge).run_cycle()
+    monkeypatch.setattr(Memory, "record_episode", original)
+    # Nothing scripted for the attack steps: every output must come from the store.
+    script = {"postmortem": phase1_mock_script()["postmortem"]}
+    assert make(conn, script=script, judge=judge).run_cycle().status == "committed"
+    # The resume asks the same eight steps and the batch again. The Judge answers each step from
+    # its record, so no budget is spent, and the batch check from its cache (tests/test_attacks.py).
+    assert len(judge.queries) == 16 and len(judge.batches) == 2
+    assert len({query.step for query in judge.queries}) == 8
+    assert len(judge._replies) == 8
+    assert episodes(conn) == FULL_CYCLE
+
+
+def test_a_planted_canary_in_the_attackers_output_rolls_back_before_the_judge(conn):
+    script = phase1_mock_script()
+    script["attack.t0"] = [json.dumps({"text": f"Done. {canary(1, 'attack.t0')}"})]
+    judge = FakeJudge()
+    outcome = make(conn, script=script, judge=judge).run_cycle()
+    assert outcome.status == "paused"
+    assert cycle.state(conn, outcome.cycle_id) == "rolled_back"
+    assert db.control_state(conn) == ("paused", "anomaly: hijack")
+    assert judge.queries == [] and judge.batches == []
+
+
+def test_the_no_memory_arm_gets_no_lessons_and_no_last_batch(conn, monkeypatch):
+    seen = []
+    real_run = attacker.Attacker.run
+
+    def spy(self, cycle_id, view, ports):
+        seen.append(view)
+        return real_run(self, cycle_id, view, ports)
+
+    monkeypatch.setattr(attacker.Attacker, "run", spy)
+    with db.transaction(conn):
+        cycle_id = cycle.open_cycle(conn, "other")
+        evidence = Memory(conn).record_episode(
+            kind="plan", body={}, cycle_id=cycle_id, step="plan", role="ceo"
+        )
+        cycle.reach(conn, cycle_id, "committed")
+    lesson = {
+        "text": "Encoded payloads evade literal rules.",
+        "scope_tags": ["rules"],
+        "evidence_experiment_ids": [evidence],
+        "confidence": 0.6,
+    }
+    script = plan_with(cites_lesson_ids=[1])
+    postmortem = json.loads(script["postmortem"][0])
+    script["postmortem"] = [json.dumps(dict(postmortem, lesson_candidates=[lesson]))]
+    script["plan"] *= 2
+    script["postmortem"].append(phase1_mock_script()["postmortem"][0])
+    for step in [s for s in script if s.startswith("attack.")]:
+        script[step] *= 2
+    backend = llm.MockBackend(script=script)
+    with_memory = Orchestrator(conn, backend=backend, judge=FakeJudge())
+    assert with_memory.run_cycle().status == "committed"
+    assert with_memory.run_cycle().status == "committed"
+    remembering = seen[-1]
+    assert remembering.directive.cited_lesson_texts == [lesson["text"]]
+    assert remembering.last_batch
+
+    without = Orchestrator(
+        conn,
+        backend=llm.MockBackend(script=plan_with(cites_lesson_ids=[1])),
+        judge=FakeJudge(),
+        use_memory=False,
+    )
+    assert without.run_cycle().status == "committed"
+    assert seen[-1].directive.cited_lesson_texts == []
+    assert seen[-1].last_batch == ()
+
+
+def test_an_outcome_the_live_feed_cannot_show_is_refused(conn):
+    orchestrator = make(conn)
+    with db.transaction(conn):
+        cycle_id = cycle.open_cycle(conn, "default")
+    with pytest.raises(ValueError, match="live feed"):
+        orchestrator._write_once(cycle_id, "plan", "ceo", "propose_plan", lambda m: "two\nlines")
+    assert step_done_events(conn) == []
+
+
+def test_a_replay_run_is_not_treated_as_live(conn, tmp_path):
+    cassette = tmp_path / "c.jsonl"
+    cassette.write_text("")
+    orchestrator = Orchestrator(conn, backend=llm.ReplayBackend(cassette), judge=FakeJudge())
+    # A replay backend is named replay-<digest>, which the old name check read as live.
+    assert orchestrator.backend.name.startswith("replay-")
+    assert orchestrator.novelty.live is False
+    assert orchestrator._measure_settings(REGEX_RULES).backend == "replay"
+
+
+def test_a_backend_with_an_unknown_kind_is_refused(conn):
+    backend = llm.MockBackend(script={})
+    backend.kind = "staging"
+    with pytest.raises(ValueError, match="kind"):
+        Orchestrator(conn, backend=backend, judge=FakeJudge())

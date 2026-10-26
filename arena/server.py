@@ -24,6 +24,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from arena.config import agent_db_path
+from arena.schemas import STEP_OUTCOME
 
 HOST = "127.0.0.1"
 PORT = 8765
@@ -35,7 +36,6 @@ BATCH = 500
 # Anomaly rows carry the agent's own role and tool strings, so role, tool, step and kind must be
 # identifiers, and anything else is dropped rather than shown. Outcomes are fixed phrases.
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
-_PHRASE = re.compile(r"[A-Za-z0-9_ :.,-]{1,60}")
 _HEADERS = {
     "Content-Security-Policy": (
         "default-src 'none'; connect-src 'self'; script-src 'self'; style-src 'unsafe-inline'"
@@ -68,7 +68,7 @@ def project(row: sqlite3.Row) -> dict:
         "tool": _safe(detail.get("tool")),
         "step": _safe(detail.get("step")),
         # Outcomes are fixed-format only on step_done rows; elsewhere the key may hold free text.
-        "outcome": _safe(detail.get("outcome"), _PHRASE) if kind == "step_done" else None,
+        "outcome": _safe(detail.get("outcome"), STEP_OUTCOME) if kind == "step_done" else None,
     }
 
 

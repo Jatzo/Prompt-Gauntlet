@@ -95,20 +95,26 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 Each phase now closes with a green CI run on its pushed commits, at least one ADR in `docs/adr/`, and
 a `docs/debug-log.md` entry for its first non-trivial bug (PLAN.md section 17). Case studies use the
 cybersecurity structure in PLAN.md section 13. No case study has been written yet.
-- Phase 3 CI: not yet run. Nothing has been pushed since f8a505e, so Phase 3 is "done locally, CI
-  pending" until the operator approves a push.
+- Phase 3 CI: green on 01b98ef (run 40379322734). Later commits need another push and run.
 - Phase 3 ADR: none written. Possible subjects, decided at close-out: two model families in place of
   hand labels; refused and model-switched labelling items keeping their source label.
-- Phase 3 debug log: none yet. The open bug where a replay run is treated as live (the novelty hook
-  reads `backend.name`, and a replay backend's name is `replay-<digest>`) gets the first entry when
-  it is fixed.
+- Phase 3 debug log: one entry, a replay run treated as live, fixed with the attack step.
 
 ## Open questions for the operator
+- Replay with the Attacker: a replay cycle whose plan runs the Attacker cannot finish, because the
+  Judge has no recorded target or detector answers to replay (docs/limitations.md). Phase 3's
+  done-when needs a 30-cycle replay run, so this needs a decision before then.
 - A CLAUDE.md line on call storage: "Agent calls are stored by `(cycle, step)`; detector and target calls by request hash in the Judge DB."
 - Which open-weights classifier, which embedding model for dedup, and which non-Claude generator family stays test-only.
 - Approval of the new `config.py` defaults.
 
 ## Open items
+- `incumbent()` is not scoped to a run. Once the Defender keeps configs, two ablation arms in one
+  database would share them. Give each arm its own database, or scope configs by run.
+- The `built_judge` test fixture removes the sealed test files so the committed placeholder pin
+  verifies, rather than writing the build's real pin as the plan said; the tamper tests still cover
+  the real-pin path. The CLI tests use a Defender-only plan, since `run-cycle` against a real Judge
+  with no built data folder now pauses at the attack step.
 - Before Phase 3: stop two `run-cycle` processes from running at once (a runner lock). Until then the
   step-writes check inside each write transaction is the only guard against a double write. The agent
   database's first-time create in `arena/db.py` has the same check-then-create race.
@@ -139,9 +145,10 @@ cybersecurity structure in PLAN.md section 13. No case study has been written ye
 - No house pattern yet for dispatch by name: some modules use a dict registry, others if-chains.
 
 ## Next session
-Phase 3 step 7 (the Defender). Step 6 is done: the Attacker, canaries, the behaviour signature,
-step-kept T2 queries, the novelty measure and the per-run archive. Step 13 must wire what step 6
-left as hooks: clear the archive at run start, load the novelty threshold (a live run refuses
-without one), band each batch before offering it to the archive, offer held-back attacks when their
-cycle closes, and build `QueryRequest` for `CyclePorts`. Step 10 adds the explore directive; step 11
-opens candidate-technique findings from unclassified, novel valid attacks.
+Phase 3 step 7 (the Defender). The attack step now runs in every cycle whose plan names the
+Attacker: T2 queries and one batch against the incumbent (the regex rules until a config is kept,
+stored as the baseline on the first cycle), on `LADDER[0]`, with novelty recorded in the attack
+step's write and held-back attacks offered at commit. Each backend declares a `kind`. The
+`use_memory=False` orchestrator is the no-memory ablation arm. Step 10 adds the explore directive;
+step 11 opens candidate-technique findings from unclassified, novel valid attacks. The full real
+data build was started on 2026-10-26; check its log (`~/.pgscratch/build.log`) and results first.

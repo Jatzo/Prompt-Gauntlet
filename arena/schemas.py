@@ -16,6 +16,9 @@ from arena.detector.regex_safety import check_pattern
 ShortText = Annotated[str, Field(min_length=1, max_length=200)]
 LongText = Annotated[str, Field(min_length=1, max_length=2000)]
 Identifier = Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")]
+# A step's outcome as the live feed shows it: a fixed phrase of counts and words, never agent free
+# text. The orchestrator refuses any other outcome, and the feed drops one that does not match.
+STEP_OUTCOME = re.compile(r"[A-Za-z0-9_ :.,-]{1,60}")
 Probability = Annotated[float, Field(ge=0.0, le=1.0)]
 
 Label = Literal["attack", "benign"]
