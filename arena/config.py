@@ -173,7 +173,9 @@ class ArenaConfig(_Frozen):
     contested_exclusion_cap: float = 0.15
     # The digest of the pulled open-weights labeller (`ollama list`). None until the operator pulls
     # it; the Ollama backend refuses to run without it.
-    labeller_open_digest: str | None = None
+    labeller_open_digest: str | None = (
+        "6114515d63c17436a7c0417d82820ac65ad643e2806c5a3c89cb62846436ed0b"
+    )
 
     # Measurement. Proposals awaiting approval.
     # Breakdown cells smaller than this are left out of reports, so one sample cannot be inferred.

@@ -757,6 +757,8 @@ class OllamaBackend:
         body = {
             "model": model_id,
             "stream": False,
+            # A thinking model otherwise spends its whole context reasoning and returns no content.
+            "think": False,
             "format": tool["input_schema"],
             "options": {"temperature": request.temperature},
             "messages": [
@@ -768,6 +770,12 @@ class OllamaBackend:
             reply = self._post(f"{self._url}/api/chat", body)
         except (OSError, ValueError) as error:
             raise LiveCallFailed(f"The Ollama call failed: {str(error)[:200]}") from error
+        if reply.get("done_reason") == "length":
+            # A cut-off answer is never stored, so a rerun asks again.
+            raise LiveCallFailed(
+                f"{model_id} hit its length limit before finishing (done_reason 'length'). "
+                "Check that thinking is off and the context window is large enough."
+            )
         return LLMResponse(
             tool=request.tool,
             raw_output=(reply.get("message") or {}).get("content", ""),

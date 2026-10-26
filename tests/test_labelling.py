@@ -198,16 +198,19 @@ def test_the_label_cache_round_trips_outputs(tmp_path):
 
 
 class FakeServer:
-    def __init__(self, digest="abc123def4567890", model="gemma4:12b"):
+    def __init__(self, digest="abc123def4567890", model="gemma4:12b", done_reason="stop"):
         self.digest, self.model, self.bodies = digest, model, []
+        self.done_reason = done_reason
 
     def __call__(self, url, body):
         if url.endswith("/api/tags"):
             return {"models": [{"name": self.model, "digest": self.digest}]}
         self.bodies.append(body)
+        content = json.dumps(BENIGN.model_dump()) if self.done_reason == "stop" else ""
         return {
             "model": self.model,
-            "message": {"content": json.dumps(BENIGN.model_dump())},
+            "message": {"content": content},
+            "done_reason": self.done_reason,
             "prompt_eval_count": 40,
             "eval_count": 9,
         }
@@ -238,10 +241,28 @@ def test_ollama_sends_the_schema_and_temperature_and_maps_the_reply():
     )
     [body] = server.bodies
     assert body["model"] == "gemma4:12b" and body["stream"] is False
+    assert body["think"] is False
     assert body["options"] == {"temperature": 0.0}
     assert body["format"] == LabelVerdict.model_json_schema()
     assert [m["role"] for m in body["messages"]] == ["system", "user"]
     assert result.agreement["label"].n == 1
+
+
+def test_a_reply_cut_off_at_the_length_limit_fails_and_is_not_cached():
+    server = FakeServer(done_reason="length")
+    backend = llm.OllamaBackend(digest="abc123def4567890", post=server)
+    cache = MemoryEvalCache()
+    with pytest.raises(llm.LiveCallFailed, match="done_reason 'length'"):
+        label_rows(
+            rows_of(corpus()[:1]),
+            claude=FakeLabeller("live"),
+            open_weights=backend,
+            cache=cache,
+            seed=1,
+        )
+    [body] = server.bodies
+    assert body["think"] is False
+    assert not any(output.backend.startswith("ollama") for output in cache.outputs.values())
 
 
 def test_a_wrong_model_from_ollama_fails_the_id_check():
