@@ -12,4 +12,7 @@ paths = [
     '''(^|/)\.pytest_cache/''',
     '''(^|/)\.ruff_cache/''',
     '''(^|/)__pycache__/''',
+    # Fetched third-party datasets: attack submissions and public code carry sample keys. The
+    # folder is gitignored and the tracked-files guard refuses any private/ path.
+    '''(^|/)private/data/raw/''',
 ]
