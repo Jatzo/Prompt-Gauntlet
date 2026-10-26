@@ -98,6 +98,12 @@ class LabelResult:
     disagreements: Counter = field(default_factory=Counter)
     # Attack-source items both families called benign. They stay attacks; the count is reported.
     attacks_called_benign: Counter = field(default_factory=Counter)
+    # (labeller, generator family) for items a provider's safeguards refused: "claude" or "open".
+    # An attack keeps its source label, a benign item is contested, and the item is left out of
+    # agreement and of `disagreements`, so kappa is measured on the items both families answered.
+    refused: Counter = field(default_factory=Counter)
+    # Ids of refused items, so a contested count can say how many were refusals.
+    refused_ids: set[str] = field(default_factory=set)
 
     def contested_by(self, key: str) -> Counter:
         """Contested counts by "partition", "source" (generator family) or "category"."""
@@ -120,10 +126,16 @@ def apply(
     contested: list[Sample] = []
     disagreements: Counter = Counter()
     called_benign: Counter = Counter()
+    refused: Counter = Counter()
+    refused_ids: set[str] = set()
     pairs: dict[str, tuple[list[str], list[str]]] = {name: ([], []) for name in FIELDS}
     for row, a, b in zip(rows, first, second, strict=True):
         sample = row.sample
         both = isinstance(a, LabelVerdict) and isinstance(b, LabelVerdict)
+        for labeller, verdict in (("claude", a), ("open", b)):
+            if isinstance(verdict, llm.Unscorable) and verdict.reason == llm.REFUSED:
+                refused[(labeller, sample.generator_family)] += 1
+                refused_ids.add(sample.id)
         if both:
             pairs["label"][0].append(a.label)
             pairs["label"][1].append(b.label)
@@ -140,6 +152,8 @@ def apply(
             if both:
                 pairs[name][0].append(getattr(a, name))
                 pairs[name][1].append(getattr(b, name))
+            if sample.id in refused_ids:
+                continue  # The source default is kept; the refusal is counted above.
             if not (both and getattr(a, name) == getattr(b, name)):
                 disagreements[(sample.generator_family, name)] += 1
             elif getattr(a, name) != _NOT_AN_ATTACK[name]:
@@ -153,6 +167,8 @@ def apply(
         agreement={name: agreement(*pairs[name]) for name in FIELDS},
         disagreements=disagreements,
         attacks_called_benign=called_benign,
+        refused=refused,
+        refused_ids=refused_ids,
     )
 
 
@@ -161,9 +177,13 @@ def check_cap(result: LabelResult, config: ArenaConfig = DEFAULTS) -> None:
     for partition, count in sorted(result.contested_by("partition").items()):
         share = count / (count + benign[partition])
         if share > config.contested_exclusion_cap:
+            refused = sum(
+                s.partition == partition and s.id in result.refused_ids for s in result.contested
+            )
             raise ContestedCapExceeded(
-                f"{partition}: {count} contested benign items, {share:.0%} of its benign items, "
-                f"above the {config.contested_exclusion_cap:.0%} cap. Nothing was written."
+                f"{partition}: {count} contested benign items ({refused} refused by safeguards), "
+                f"{share:.0%} of its benign items, above the "
+                f"{config.contested_exclusion_cap:.0%} cap. Nothing was written."
             )
 
 
@@ -178,9 +198,24 @@ def label_rows(
 ) -> LabelResult:
     """Both families label every row, through the evaluation cache, then the rules above apply."""
     keyed = requests([row.sample for row in rows], seed)
-    first = llm.call_batch("labeller", keyed, LabelVerdict, cache, backend=claude, config=config)
+    # A refused item keeps its source label rather than stopping the build (see `apply`).
+    first = llm.call_batch(
+        "labeller",
+        keyed,
+        LabelVerdict,
+        cache,
+        backend=claude,
+        config=config,
+        refusals_are_items=True,
+    )
     second = llm.call_batch(
-        "labeller_open", keyed, LabelVerdict, cache, backend=open_weights, config=config
+        "labeller_open",
+        keyed,
+        LabelVerdict,
+        cache,
+        backend=open_weights,
+        config=config,
+        refusals_are_items=True,
     )
     return apply(rows, first, second)
 

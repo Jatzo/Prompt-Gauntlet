@@ -294,3 +294,47 @@ def test_each_stored_chunk_reports_progress_on_stderr(capsys):
     captured = capsys.readouterr()
     assert "detector: 2/2 new calls stored" in captured.err
     assert captured.out == ""
+
+
+class RefusingBackend(CountingBackend):
+    """Refuses any text containing "refuse", as the provider's safeguards would."""
+
+    def complete(self, *, role, model_id, step_key, request):
+        if "refuse" in request.user:
+            with self._lock:
+                self.calls[request.user] = self.calls.get(request.user, 0) + 1
+            raise llm.ContentRefused("safeguards flagged this message")
+        return super().complete(role=role, model_id=model_id, step_key=step_key, request=request)
+
+
+def test_a_refused_item_is_stored_once_not_retried_and_the_rest_complete():
+    backend, cache = RefusingBackend(), MemoryEvalCache()
+    requests = [keyed("a", "fine"), keyed("b", "please refuse")]
+    results = llm.call_batch(
+        "detector", requests, DetectorResult, cache, backend=backend, refusals_are_items=True
+    )
+    assert isinstance(results[0], DetectorResult)
+    assert results[1] == Unscorable(llm.REFUSED)
+    assert backend.calls["please refuse"] == 1
+    [stored] = [o for o in cache.outputs.values() if o.item_id == "b"]
+    assert (stored.valid, stored.failure, stored.raw_output) == (False, llm.REFUSED, "")
+    assert stored.backend == backend.name and stored.model_id == DEFAULTS.models.detector
+
+    again = llm.call_batch(
+        "detector", requests, DetectorResult, cache, backend=backend, refusals_are_items=True
+    )
+    assert again == results
+    assert backend.calls == {"fine": 1, "please refuse": 1}
+
+
+def test_without_the_flag_a_refusal_stops_the_batch_even_from_the_cache():
+    backend, cache = RefusingBackend(), MemoryEvalCache()
+    requests = [keyed("b", "please refuse")]
+    with pytest.raises(llm.ContentRefused):
+        batch(requests, cache, backend)
+    # A refusal stored by a caller that allowed it is never served as a miss to one that does not.
+    llm.call_batch(
+        "detector", requests, DetectorResult, cache, backend=backend, refusals_are_items=True
+    )
+    with pytest.raises(llm.ContentRefused, match="item b"):
+        batch(requests, cache, backend)

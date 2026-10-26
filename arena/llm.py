@@ -88,6 +88,15 @@ class LiveCallFailed(RuntimeError):
     """A live call got no answer (an API or CLI failure). Never stored, so a rerun asks again."""
 
 
+# The stored failure for an input the provider's safeguards refused.
+REFUSED = "refused: safeguards"
+
+
+class ContentRefused(LiveCallFailed):
+    """The provider's safeguards refused this one input. It stops the caller like any failed call,
+    unless the caller of `call_batch` asks for refusals as items."""
+
+
 class LiveCallRefused(RuntimeError):
     pass
 
@@ -307,8 +316,14 @@ def call_batch[Model: pydantic.BaseModel](
     *,
     backend: Backend,
     config: ArenaConfig = DEFAULTS,
+    refusals_are_items: bool = False,
 ) -> list[Model | Unscorable]:
     """Results in the order of `requests`. A cached key makes no call, valid or not.
+
+    With `refusals_are_items`, an input the provider's safeguards refuse is stored as an
+    Unscorable `REFUSED` item, asked once and never retried. Without it, a refusal stops the batch
+    as any failed call does, even one already stored, so a caller that counts Unscorable as a miss
+    never meets one by accident.
 
     Unlike `call()`, a schema failure or an out-of-schema output on one item does not raise and does
     not count towards the schema-failure pause: the item comes back `Unscorable`. A wrong model id
@@ -343,9 +358,25 @@ def call_batch[Model: pydantic.BaseModel](
                             used=spent[0],
                             cap=cap,
                         )
-            response = backend.complete(
-                role=role, model_id=pinned, step_key=(0, key), request=keyed.request
-            )
+            try:
+                response = backend.complete(
+                    role=role, model_id=pinned, step_key=(0, key), request=keyed.request
+                )
+            except ContentRefused:
+                if not refusals_are_items:
+                    raise
+                # Asking again sends the same text into the same filter, so no retry.
+                return CachedOutput(
+                    key=key,
+                    item_id=keyed.item_id,
+                    raw_output="",
+                    valid=False,
+                    failure=REFUSED,
+                    model_id=pinned,
+                    input_tokens=0,
+                    output_tokens=0,
+                    backend=backend.name,
+                )
             with spent_lock:
                 spent[0] += response.input_tokens + response.output_tokens
             if response.model_id != pinned:
@@ -420,6 +451,8 @@ def call_batch[Model: pydantic.BaseModel](
         output = outputs[key]
         if output.valid:
             results.append(response_model.model_validate_json(output.raw_output))
+        elif output.failure == REFUSED and not refusals_are_items:
+            raise ContentRefused(f"{role}: item {output.item_id} was refused by safeguards.")
         else:
             results.append(Unscorable(output.failure or "invalid"))
     return results
@@ -659,6 +692,8 @@ class LiveBackend:
                         if message.api_error_status == 429:
                             raise self._limit(f"429: {(message.result or '')[:200]}")
                         self._check_limit_text(message.result or "")
+                        if message.api_error_status in (None, 400):
+                            self._check_refusal(message.result or "")
                         raise LiveCallFailed(
                             f"API error {message.api_error_status}: {(message.result or '')[:200]}"
                         )
@@ -672,6 +707,7 @@ class LiveBackend:
             if not raw:
                 # No answer at all: a CLI or API failure, never stored as the model's reply.
                 self._check_limit_text(str(error))
+                self._check_refusal(str(error))
                 raise LiveCallFailed(f"The live call failed: {str(error)[:200]}") from error
         return LLMResponse(
             tool=tool,
@@ -694,6 +730,12 @@ class LiveBackend:
         could otherwise write the words and pause the run."""
         if any(phrase in text.lower() for phrase in self._LIMIT_PHRASES):
             raise self._limit(text[:200])
+
+    def _check_refusal(self, text: str) -> None:
+        """The CLI's error text when the provider's safeguards refuse the input. Like the limit
+        check, never called on the model's reply."""
+        if "safeguards flagged" in text.lower() and "anthropic.com/legal/aup" in text:
+            raise ContentRefused(text[:200])
 
 
 def _open_schema(schema: dict) -> dict:

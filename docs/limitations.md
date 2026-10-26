@@ -14,6 +14,11 @@ measured.
   sensitivity row: dev FPR with each contested item counted as not flagged, and as flagged.
 - One labeller family is Claude, which also writes some attacks and runs the detectors under test. The
   second family, the attack-source rule and the contested slice limit that bias without removing it.
+- A provider's safeguards refuse some inputs, most likely the most explicit attacks. A refused attack
+  keeps its source label and a refused benign item is contested; both are counted and left out of
+  agreement, so raw agreement and kappa describe the items both families answered, not the whole set.
+  A refusal is stored and never asked again. To ask again after the safeguards change, delete those
+  rows: `sqlite3 private/data/labels-cache.db "DELETE FROM outputs WHERE failure = 'refused: safeguards'"`.
 
 ## Novelty
 

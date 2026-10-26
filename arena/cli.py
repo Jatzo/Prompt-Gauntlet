@@ -18,6 +18,7 @@ import json
 import os
 import random
 import sys
+from collections import Counter
 from dataclasses import asdict
 from datetime import UTC, date, datetime
 from functools import partial
@@ -259,6 +260,18 @@ def _print_labels(result) -> None:
             "Attack-source items both families called benign (kept as attacks): "
             f"{count} from {family}"
         )
+    if result.refused_ids:
+        sides = Counter()
+        for (labeller, _), count in result.refused.items():
+            sides[labeller] += count
+        print(
+            f"Refused by safeguards: {len(result.refused_ids)} of "
+            f"{len(result.kept) + len(result.contested)} items (Claude {sides['claude']}, "
+            f"open model {sides['open']}); source label kept for attacks, contested for benign; "
+            "left out of agreement"
+        )
+        for (labeller, family), count in sorted(result.refused.items()):
+            print(f"Refused by {labeller}: {count} from {family}")
 
 
 def _pilot(samples, count: int, claude, open_weights, cache) -> int:

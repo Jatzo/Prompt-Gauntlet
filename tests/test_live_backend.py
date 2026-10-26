@@ -307,3 +307,51 @@ def test_an_api_failure_with_no_status_is_raised_too(live):
     backend, _ = live(script)
     with pytest.raises(llm.LiveCallFailed, match="timed out"):
         complete(backend)
+
+
+# The error the pilot run got, word for word as the CLI returned it.
+PILOT_REFUSAL = (
+    "API Error: Opus 5's safeguards flagged this message (https://www.anthropic.com/legal/aup). "
+    "Our intentionally broad safeguards allow us to deliver more capabilities faster, but can "
+    "sometimes flag legit"
+)
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        lambda sdk: [sdk.ResultMessage(is_error=True, api_error_status=None, result=PILOT_REFUSAL)],
+        lambda sdk: [sdk.ResultError(PILOT_REFUSAL)],
+    ],
+)
+def test_a_safeguards_refusal_is_its_own_failure(live, script):
+    backend, _ = live(script)
+    with pytest.raises(llm.ContentRefused, match="safeguards flagged"):
+        complete(backend)
+    assert issubclass(llm.ContentRefused, llm.LiveCallFailed)
+
+
+def test_another_api_error_is_not_a_refusal(live):
+    def script(sdk):
+        return [sdk.ResultMessage(is_error=True, api_error_status=529, result=PILOT_REFUSAL)]
+
+    backend, _ = live(script)
+    with pytest.raises(llm.LiveCallFailed) as raised:
+        complete(backend)
+    assert not isinstance(raised.value, llm.ContentRefused)
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        # The refusal wording inside the model's own answer, a text block and a normal result.
+        lambda sdk: [
+            sdk.AssistantMessage(model="claude-haiku-5-5", content=[sdk.TextBlock(PILOT_REFUSAL)]),
+            sdk.ResultMessage(structured_output=dict(VALID, reasons=[PILOT_REFUSAL])),
+        ],
+        lambda sdk: [sdk.ResultMessage(result=PILOT_REFUSAL)],
+    ],
+)
+def test_refusal_wording_in_the_models_reply_is_not_a_refusal(live, script):
+    backend, _ = live(script)
+    complete(backend)

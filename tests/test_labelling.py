@@ -93,6 +93,53 @@ def test_attack_fields_change_only_where_both_families_agree():
     assert result.agreement["impact_class"].n == 2
 
 
+REFUSED = llm.Unscorable(llm.REFUSED)
+
+
+def test_a_refused_attack_keeps_its_source_label_and_is_counted_apart():
+    attacks = [s for s in corpus() if s.label == "attack"][:2]
+    theft = LabelVerdict(label="attack", kind="jailbreak", impact_class="data_theft")
+    result = apply(rows_of(attacks), [REFUSED, theft], [theft, theft])
+    refused = result.kept[0].sample
+    assert refused.label == "attack"
+    assert (refused.injection_vs_jailbreak, refused.impact_class) == (
+        attacks[0].injection_vs_jailbreak,
+        attacks[0].impact_class,
+    )
+    assert result.refused == {("claude", "template"): 1}
+    assert result.refused_ids == {attacks[0].id}
+    # A refusal is not a disagreement, and agreement covers only the item both answered.
+    assert result.disagreements == {}
+    assert result.agreement["label"].n == 1
+
+
+def test_a_refused_benign_item_is_contested_and_named_in_the_cap_message():
+    benign = [s for s in corpus() if s.label == "benign"][:10]
+    result = apply(rows_of(benign), [BENIGN] * 10, [BENIGN] * 8 + [REFUSED, ATTACK])
+    assert [s.id for s in result.contested] == [benign[8].id, benign[9].id]
+    assert result.refused == {("open", "template"): 1}
+    with pytest.raises(ContestedCapExceeded, match=r"2 contested benign items \(1 refused"):
+        check_cap(result, ArenaConfig(contested_exclusion_cap=0.15))
+
+
+def test_labelling_turns_a_refusal_into_an_item_instead_of_stopping():
+    class Refusing(FakeLabeller):
+        def complete(self, **kwargs):
+            self.calls += 1
+            raise llm.ContentRefused("safeguards flagged this message")
+
+    rows = rows_of([s for s in corpus() if s.label == "attack"][:2])
+    result = label_rows(
+        rows,
+        claude=Refusing("live"),
+        open_weights=FakeLabeller("ollama"),
+        cache=MemoryEvalCache(),
+        seed=1,
+    )
+    assert len(result.refused_ids) == 2
+    assert [row.sample.label for row in result.kept] == ["attack", "attack"]
+
+
 def test_the_cap_stops_a_partition_with_too_many_contested_benign_items():
     benign = [s for s in corpus() if s.label == "benign"][:10]
     first = [BENIGN] * 10
