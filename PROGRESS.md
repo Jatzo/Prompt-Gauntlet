@@ -127,6 +127,9 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 - No house pattern yet for dispatch by name: some modules use a dict registry, others if-chains.
 
 ## Next session
-Phase 3 step 6 (the Attacker) with the approved novelty work, starting with the PLAN.md edits the
-novelty plan lists. The live feed, the real data build and the labelling replacement are done; the
-real fetch, the Ollama install and the checker pass on real data are the operator's.
+Phase 3 step 7 (the Defender). Step 6 is done: the Attacker, canaries, the behaviour signature,
+step-kept T2 queries, the novelty measure and the per-run archive. Step 13 must wire what step 6
+left as hooks: clear the archive at run start, load the novelty threshold (a live run refuses
+without one), band each batch before offering it to the archive, offer held-back attacks when their
+cycle closes, and build `QueryRequest` for `CyclePorts`. Step 10 adds the explore directive; step 11
+opens candidate-technique findings from unclassified, novel valid attacks.
