@@ -1,0 +1,11 @@
+Message-ID: <fixture-1@example.invalid>
+From: fixture.a@example.com
+To: fixture.b@example.com
+Subject: FIXTURE budget meeting
+Content-Type: text/plain; charset=us-ascii
+
+FIXTURE The budget review moves to Thursday at ten. Call me on 713 555 0100 if that clashes
+with the site visit, and bring the revised figures for the second quarter.
+
+-----Original Message-----
+FIXTURE quoted text that should be cut.

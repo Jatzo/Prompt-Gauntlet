@@ -5,7 +5,8 @@ python -m arena.cli control start|pause|resume|stop
 python -m arena.cli run-cycle --backend mock|replay [--cassette PATH]
 python -m arena.cli abandon-cycle --reason TEXT
 python -m arena.cli baseline --backend mock|replay|live [--profile clean|low_asr]
-python -m arena.cli data build --synthetic --judge-dir PATH
+python -m arena.cli data build --synthetic|--real --judge-dir PATH
+python -m arena.cli data fetch [--only SOURCE ...]
 python -m arena.cli live-check [--calls N]
 
 Exit codes are listed in arena/exit_codes.py.
@@ -13,6 +14,7 @@ Exit codes are listed in arena/exit_codes.py.
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import asdict
 from datetime import UTC, date, datetime
@@ -21,6 +23,7 @@ from pathlib import Path
 from arena import baselines, cycle, db, llm, usage
 from arena.config import DEFAULTS, REPO_ROOT, agent_db_path
 from arena.data.build import build_dataset
+from arena.data.fetch import ChangedSource, fetch_all
 from arena.data.templates import synthetic_corpus
 from arena.exit_codes import ExitCode
 from arena.judge_client import JudgeClient, JudgeError
@@ -92,15 +95,73 @@ def cmd_abandon_cycle(conn, run_id: str, reason: str) -> int:
     return ExitCode.OK
 
 
+def cmd_data_fetch(args) -> int:
+    """Download the approved sources at their pinned revisions into the private raw folder."""
+    from arena.data.sources import load_sources
+
+    _, sources = load_sources()
+    wanted = {
+        name: source.files for name, source in sources.items() if not args.only or name in args.only
+    }
+    unknown = sorted(set(args.only or ()) - set(sources))
+    if unknown:
+        print(f"Unknown sources: {', '.join(unknown)}", file=sys.stderr)
+        return ExitCode.FAILED
+    try:
+        results = fetch_all(args.raw_dir, wanted, token=os.environ.get("HF_TOKEN") or None)
+    except ChangedSource as changed:
+        print(changed, file=sys.stderr)
+        return ExitCode.FAILED
+    for key, outcome in results:
+        print(f"{key}: {outcome}")
+    done = all(outcome in ("fetched", "present") for _, outcome in results)
+    return ExitCode.OK if done else ExitCode.NEEDS_OPERATOR
+
+
 def cmd_data_build(args) -> int:
-    """Build the Judge directory. Only the synthetic corpus exists until the datasets are
-    approved, and it is never a valid benchmark, so it must be asked for by name and pointed at a
-    directory."""
-    summary = build_dataset(
-        synthetic_corpus(),
-        judge_dir=args.judge_dir,
-        private_dir=args.private_dir or REPO_ROOT / "private" / "data",
-    )
+    """Build the Judge directory from the real sources, or from the synthetic corpus, which is never
+    a valid benchmark and so must be asked for by name."""
+    private_dir = args.private_dir or REPO_ROOT / "private" / "data"
+    samples = synthetic_corpus()
+    if args.real:
+        from arena.data.sources import real_corpus
+        from arena.data.sources.adapters import SourceFormatChanged
+
+        judge_dir = args.judge_dir.resolve()
+        if judge_dir.is_relative_to(REPO_ROOT) and not judge_dir.is_relative_to(
+            REPO_ROOT / "private"
+        ):
+            print(
+                "The real test set may not be written inside the repo outside private/.",
+                file=sys.stderr,
+            )
+            return ExitCode.FAILED
+        try:
+            corpus = real_corpus(args.raw_dir)
+        except (ChangedSource, SourceFormatChanged) as broken:
+            print(broken, file=sys.stderr)
+            return ExitCode.FAILED
+        except ModuleNotFoundError as missing:
+            print(
+                f"{missing.name} is not installed. Install the data extra: "
+                'pip install -e ".[data]"',
+                file=sys.stderr,
+            )
+            return ExitCode.FAILED
+        for report in corpus.reports:
+            print(
+                f"{report.name}: {report.status}, {report.kept} kept of {report.read} read "
+                f"({report.unusable} unusable, {report.duplicates} duplicates)"
+            )
+        share = corpus.non_claude_attack_share
+        target = DEFAULTS.non_claude_attack_share_target
+        print(
+            "Non-Claude attack share: "
+            + (f"{share:.0%}" if share is not None else "no attacks")
+            + f" (target {target:.0%})"
+        )
+        samples = corpus.samples
+    summary = build_dataset(samples, judge_dir=args.judge_dir, private_dir=private_dir)
     for partition, labels in sorted(summary.counts.items()):
         print(f"{partition}: " + ", ".join(f"{n} {label}" for label, n in sorted(labels.items())))
     print(f"Removed: {summary.exact_removed} exact and {summary.near_removed} near duplicates.")
@@ -248,16 +309,23 @@ def main(argv: list[str] | None = None) -> int:
     abandon.add_argument("--reason", required=True)
     abandon.add_argument("--run-id", default="default")
     data = commands.add_parser("data").add_subparsers(dest="data_command", required=True)
+    raw_dir = REPO_ROOT / "private" / "data" / "raw"
     build = data.add_parser("build")
-    build.add_argument("--synthetic", action="store_true", required=True)
+    corpus = build.add_mutually_exclusive_group(required=True)
+    corpus.add_argument("--synthetic", action="store_true")
+    corpus.add_argument("--real", action="store_true")
     build.add_argument("--judge-dir", type=Path, required=True)
     build.add_argument("--private-dir", type=Path, default=None)
+    build.add_argument("--raw-dir", type=Path, default=raw_dir)
+    fetch = data.add_parser("fetch")
+    fetch.add_argument("--only", nargs="+", default=None, metavar="SOURCE")
+    fetch.add_argument("--raw-dir", type=Path, default=raw_dir)
     args = parser.parse_args(argv)
 
     if args.command == "baseline":
         return cmd_baseline(args)
     if args.command == "data":
-        return cmd_data_build(args)
+        return cmd_data_fetch(args) if args.data_command == "fetch" else cmd_data_build(args)
     if args.command == "live-check":
         return cmd_live_check(args.calls)
 

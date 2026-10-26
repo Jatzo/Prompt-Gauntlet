@@ -148,6 +148,9 @@ class ArenaConfig(_Frozen):
     held_out_techniques: tuple[str, ...] = ()
     # Generator families whose samples go to test only, as a cross-family check. Proposal.
     test_only_generator_families: tuple[str, ...] = ()
+    # The share of attacks no Claude model wrote, reported against this target by the real
+    # data build. Approved 2026-10-26.
+    non_claude_attack_share_target: float = 0.30
     # Labelling: the audit share is the plan's; 150 hand labels per test slice is a proposal.
     audit_share: float = 0.05
     hand_labels_per_test_slice: int = 150
