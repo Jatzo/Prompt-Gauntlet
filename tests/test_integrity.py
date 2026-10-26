@@ -18,7 +18,7 @@ PINS = {
     "arena/judge/__main__.py": "b8416a83c61e63dbb058d9da8b2081352431655890d78420a18ef986fc8cb5d3",
     "arena/judge/data.py": "89281c06be6451fc7632b8a336a1a8af148eaa3cd440970a9ea3b6c61bd0af15",
     "arena/judge/hashing.py": "a62562b195e5634c0e2c65df952f70619cecd162b7ce4443378c9fae8ca3e395",
-    "arena/judge/measure.py": "eae6260838f27a880aa70e8eb3b5d58076dbc4c094e7b3dd0a23a7a2894206dd",
+    "arena/judge/measure.py": "716caffa8653d49fe4eb4164caf382139b6b5666ab914aef4f98537927e590d2",
     "arena/judge/process.py": "4546c00899d463772dd50007c4a35c3541b05f2f4868f14fe17a944c30318c76",
     "arena/judge/stats.py": "0c7f898a271ae05ee890b35d7b113c21df46c03e4993d0b3fa37a967075c5dc8",
     "arena/judge/store.py": "2b71cb72a0862c0bf2622540099e009127363cad9fc0fff5722677fbb925fabf",

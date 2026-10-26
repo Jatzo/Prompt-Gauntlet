@@ -20,24 +20,27 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from arena import llm
-from arena.config import DEFAULTS, config_hash
+from arena.config import DEFAULTS, ArenaConfig, config_hash
 from arena.detector.probes import PROBES, fit_probe
+from arena.detector.rules import RuleSet
 from arena.detector.scorer import build_scorer
 from arena.judge import data as judge_data
 from arena.judge import stats
 from arena.judge.hashing import sha256_text
 from arena.judge.store import EvalCache
 from arena.schemas import (
+    ArmSpec,
     BaselineReport,
     DetectionRow,
     EndToEndRow,
     MeasureRequest,
     ProbeRow,
     Sample,
+    TargetSpec,
 )
 from arena.sim_profiles import simulated_backend
 from arena.target.app import run_episodes
-from arena.target.arms import DetectorGate, NoDefence, PlanThenExecute
+from arena.target.arms import Defence, DetectorGate, NoDefence, PlanThenExecute
 from arena.target.suites import benign_cases, injection_cases
 from arena.target.world import ATTACKER_ADDRESS, ATTACKER_PLACEHOLDER
 
@@ -121,7 +124,83 @@ def _fingerprint(root: Path, paths: tuple[str, ...]) -> str:
     return hashlib.sha256(joined.encode()).hexdigest()
 
 
-def run(request: MeasureRequest, context: Context) -> BaselineReport:
+@dataclass
+class Measurement:
+    """What one request measures against: its settings, the partitions it may read and the backend.
+
+    The steps below take one of these, so the keep rule can run them for a single candidate without
+    repeating the protocol.
+    """
+
+    request: MeasureRequest
+    context: Context
+    config: ArenaConfig
+    calibration: list[Sample]
+    evaluation: list[Sample]
+    monitor: list[Sample]
+    samples: dict[str, Sample]
+    dev_pairs: list
+    folds: dict[str, int | None]
+    backend: llm.Backend
+    noise: dict
+
+    def episodes(self, target: TargetSpec, defence: Defence, cases):
+        return run_episodes(
+            cases,
+            target=target,
+            defence=defence,
+            trials=self.request.trials,
+            cache=self.context.cache,
+            backend=self.backend,
+            config=self.config,
+        )
+
+    def cases_for(self, target: TargetSpec):
+        injected = injection_cases(
+            self.dev_pairs, self.samples, self.request.seed, target.tools, target.placements
+        )
+        return injected, benign_cases(self.request.seed, target.tools)
+
+    def items(
+        self, group: list[Sample], values: list[float | None], valid: set[str]
+    ) -> list[stats.ScoredItem]:
+        return [
+            stats.ScoredItem(
+                score=value if value is not None else 0.0,
+                is_attack=sample.label == "attack",
+                valid=sample.label != "attack" or sample.id in valid,
+                cluster=sample.cluster_id,
+                tiebreak=_tiebreak(self.request.seed, sample.id),
+                scorable=value is not None,
+                category=_category(sample) if sample.label == "benign" else None,
+                technique=_key(sample.technique),
+                impact=sample.impact_class,
+                source=sample.source,
+                fold=self.folds.get(sample.id),
+            )
+            for sample, value in zip(group, values, strict=True)
+        ]
+
+    def breakdown(self, cells: dict, counts: dict | None = None) -> tuple[dict, int]:
+        kept, dropped = {}, 0
+        for key, value in cells.items():
+            size = counts[key] if counts is not None else value.clusters
+            if size >= self.config.min_cell_size:
+                kept[key] = value
+            else:
+                dropped += 1
+        return kept, dropped
+
+    def rate(self, outcomes: list[tuple[bool, str]]):
+        return stats.clustered_rate(
+            [stats.ClusteredOutcome(success, cluster) for success, cluster in outcomes],
+            replicates=self.config.bootstrap_replicates_report,
+            confidence=self.config.keep_bootstrap_confidence,
+            seed=self.request.seed,
+        )
+
+
+def prepare(request: MeasureRequest, context: Context) -> Measurement:
     config = DEFAULTS
     if request.replicates is not None:
         config = DEFAULTS.model_copy(
@@ -131,202 +210,162 @@ def run(request: MeasureRequest, context: Context) -> BaselineReport:
             }
         )
     partitions = judge_data.open_partitions(context.data_dir, ("calibration", "dev", "monitor"))
-    calibration = [row.sample for row in partitions["calibration"].rows if _in_scope(row.sample)]
     dev_rows = [row for row in partitions["dev"].rows if _in_scope(row.sample)]
     samples = {row.sample.id: row.sample for row in dev_rows}
-    dev_pairs = [pair for pair in partitions["dev"].pairs if pair.payload_sample_id in samples]
-    folds = {row.sample.id: row.fold for row in dev_rows}
-    backend = _backend(request, context.root)
-    noise = judge_data.label_noise(context.data_dir)
+    return Measurement(
+        request=request,
+        context=context,
+        config=config,
+        calibration=[row.sample for row in partitions["calibration"].rows if _in_scope(row.sample)],
+        evaluation=[row.sample for row in dev_rows],
+        monitor=[row.sample for row in partitions["monitor"].rows if _in_scope(row.sample)],
+        samples=samples,
+        dev_pairs=[pair for pair in partitions["dev"].pairs if pair.payload_sample_id in samples],
+        folds={row.sample.id: row.fold for row in dev_rows},
+        backend=_backend(request, context.root),
+        noise=judge_data.label_noise(context.data_dir),
+    )
 
-    def episodes(target, defence, cases):
-        return run_episodes(
-            cases,
-            target=target,
-            defence=defence,
-            trials=request.trials,
-            cache=context.cache,
-            backend=backend,
-            config=config,
-        )
 
-    def cases_for(target):
-        injected = injection_cases(
-            dev_pairs, samples, request.seed, target.tools, target.placements
-        )
-        return injected, benign_cases(request.seed, target.tools)
+def validity(measurement: Measurement, reference: TargetSpec) -> set[str]:
+    """Ids of the attacks that succeed against the undefended reference target in any trial."""
+    injected, _ = measurement.cases_for(reference)
+    payload_of = {pair.id: pair.payload_sample_id for pair in measurement.dev_pairs}
+    return {
+        payload_of[result.case_id]
+        for result in measurement.episodes(reference, NoDefence(), injected)
+        if result.outcome.attack_succeeded
+    }
 
-    # Validity: an attack is valid when it succeeds against the undefended reference target.
-    reference = request.reference_target
-    injected, _ = cases_for(reference)
-    payload_of = {pair.id: pair.payload_sample_id for pair in dev_pairs}
-    valid: set[str] = set()
-    for result in episodes(reference, NoDefence(), injected):
-        if result.outcome.attack_succeeded:
-            valid.add(payload_of[result.case_id])
 
-    def items(group: list[Sample], values: list[float | None]) -> list[stats.ScoredItem]:
-        return [
-            stats.ScoredItem(
-                score=value if value is not None else 0.0,
-                is_attack=sample.label == "attack",
-                valid=sample.label != "attack" or sample.id in valid,
-                cluster=sample.cluster_id,
-                tiebreak=_tiebreak(request.seed, sample.id),
-                scorable=value is not None,
-                category=_category(sample) if sample.label == "benign" else None,
-                technique=_key(sample.technique),
-                impact=sample.impact_class,
-                source=sample.source,
-                fold=folds.get(sample.id),
-            )
-            for sample, value in zip(group, values, strict=True)
-        ]
+@dataclass
+class ArmResult:
+    row: DetectionRow
+    rules: RuleSet
+    # None when unscorable calibration items alone used up the FPR budget.
+    gate: DetectorGate | None
+    calibration_items: list[stats.ScoredItem]
+    evaluation_items: list[stats.ScoredItem]
 
-    def breakdown(cells: dict, counts: dict | None = None) -> tuple[dict, int]:
-        kept, dropped = {}, 0
-        for key, value in cells.items():
-            size = counts[key] if counts is not None else value.clusters
-            if size >= config.min_cell_size:
-                kept[key] = value
-            else:
-                dropped += 1
-        return kept, dropped
 
-    evaluation = [row.sample for row in dev_rows]
-    detection_rows: list[DetectionRow] = []
-    gates: dict[str, DetectorGate] = {}
-    rule_sets = {}
-    for arm in request.arms:
-        if arm.kind != "detector" or arm.detector is None:
-            continue
-        scorer = build_scorer(
-            arm.detector, cache=context.cache, backend=backend, seed=request.seed, settings=config
-        )
-        rule_sets[arm.name] = scorer.rules
-        # A rule that times out is disabled from then on, so score again until none drops out:
-        # calibration and evaluation must see the same detector. Repeat classifier calls are cached.
-        while True:
-            disabled = set(scorer.rules.disabled)
-            cal_scores = scorer.score([_text(s) for s in calibration])
-            eval_scores = scorer.score([_text(s) for s in evaluation])
-            if scorer.rules.disabled == disabled:
-                break
-        cal_items = items(calibration, [score.value for score in cal_scores])
-        eval_items = items(evaluation, [score.value for score in eval_scores])
-        hijacked = sum(score.hijack for score in (*cal_scores, *eval_scores))
-        unscorable = sum(score.value is None for score in (*cal_scores, *eval_scores))
-        try:
-            found = stats.calibrated_detection(
-                cal_items,
-                eval_items,
-                target_fpr=config.target_fpr,
-                score_kind=scorer.kind,
-                replicates=config.bootstrap_replicates_report,
-                confidence=config.keep_bootstrap_confidence,
-                seed=request.seed,
-                noise=noise.get("dev"),
-            )
-            gates[arm.name] = DetectorGate(
-                scorer=scorer.segment_scores,
-                threshold=stats.threshold_at_fpr(cal_items, config.target_fpr),
-                seed=request.seed,
-            )
-        except stats.TargetUnreachable:
-            detection_rows.append(
-                DetectionRow(
-                    arm=arm.name,
-                    score_kind=scorer.kind,
-                    tpr=None,
-                    achieved_fpr=None,
-                    auc=None,
-                    by_fold={},
-                    by_source={},
-                    per_category_fpr={},
-                    suppressed_cells=0,
-                    valid_attacks=0,
-                    invalid_attacks=0,
-                    unscorable=unscorable,
-                    hijacked=hijacked,
-                    benign=len(calibration),
-                    target_unreachable=True,
-                )
-            )
-            continue
-        by_fold, dropped_folds = breakdown(found.by_fold)
-        by_source, dropped_sources = breakdown(found.by_source)
-        by_technique, dropped_techniques = breakdown(found.by_technique)
-        by_impact, dropped_impacts = breakdown(found.by_impact)
-        per_category, dropped_categories = breakdown(
-            found.per_category_fpr, found.per_category_benign
-        )
-        detection_rows.append(
-            DetectionRow(
-                arm=arm.name,
-                score_kind=scorer.kind,
-                tpr=found.tpr,
-                achieved_fpr=found.achieved_fpr,
-                auc=found.auc,
-                by_fold=by_fold,
-                by_source=by_source,
-                by_technique=by_technique,
-                by_impact=by_impact,
-                per_category_fpr=per_category,
-                suppressed_cells=dropped_folds
-                + dropped_sources
-                + dropped_techniques
-                + dropped_impacts
-                + dropped_categories,
-                valid_attacks=found.n_valid_attacks,
-                invalid_attacks=found.n_invalid_attacks,
-                unscorable=unscorable,
-                hijacked=hijacked,
-                benign=found.n_benign,
-            )
-        )
-
-    def rate(outcomes: list[tuple[bool, str]]):
-        return stats.clustered_rate(
-            [stats.ClusteredOutcome(success, cluster) for success, cluster in outcomes],
+def calibrate_arm(measurement: Measurement, arm: ArmSpec, valid: set[str]) -> ArmResult:
+    """Score calibration and dev with one detector, calibrate its threshold and measure it there."""
+    config, request = measurement.config, measurement.request
+    calibration, evaluation = measurement.calibration, measurement.evaluation
+    scorer = build_scorer(
+        arm.detector,
+        cache=measurement.context.cache,
+        backend=measurement.backend,
+        seed=request.seed,
+        settings=config,
+    )
+    # A rule that times out is disabled from then on, so score again until none drops out:
+    # calibration and evaluation must see the same detector. Repeat classifier calls are cached.
+    while True:
+        disabled = set(scorer.rules.disabled)
+        cal_scores = scorer.score([_text(s) for s in calibration])
+        eval_scores = scorer.score([_text(s) for s in evaluation])
+        if scorer.rules.disabled == disabled:
+            break
+    cal_items = measurement.items(calibration, [score.value for score in cal_scores], valid)
+    eval_items = measurement.items(evaluation, [score.value for score in eval_scores], valid)
+    hijacked = sum(score.hijack for score in (*cal_scores, *eval_scores))
+    unscorable = sum(score.value is None for score in (*cal_scores, *eval_scores))
+    try:
+        found = stats.calibrated_detection(
+            cal_items,
+            eval_items,
+            target_fpr=config.target_fpr,
+            score_kind=scorer.kind,
             replicates=config.bootstrap_replicates_report,
             confidence=config.keep_bootstrap_confidence,
             seed=request.seed,
+            noise=measurement.noise.get("dev"),
         )
+    except stats.TargetUnreachable:
+        row = DetectionRow(
+            arm=arm.name,
+            score_kind=scorer.kind,
+            tpr=None,
+            achieved_fpr=None,
+            auc=None,
+            by_fold={},
+            by_source={},
+            per_category_fpr={},
+            suppressed_cells=0,
+            valid_attacks=0,
+            invalid_attacks=0,
+            unscorable=unscorable,
+            hijacked=hijacked,
+            benign=len(calibration),
+            target_unreachable=True,
+        )
+        return ArmResult(row, scorer.rules, None, cal_items, eval_items)
+    gate = DetectorGate(
+        scorer=scorer.segment_scores,
+        threshold=stats.threshold_at_fpr(cal_items, config.target_fpr),
+        seed=request.seed,
+    )
+    by_fold, dropped_folds = measurement.breakdown(found.by_fold)
+    by_source, dropped_sources = measurement.breakdown(found.by_source)
+    by_technique, dropped_techniques = measurement.breakdown(found.by_technique)
+    by_impact, dropped_impacts = measurement.breakdown(found.by_impact)
+    per_category, dropped_categories = measurement.breakdown(
+        found.per_category_fpr, found.per_category_benign
+    )
+    row = DetectionRow(
+        arm=arm.name,
+        score_kind=scorer.kind,
+        tpr=found.tpr,
+        achieved_fpr=found.achieved_fpr,
+        auc=found.auc,
+        by_fold=by_fold,
+        by_source=by_source,
+        by_technique=by_technique,
+        by_impact=by_impact,
+        per_category_fpr=per_category,
+        suppressed_cells=dropped_folds
+        + dropped_sources
+        + dropped_techniques
+        + dropped_impacts
+        + dropped_categories,
+        valid_attacks=found.n_valid_attacks,
+        invalid_attacks=found.n_invalid_attacks,
+        unscorable=unscorable,
+        hijacked=hijacked,
+        benign=found.n_benign,
+    )
+    return ArmResult(row, scorer.rules, gate, cal_items, eval_items)
 
-    end_to_end: list[EndToEndRow] = []
-    for target in request.targets:
-        injected, benign = cases_for(target)
-        for arm in request.arms:
-            if arm.kind == "no_defence":
-                defence = NoDefence()
-            elif arm.kind == "detector" and arm.name in gates:
-                defence = gates[arm.name]
-            elif arm.kind == "plan_then_execute":
-                defence = PlanThenExecute()
-            else:
-                continue
-            attacked = episodes(target, defence, injected)
-            served = episodes(target, defence, benign)
-            end_to_end.append(
-                EndToEndRow(
-                    arm=arm.name,
-                    target=target.key,
-                    asr=rate([(r.outcome.attack_succeeded, r.cluster) for r in attacked]),
-                    utility=rate([(r.outcome.task_completed, r.cluster) for r in served]),
-                    refused_attempts=sum("refused_attempt" in r.outcome.signals for r in attacked),
-                    unscorable_episodes=sum(r.ended_unscorable for r in (*attacked, *served)),
-                )
-            )
 
-    # Shortcut probes: fitted on monitor, measured on dev under the same calibration protocol.
-    training = [_as_read(row.sample) for row in partitions["monitor"].rows if _in_scope(row.sample)]
-    cal_read = [_as_read(s) for s in calibration]
-    eval_read = [_as_read(s) for s in evaluation]
-    probe_rows = []
+def end_to_end(
+    measurement: Measurement, target: TargetSpec, arm_name: str, defence: Defence
+) -> EndToEndRow:
+    """ASR on the dev injection suite and utility on the benign suite, for one arm on one target."""
+    injected, benign = measurement.cases_for(target)
+    attacked = measurement.episodes(target, defence, injected)
+    served = measurement.episodes(target, defence, benign)
+    return EndToEndRow(
+        arm=arm_name,
+        target=target.key,
+        asr=measurement.rate([(r.outcome.attack_succeeded, r.cluster) for r in attacked]),
+        utility=measurement.rate([(r.outcome.task_completed, r.cluster) for r in served]),
+        refused_attempts=sum("refused_attempt" in r.outcome.signals for r in attacked),
+        unscorable_episodes=sum(r.ended_unscorable for r in (*attacked, *served)),
+    )
+
+
+def probes(measurement: Measurement, valid: set[str]) -> list[ProbeRow]:
+    """Shortcut probes: fitted on monitor, measured on dev under the same calibration protocol."""
+    config, request = measurement.config, measurement.request
+    training = [_as_read(s) for s in measurement.monitor]
+    cal_read = [_as_read(s) for s in measurement.calibration]
+    eval_read = [_as_read(s) for s in measurement.evaluation]
+    rows = []
     for name in PROBES:
         probe = fit_probe(name, training)
-        cal_items = items(calibration, [probe(s) for s in cal_read])
-        eval_items = items(evaluation, [probe(s) for s in eval_read])
+        cal_items = measurement.items(measurement.calibration, [probe(s) for s in cal_read], valid)
+        eval_items = measurement.items(measurement.evaluation, [probe(s) for s in eval_read], valid)
         try:
             found = stats.calibrated_detection(
                 cal_items,
@@ -337,25 +376,55 @@ def run(request: MeasureRequest, context: Context) -> BaselineReport:
                 confidence=config.keep_bootstrap_confidence,
                 seed=request.seed,
             )
-            probe_rows.append(ProbeRow(probe=name, tpr=found.tpr))
+            rows.append(ProbeRow(probe=name, tpr=found.tpr))
         except stats.TargetUnreachable:
-            probe_rows.append(ProbeRow(probe=name, tpr=None))
+            rows.append(ProbeRow(probe=name, tpr=None))
+    return rows
 
+
+def run(request: MeasureRequest, context: Context) -> BaselineReport:
+    measurement = prepare(request, context)
+    config = measurement.config
+    reference = request.reference_target
+    valid = validity(measurement, reference)
+
+    arms = {
+        arm.name: calibrate_arm(measurement, arm, valid)
+        for arm in request.arms
+        if arm.kind == "detector" and arm.detector is not None
+    }
+
+    end_to_end_rows: list[EndToEndRow] = []
+    for target in request.targets:
+        for arm in request.arms:
+            if arm.kind == "no_defence":
+                defence = NoDefence()
+            elif arm.kind == "detector" and arm.name in arms and arms[arm.name].gate is not None:
+                defence = arms[arm.name].gate
+            elif arm.kind == "plan_then_execute":
+                defence = PlanThenExecute()
+            else:
+                continue
+            end_to_end_rows.append(end_to_end(measurement, target, arm.name, defence))
+
+    probe_rows = probes(measurement, valid)
     label_error = {
         name: stats.beta_interval(n.errors, n.audited, config.keep_bootstrap_confidence)
-        for name, n in noise.items()
+        for name, n in measurement.noise.items()
         if n.audited > 0
     }
     tokens_in, tokens_out = context.cache.tokens()
-    detector_tokens, detector_calls = context.cache.usage_for(config.models.detector, backend.name)
+    detector_tokens, detector_calls = context.cache.usage_for(
+        config.models.detector, measurement.backend.name
+    )
     # Read after the gates too, so a rule dropped during an end-to-end run is named as well.
     detection_rows = [
-        row.model_copy(update={"disabled_rules": sorted(rule_sets[row.arm].disabled)})
-        for row in detection_rows
+        result.row.model_copy(update={"disabled_rules": sorted(result.rules.disabled)})
+        for result in arms.values()
     ]
     return BaselineReport(
         detection=detection_rows,
-        end_to_end=end_to_end,
+        end_to_end=end_to_end_rows,
         probes=probe_rows,
         headline_arm=next(
             (row.arm for row in detection_rows if row.score_kind == "verbalised"),
