@@ -1,6 +1,7 @@
 """Labels with no human step: agreement, the keep rules, the cap and the Ollama backend."""
 
 import json
+from typing import get_args
 
 import pytest
 from fakes import FakeLabeller, MemoryEvalCache, keyword_verdict
@@ -9,6 +10,7 @@ from arena import llm
 from arena.config import ArenaConfig
 from arena.data.build import build_dataset
 from arena.data.labelling import (
+    SYSTEM,
     ContestedCapExceeded,
     LabelCache,
     agreement,
@@ -19,7 +21,7 @@ from arena.data.labelling import (
 from arena.data.labelling import requests as labelling_requests
 from arena.data.splits import SplitRow
 from arena.data.templates import synthetic_corpus
-from arena.schemas import LabelVerdict
+from arena.schemas import ImpactClass, LabelVerdict
 
 ATTACK = LabelVerdict(label="attack", kind="injection", impact_class="data_theft")
 BENIGN = LabelVerdict(label="benign", kind="neither", impact_class="none")
@@ -91,6 +93,15 @@ def test_attack_fields_change_only_where_both_families_agree():
     )
     assert result.disagreements == {("template", "impact_class"): 2, ("template", "kind"): 1}
     assert result.agreement["impact_class"].n == 2
+
+
+def test_every_impact_class_has_a_definition_in_precedence_order():
+    # A class added to the schema without a definition here would leave the labellers guessing.
+    # The end effect decides: data leaving beats an action, an action beats a changed answer.
+    order = ["data_theft", "unauthorised_action", "goal_hijacking", "denial_of_service"]
+    assert set(order) == set(get_args(ImpactClass)) - {"none"}
+    for number, impact in enumerate(order, start=1):
+        assert f"{number}. '{impact}':" in SYSTEM
 
 
 REFUSED = llm.Unscorable(llm.REFUSED)
