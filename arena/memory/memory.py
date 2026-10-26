@@ -14,13 +14,51 @@ import sqlite3
 
 from arena import db
 from arena.config import DEFAULTS, ArenaConfig
-from arena.schemas import LessonProposal, Prediction
+from arena.detector.patch import fingerprint
+from arena.schemas import DetectorConfig, LessonProposal, Prediction
 
 _WORD = re.compile(r"\w+")
 
 
 class MemoryWriteRejected(ValueError):
     """The write broke a memory rule. Nothing was written."""
+
+
+# How a detector config's status may move. A rejection also rejects every descendant.
+_NEXT_STATUS = {
+    # A candidate is rejected only by the cascade, when the lineage it was built on is rejected.
+    "candidate": frozenset({"not_kept", "kept_provisional", "rejected"}),
+    "kept_provisional": frozenset({"kept_reviewed", "rejected"}),
+}
+_STANDING = ("baseline", "kept_provisional", "kept_reviewed")
+
+
+def incumbent(conn: sqlite3.Connection) -> tuple[int, DetectorConfig] | None:
+    """The config the next candidate is measured against: the newest one still standing."""
+    placeholders = ",".join("?" * len(_STANDING))
+    row = conn.execute(
+        f"SELECT id, config FROM detector_configs WHERE status IN ({placeholders})"  # noqa: S608
+        " ORDER BY id DESC LIMIT 1",
+        _STANDING,
+    ).fetchone()
+    if row is None:
+        return None
+    return row[0], DetectorConfig.model_validate_json(row[1])
+
+
+def lineage(conn: sqlite3.Connection, config_id: int) -> list[int]:
+    """The config's ancestry, from itself back to the baseline."""
+    chain = []
+    current: int | None = config_id
+    while current is not None:
+        row = conn.execute(
+            "SELECT parent_id FROM detector_configs WHERE id = ?", (current,)
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"No detector config {current}.")
+        chain.append(current)
+        current = row[0]
+    return chain
 
 
 def token_set_jaccard(left: str, right: str) -> float:
@@ -120,6 +158,80 @@ class Memory:
         )
         self._provenance("memory_predictions", row_id, role, cycle_id, step)
         return row_id
+
+    def add_detector_config(
+        self,
+        config: DetectorConfig,
+        *,
+        parent_id: int | None,
+        cycle_id: int,
+        step: str,
+        role: str,
+    ) -> int:
+        """Store a config. Only the first may have no parent: it is the baseline."""
+        self._require_transaction()
+        config = DetectorConfig.model_validate(config.model_dump())
+        if parent_id is None:
+            if self.conn.execute("SELECT 1 FROM detector_configs LIMIT 1").fetchone():
+                raise MemoryWriteRejected(
+                    "Only the first detector config, the baseline, has no parent."
+                )
+            status = "baseline"
+        else:
+            if not self.conn.execute(
+                "SELECT 1 FROM detector_configs WHERE id = ?", (parent_id,)
+            ).fetchone():
+                raise MemoryWriteRejected(f"Parent detector config {parent_id} does not exist.")
+            status = "candidate"
+        row_id = self._insert(
+            "INSERT INTO detector_configs (parent_id, config, config_hash, status, cycle_id,"
+            " created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                parent_id,
+                config.model_dump_json(),
+                fingerprint(config),
+                status,
+                cycle_id,
+                db.now(),
+            ),
+        )
+        self._provenance("detector_configs", row_id, role, cycle_id, step)
+        return row_id
+
+    def set_detector_status(
+        self, config_id: int, status: str, *, cycle_id: int, step: str, role: str
+    ) -> list[int]:
+        """Move a config to its next status. Rejecting it reverts its lineage: every descendant is
+        rejected too. Returns the ids whose status changed."""
+        self._require_transaction()
+        row = self.conn.execute(
+            "SELECT status FROM detector_configs WHERE id = ?", (config_id,)
+        ).fetchone()
+        if row is None:
+            raise MemoryWriteRejected(f"Detector config {config_id} does not exist.")
+        if status not in _NEXT_STATUS.get(row[0], ()):
+            raise MemoryWriteRejected(
+                f"Detector config {config_id} cannot go from {row[0]} to {status}."
+            )
+        changed = [config_id]
+        if status == "rejected":
+            changed += [
+                descendant
+                for (descendant,) in self.conn.execute(
+                    "WITH RECURSIVE tree(id) AS ("
+                    "SELECT id FROM detector_configs WHERE parent_id = ?"
+                    " UNION SELECT d.id FROM detector_configs d JOIN tree ON d.parent_id = tree.id)"
+                    " SELECT d.id FROM tree JOIN detector_configs d ON d.id = tree.id"
+                    " WHERE d.status IN ('candidate', 'kept_provisional', 'kept_reviewed')",
+                    (config_id,),
+                )
+            ]
+        for changed_id in changed:
+            self.conn.execute(
+                "UPDATE detector_configs SET status = ? WHERE id = ?", (status, changed_id)
+            )
+            self._provenance("detector_configs", changed_id, role, cycle_id, step)
+        return changed
 
     def add_operator_note(self, text: str) -> int:
         """Operator guidance. Written once by the operator and never edited by code."""
