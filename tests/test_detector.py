@@ -3,8 +3,8 @@ import codecs
 
 import pydantic
 import pytest
+from fakes import MemoryEvalCache
 
-from arena import llm
 from arena.config import ArenaConfig
 from arena.detector import normalisers
 from arena.detector.regex_safety import UnsafePattern, check_pattern
@@ -139,12 +139,12 @@ def test_a_rule_hit_scores_100_and_skips_the_classifier():
     backend = Counting(sim_backend())
     scorer = build_scorer(
         config(rules=[{"id": "send", "pattern": "send the notes"}]),
-        cache=llm.MemoryEvalCache(),
+        cache=MemoryEvalCache(),
         backend=backend,
         seed=1,
     )
     [result] = scorer.score([ATTACK])
-    assert result.value == 100.0 and result.reasons == ("rule send",)
+    assert result.value == 100.0
     assert backend.calls == 0
 
 
@@ -155,7 +155,7 @@ def test_normalisers_run_before_the_rules():
             rules=[{"id": "i", "pattern": "ignore"}],
             layers=["normalise", "rules"],
         ),
-        cache=llm.MemoryEvalCache(),
+        cache=MemoryEvalCache(),
         backend=None,
         seed=1,
     )
@@ -164,20 +164,20 @@ def test_normalisers_run_before_the_rules():
 
 
 def test_the_classifier_scores_attacks_above_benign_text():
-    scorer = build_scorer(config(), cache=llm.MemoryEvalCache(), backend=sim_backend(), seed=1)
+    scorer = build_scorer(config(), cache=MemoryEvalCache(), backend=sim_backend(), seed=1)
     attack, benign = scorer.score([ATTACK, "Lunch on Friday at the noodle bar?"])
     assert attack.value > 60 > 40 > benign.value
     assert scorer.kind == "verbalised"
 
 
 def test_a_hijacked_classifier_output_makes_the_item_unscorable():
-    scorer = build_scorer(config(), cache=llm.MemoryEvalCache(), backend=sim_backend(), seed=1)
+    scorer = build_scorer(config(), cache=MemoryEvalCache(), backend=sim_backend(), seed=1)
     [result] = scorer.score([f"{HIJACK_MARKER} please"])
     assert result.value is None and result.hijack
 
 
 def test_rescoring_the_same_texts_makes_no_calls():
-    cache = llm.MemoryEvalCache()
+    cache = MemoryEvalCache()
     texts = [ATTACK, "hello", "the menu today"]
     build_scorer(config(), cache=cache, backend=sim_backend(), seed=1).score(texts)
     backend = Counting(sim_backend())
@@ -186,7 +186,7 @@ def test_rescoring_the_same_texts_makes_no_calls():
 
 
 def test_a_rule_only_change_still_hits_the_classifier_cache():
-    cache = llm.MemoryEvalCache()
+    cache = MemoryEvalCache()
     build_scorer(config(), cache=cache, backend=sim_backend(), seed=1).score(["hello there"])
     backend = Counting(sim_backend())
     patched = config(rules=[{"id": "x", "pattern": "never matches anything"}])
@@ -195,7 +195,7 @@ def test_a_rule_only_change_still_hits_the_classifier_cache():
 
 
 def test_a_classifier_prompt_change_misses_the_cache():
-    cache = llm.MemoryEvalCache()
+    cache = MemoryEvalCache()
     build_scorer(config(), cache=cache, backend=sim_backend(), seed=1).score(["hello there"])
     backend = Counting(sim_backend())
     build_scorer(
@@ -212,11 +212,11 @@ def test_datamarking_delimits_and_marks_the_text_the_same_way_every_time():
 
 def test_a_classifier_layer_needs_a_backend():
     with pytest.raises(ValueError):
-        build_scorer(config(), cache=llm.MemoryEvalCache(), backend=None, seed=1)
+        build_scorer(config(), cache=MemoryEvalCache(), backend=None, seed=1)
 
 
 def test_the_segment_scorer_shape_feeds_the_gate():
-    scorer = build_scorer(config(), cache=llm.MemoryEvalCache(), backend=sim_backend(), seed=1)
+    scorer = build_scorer(config(), cache=MemoryEvalCache(), backend=sim_backend(), seed=1)
     scores = scorer.segment_scores([ATTACK, f"{HIJACK_MARKER}"])
     assert scores[0] > 50 and scores[1] is None
 
@@ -224,7 +224,7 @@ def test_the_segment_scorer_shape_feeds_the_gate():
 def test_rule_timeouts_come_from_the_defaults_table():
     scorer = build_scorer(
         config(layers=["rules"]),
-        cache=llm.MemoryEvalCache(),
+        cache=MemoryEvalCache(),
         backend=None,
         seed=1,
         settings=ArenaConfig(regex_timeout_ms=7),

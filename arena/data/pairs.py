@@ -12,17 +12,16 @@ from collections.abc import Sequence
 from arena.schemas import InjectionPair, Sample
 from arena.target.suites import STANDARD_PLACEMENT, TASKS
 
-_TASK_CHANNEL = {"email": "email", "document": "document", "tool_output": "tool_output"}
-
 
 def build_pairs(samples: Sequence[Sample]) -> list[InjectionPair]:
     pairs = []
     for sample in samples:
         if sample.label != "attack" or sample.partition == "train":
             continue
-        if sample.injection_vs_jailbreak != "injection" or sample.channel not in _TASK_CHANNEL:
+        if sample.injection_vs_jailbreak != "injection":
             continue
-        tasks = [task for task in TASKS if task.reads == _TASK_CHANNEL[sample.channel]]
+        # No task reads the user channel, so a direct prompt finds no task and makes no pair.
+        tasks = [task for task in TASKS if task.reads == sample.channel]
         if not tasks:
             continue
         pick = int(hashlib.sha256(sample.id.encode()).hexdigest(), 16) % len(tasks)

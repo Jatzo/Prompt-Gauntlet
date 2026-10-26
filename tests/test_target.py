@@ -4,8 +4,8 @@ import re
 from datetime import date
 
 import pytest
+from fakes import MemoryEvalCache
 
-from arena import llm
 from arena.config import DEFAULTS, ArenaConfig
 from arena.judge import stats
 from arena.schemas import InjectionPair, Metric, Sample, TargetSpec
@@ -72,7 +72,7 @@ def run(cases, defence=None, backend=None, cache=None, trials=5):
         target=STRONG,
         defence=defence or NoDefence(),
         trials=trials,
-        cache=cache or llm.MemoryEvalCache(),
+        cache=cache or MemoryEvalCache(),
         backend=backend or sim(),
     )
 
@@ -285,7 +285,7 @@ def test_the_risky_rung_places_payloads_in_the_tool_preamble():
 def test_a_rerun_of_the_same_episodes_makes_no_model_calls():
     pairs, samples = pairs_and_samples(per_task=1)
     cases = injection_cases(pairs, samples, 1, "strict", "standard")
-    cache = llm.MemoryEvalCache()
+    cache = MemoryEvalCache()
     first = run(cases, cache=cache)
 
     class NoCalls:

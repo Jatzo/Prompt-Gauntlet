@@ -35,7 +35,6 @@ class Score:
     """One item's score. `value` is None when the item was unscorable."""
 
     value: float | None
-    reasons: tuple[str, ...]
     hijack: bool = False
 
 
@@ -75,12 +74,9 @@ class Scorer:
         rule_hits = [
             self.rules.matches(text) if "rules" in self.config.layers else [] for text in prepared
         ]
-        results: list[Score | None] = [
-            Score(100.0, tuple(f"rule {rule}" for rule in hits)) if hits else None
-            for hits in rule_hits
-        ]
+        results: list[Score | None] = [Score(100.0) if hits else None for hits in rule_hits]
         if "classifier" not in self.config.layers:
-            return [result or Score(0.0, ()) for result in results]
+            return [result or Score(0.0) for result in results]
 
         pending = [index for index, result in enumerate(results) if result is None]
         requests = [
@@ -112,9 +108,9 @@ class Scorer:
         )
         for index, output in zip(pending, outputs, strict=True):
             if isinstance(output, llm.Unscorable):
-                results[index] = Score(None, (output.reason,), output.reason.startswith("hijack"))
+                results[index] = Score(None, output.reason.startswith("hijack"))
             else:
-                results[index] = Score(output.score, tuple(output.reasons))
+                results[index] = Score(output.score)
         return results
 
     def segment_scores(self, texts: Sequence[str]) -> list[float | None]:

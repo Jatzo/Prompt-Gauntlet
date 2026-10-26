@@ -22,6 +22,7 @@ from arena.target.arms import Defence, PlanThenExecute, allow_call, apply_gate, 
 from arena.target.checker import CheckOutcome, check
 from arena.target.suites import Case
 
+# The longest task needs 2 tool calls and a final answer; 6 turns leave room for an injected detour.
 MAX_TURNS = 6
 
 SYSTEM_PROMPT = (

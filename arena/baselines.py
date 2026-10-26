@@ -12,6 +12,7 @@ from datetime import date
 from statistics import NormalDist
 
 from arena.config import DEFAULTS, ArenaConfig
+from arena.exit_codes import ExitCode
 from arena.schemas import ArmSpec, BaselineReport, DetectorConfig, MeasureRequest, TargetSpec
 from arena.target import ladder
 
@@ -96,7 +97,7 @@ class Verdict:
     gate: ladder.GateDecision
     power: Power
     cost: Cost
-    exit_code: int
+    exit_code: ExitCode
 
 
 def _smallest_delta(rate: float, clusters: int, config: ArenaConfig) -> float | None:
@@ -107,6 +108,7 @@ def _smallest_delta(rate: float, clusters: int, config: ArenaConfig) -> float | 
     z = NormalDist().inv_cdf(1 - config.power_alpha / 2) + NormalDist().inv_cdf(
         1 - config.power_beta
     )
+    # A rate of 0 or 1 has zero variance and would claim any difference is detectable.
     variance = max(rate * (1 - rate), 0.01)
     return z * math.sqrt(2 * variance / clusters)
 
@@ -151,13 +153,13 @@ def verdict(
     cost = Cost(items, per_call, round(items * per_call))
 
     if not measurable:
-        exit_code = 3
+        exit_code = ExitCode.NEEDS_OPERATOR
     elif not valid:
-        exit_code = 4
+        exit_code = ExitCode.BENCHMARK_INVALID
     elif gate.status in ("pass", "fallback_pass"):
-        exit_code = 0
+        exit_code = ExitCode.OK
     elif gate.status == "narrowed":
-        exit_code = 5
+        exit_code = ExitCode.NARROWED
     else:
-        exit_code = 3
+        exit_code = ExitCode.NEEDS_OPERATOR
     return Verdict(measurable, valid, worst, worst_tpr, limit, gate, power, cost, exit_code)

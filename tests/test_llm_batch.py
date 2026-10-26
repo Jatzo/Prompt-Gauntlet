@@ -4,11 +4,12 @@ import time
 
 import pydantic
 import pytest
+from fakes import MemoryEvalCache
 
 from arena import llm
 from arena.anomaly import ModelIdMismatch, UsageCapReached
 from arena.config import DEFAULTS, ArenaConfig
-from arena.llm import KeyedRequest, MemoryEvalCache, Unscorable
+from arena.llm import KeyedRequest, Unscorable
 from arena.schemas import DetectorResult
 from arena.simulated import SimulatedBackend
 

@@ -4,6 +4,8 @@ python -m arena.cli status
 python -m arena.cli control start|pause|resume|stop
 python -m arena.cli run-cycle --backend mock|replay [--cassette PATH]
 python -m arena.cli baseline --backend mock|replay|live [--profile clean|low_asr]
+
+Exit codes are listed in arena/exit_codes.py.
 """
 
 import argparse
@@ -15,6 +17,7 @@ from pathlib import Path
 
 from arena import baselines, db, llm, usage
 from arena.config import DEFAULTS, REPO_ROOT, agent_db_path
+from arena.exit_codes import ExitCode
 from arena.judge_client import JudgeClient, JudgeError
 from arena.orchestrator import Orchestrator, phase1_mock_script
 from arena.report_tables import render
@@ -51,12 +54,17 @@ def cmd_run_cycle(conn, backend_name: str, cassette: Path | None, run_id: str) -
     state, reason = db.control_state(conn)
     if state != "running":
         print(f"The run is {state} ({reason}). Start it with: python -m arena.cli control start")
-        return 3
+        return ExitCode.NEEDS_OPERATOR
     backend = llm.get_backend(backend_name, mock_script=phase1_mock_script(), cassette=cassette)
     with JudgeClient() as judge:
         outcome = Orchestrator(conn, backend=backend, judge=judge, run_id=run_id).run_cycle()
     print(f"Cycle {outcome.cycle_id}: {outcome.status} ({outcome.detail})")
-    return {"committed": 0, "paused": 3, "stopped": 3}.get(outcome.status, 1)
+    codes = {
+        "committed": ExitCode.OK,
+        "paused": ExitCode.NEEDS_OPERATOR,
+        "stopped": ExitCode.NEEDS_OPERATOR,
+    }
+    return codes.get(outcome.status, ExitCode.FAILED)
 
 
 def cmd_baseline(args) -> int:
@@ -98,7 +106,7 @@ def cmd_baseline(args) -> int:
             report, verdict = measure(LADDER[verdict.gate.rung])
     except JudgeError as error:
         print(f"Baseline not measured. {error}", file=sys.stderr)
-        return 1
+        return ExitCode.FAILED
 
     print(render(report, verdict))
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")

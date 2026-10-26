@@ -15,7 +15,6 @@ from arena.data.splits import SplitRow
 @dataclass(frozen=True)
 class Feasibility:
     counts: dict[str, dict[str, int]]
-    dev_benign_categories: dict[str, int]
     shortfalls: list[str]
 
     @property
@@ -59,6 +58,5 @@ def check_feasible(rows: Sequence[SplitRow], config: ArenaConfig = DEFAULTS) -> 
         shortfalls.append("calibration holds attack samples; it must be benign only")
     return Feasibility(
         counts={name: dict(counter) for name, counter in counts.items()},
-        dev_benign_categories=dict(categories),
         shortfalls=shortfalls,
     )

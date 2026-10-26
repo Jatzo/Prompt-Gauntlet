@@ -20,6 +20,9 @@ from arena.config import DEFAULTS, ArenaConfig
 from arena.schemas import Sample
 
 _SPACE = re.compile(r"\s+")
+# 64 hashes only pick candidates (standard error about 0.06); the exact Jaccard then decides.
+# 16 bands of 4 rows make pairs from about Jaccard 0.5 candidates, well below the 0.8 threshold,
+# so few true near-duplicates are missed.
 _PERMUTATIONS = 64
 _BANDS = 16
 _PRIME = (1 << 61) - 1

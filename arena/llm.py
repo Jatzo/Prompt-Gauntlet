@@ -257,26 +257,6 @@ class EvalCacheStore(Protocol):
     def tokens(self) -> tuple[int, int]: ...
 
 
-class MemoryEvalCache:
-    """An in-memory EvalCacheStore, for tests and for building the pieces before the Judge store."""
-
-    def __init__(self):
-        self.outputs: dict[str, CachedOutput] = {}
-
-    def lookup_many(self, keys: Sequence[str]) -> dict[str, CachedOutput]:
-        return {key: self.outputs[key] for key in keys if key in self.outputs}
-
-    def store_many(self, outputs: Sequence[CachedOutput]) -> None:
-        for output in outputs:
-            self.outputs[output.key] = output
-
-    def tokens(self) -> tuple[int, int]:
-        return (
-            sum(output.input_tokens for output in self.outputs.values()),
-            sum(output.output_tokens for output in self.outputs.values()),
-        )
-
-
 def request_key(role: str, model_id: str, keyed: KeyedRequest, backend: str) -> str:
     """SHA-256 of everything that decides the answer: the backend, role, pinned model, the rendered
     request and the trial number. The backend is in the key so a simulated or mock answer is never

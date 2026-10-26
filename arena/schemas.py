@@ -580,7 +580,7 @@ class DetectionRow(Strict):
     auc: Metric | None
     by_fold: dict[CategoryKey, Metric]
     by_source: dict[CategoryKey, Metric]
-    # Secondary metrics (PLAN section 9): TPR per technique class and per impact class.
+    # Secondary metrics (PLAN section 8): TPR per technique class and per impact class.
     by_technique: dict[CategoryKey, Metric] = {}
     by_impact: dict[CategoryKey, Metric] = {}
     per_category_fpr: dict[CategoryKey, Probability]
