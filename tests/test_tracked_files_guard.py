@@ -7,6 +7,8 @@ BAD = [
     "private/attacks/corpus.jsonl",
     "runs/arena.db",
     "runs/digests/0010.md",
+    "runs/default/evidence/private/cycles.jsonl",
+    "runs/default/evidence/public/report.md",
     "anything/else.db",
     "voice.md",
     "VOICE.md",

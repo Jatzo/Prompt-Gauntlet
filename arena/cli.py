@@ -9,6 +9,7 @@ python -m arena.cli data build --synthetic|--real --judge-dir PATH [--pilot N]
 python -m arena.cli data fetch [--only SOURCE ...]
 python -m arena.cli data check --judge-dir PATH --backend mock|replay|live [--trials N]
 python -m arena.cli live-check [--calls N]
+python -m arena.cli evidence RUN_ID [--out DIR]
 
 Exit codes are listed in arena/exit_codes.py.
 """
@@ -24,7 +25,7 @@ from datetime import UTC, date, datetime
 from functools import partial
 from pathlib import Path
 
-from arena import baselines, cycle, db, llm, usage
+from arena import baselines, cycle, db, evidence, llm, usage
 from arena.config import DEFAULTS, OPEN_WEIGHTS_ROLES, REPO_ROOT, agent_db_path, private_data_dir
 from arena.data.build import build_dataset
 from arena.data.fetch import ChangedSource, fetch_all
@@ -400,6 +401,33 @@ def cmd_baseline(args) -> int:
     return verdict.exit_code
 
 
+def cmd_evidence(args) -> int:
+    """Read the run back into a private and a public evidence pack. Opens the database read-only."""
+    try:
+        conn = evidence.open_read_only(args.db or agent_db_path())
+        try:
+            pack = evidence.build(conn, args.run_id)
+        finally:
+            conn.close()
+        out = args.out or REPO_ROOT / "runs" / args.run_id / "evidence"
+        evidence.write(pack, out)
+    except evidence.EvidenceIncomplete as problem:
+        print(f"Nothing was exported. {problem}", file=sys.stderr)
+        return ExitCode.FAILED
+    backends = {record["backend"]["value"] for record in pack.private}
+    if pack.simulated:
+        measured = "simulated, not measurements"
+    elif "live" in backends:
+        measured = "live"
+    else:
+        measured = "no model calls yet"
+    print(
+        f"Exported {len(pack.private)} cycles of run {args.run_id} ({measured}) to {out}. "
+        "Share only the public half; the private half holds attack text."
+    )
+    return ExitCode.OK
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m arena.cli")
     parser.add_argument(
@@ -426,6 +454,11 @@ def main(argv: list[str] | None = None) -> int:
     abandon = commands.add_parser("abandon-cycle")
     abandon.add_argument("--reason", required=True)
     abandon.add_argument("--run-id", default="default")
+    evidence_parser = commands.add_parser("evidence")
+    evidence_parser.add_argument("run_id")
+    evidence_parser.add_argument(
+        "--out", type=Path, default=None, help="default runs/RUN_ID/evidence"
+    )
     data = commands.add_parser("data").add_subparsers(dest="data_command", required=True)
     raw_dir = REPO_ROOT / "private" / "data" / "raw"
     build = data.add_parser("build")
@@ -459,6 +492,8 @@ def main(argv: list[str] | None = None) -> int:
         return commands_by_name[args.data_command](args)
     if args.command == "live-check":
         return cmd_live_check(args.calls)
+    if args.command == "evidence":
+        return cmd_evidence(args)
 
     conn = db.connect(args.db or agent_db_path())
     try:

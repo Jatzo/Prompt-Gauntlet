@@ -56,6 +56,14 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   counted. Ollama is the operator's to install; the backend refuses until its digest is pinned.
 - 2026-10-26: `fastapi` and `uvicorn` are core dependencies. fastapi stays below 0.142, whose
   `opentelemetry-api>=1.44` requirement clashes with semgrep's pin in the same environment.
+- 2026-10-27, evidence pack (the operator asked for every run to be shown as evidence):
+  `python -m arena.cli evidence RUN_ID` reads the agent database read-only and writes
+  `runs/RUN_ID/evidence/private/` (every field, attack text included) and `public/` (an allowlist of
+  codes, counts and aggregate metrics; the CEO's focus shows only as a known technique or "other").
+  Every stored value names its row; derived values name their inputs. A mock or replay cycle marks
+  the whole pack simulated. Step 13c's checkpoint digest calls `evidence.build` with a cycle range,
+  and `REQUIRED_EPISODES` grows as later steps join the cycle. Plan and critique in
+  `private/evidence-plan.md`.
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.
@@ -106,6 +114,9 @@ cybersecurity structure in PLAN.md section 13. No case study has been written ye
 - Approval of the new `config.py` defaults.
 
 ## Open items
+- `CEOPlan.focus` is not checked against the code-computed shortlist, though its schema comment
+  says the orchestrator checks it. Add the check in step 10, where the shortlist is built. Until
+  then the evidence pack shows an unknown focus as "other".
 - `incumbent()` is not scoped to a run. Once the Defender keeps configs, two ablation arms in one
   database would share them. Give each arm its own database, or scope configs by run.
 - The `built_judge` test fixture removes the sealed test files so the committed placeholder pin
