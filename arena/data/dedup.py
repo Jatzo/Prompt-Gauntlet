@@ -22,7 +22,9 @@ from arena.schemas import Sample
 _SPACE = re.compile(r"\s+")
 # 64 hashes only pick candidates (standard error about 0.06); the exact Jaccard then decides.
 # 16 bands of 4 rows make pairs from about Jaccard 0.5 candidates, well below the 0.8 threshold,
-# so few true near-duplicates are missed.
+# so few true near-duplicates are missed. At a family's stricter 0.6 cut, about 1 pair in 10 at
+# exactly 0.6 is never a candidate (the chance falls fast above it); the containment report after
+# each build shows how close train and test still come.
 _PERMUTATIONS = 64
 _BANDS = 16
 _PRIME = (1 << 61) - 1
@@ -70,6 +72,16 @@ def _minhash(grams: set[str], coefficients: np.ndarray) -> np.ndarray:
     return ((np.outer(a, values) + b[:, None]) % _PRIME).min(axis=1)
 
 
+def _cut(left: Sample, right: Sample, config: ArenaConfig) -> float:
+    """The lower of the two families' near-duplicate cuts. A pair across families uses the stricter
+    one too, on purpose: a close copy of an llmail attack is a copy wherever it came from."""
+    by_family = config.near_duplicate_jaccard_by_family
+    return min(
+        by_family.get(left.generator_family, config.near_duplicate_jaccard),
+        by_family.get(right.generator_family, config.near_duplicate_jaccard),
+    )
+
+
 def _same_group(left: Sample, right: Sample) -> bool:
     return left.template_family == right.template_family or left.cluster_id == right.cluster_id
 
@@ -102,7 +114,8 @@ def deduplicate(samples: Sequence[Sample], config: ArenaConfig = DEFAULTS) -> De
         for other in sorted(candidates):
             if other in removed or _same_group(unique[index], unique[other]):
                 continue
-            similar = jaccard(sample_grams, grams[other]) >= config.near_duplicate_jaccard
+            cut = _cut(unique[index], unique[other], config)
+            similar = jaccard(sample_grams, grams[other]) >= cut
             if similar or float(vectors[index] @ vectors[other]) >= config.near_duplicate_cosine:
                 removed.add(index)
                 break

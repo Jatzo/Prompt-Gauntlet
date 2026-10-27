@@ -54,6 +54,17 @@ def _write_jsonl(path: Path, rows: Sequence[dict]) -> None:
             out.write(json.dumps(row, sort_keys=True) + "\n")
 
 
+def plan_dataset(
+    samples: Sequence[Sample], config: ArenaConfig = DEFAULTS
+) -> tuple[int, int, Feasibility]:
+    """Deduplicate, split and check sizes, with no labelling and nothing written: a free dry run
+    before any labelling is spent. Returns the exact and near duplicates removed, and the check."""
+    report = deduplicate(samples, config)
+    rows = split(report.kept, config)
+    dropped = len(report.kept) - len(rows)
+    return report.exact_removed, report.near_removed, check_feasible(rows, config, dropped)
+
+
 def build_dataset(
     samples: Sequence[Sample],
     *,
@@ -67,6 +78,7 @@ def build_dataset(
     corpus has no labeller and keeps its template labels."""
     report = deduplicate(samples, config)
     rows = split(report.kept, config)
+    dropped = len(report.kept) - len(rows)
     labels = None
     if label is not None:
         labels = label(rows)
@@ -131,7 +143,7 @@ def build_dataset(
     pair_counts: dict[str, int] = {}
     for pair in pairs:
         pair_counts[pair.partition] = pair_counts.get(pair.partition, 0) + 1
-    feasibility = check_feasible(rows, config)
+    feasibility = check_feasible(rows, config, dropped)
     return BuildSummary(
         counts=feasibility.counts,
         exact_removed=report.exact_removed,

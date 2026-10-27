@@ -5,7 +5,7 @@ python -m arena.cli control start|pause|resume|stop
 python -m arena.cli run-cycle --backend mock|replay [--cassette PATH]
 python -m arena.cli abandon-cycle --reason TEXT
 python -m arena.cli baseline --backend mock|replay|live [--profile clean|low_asr]
-python -m arena.cli data build --synthetic|--real --judge-dir PATH [--pilot N]
+python -m arena.cli data build --synthetic|--real --judge-dir PATH [--pilot N | --plan-only]
 python -m arena.cli data fetch [--only SOURCE ...]
 python -m arena.cli data check --judge-dir PATH --backend mock|replay|live [--trials N]
 python -m arena.cli live-check [--calls N]
@@ -27,7 +27,7 @@ from pathlib import Path
 
 from arena import baselines, cycle, db, evidence, llm, usage
 from arena.config import DEFAULTS, OPEN_WEIGHTS_ROLES, REPO_ROOT, agent_db_path, private_data_dir
-from arena.data.build import build_dataset
+from arena.data.build import build_dataset, plan_dataset
 from arena.data.fetch import ChangedSource, fetch_all
 from arena.data.labelling import ContestedCapExceeded, LabelCache, label_rows
 from arena.data.splits import SplitRow
@@ -164,6 +164,15 @@ def cmd_data_build(args) -> int:
         samples = _real_samples(args)
         if samples is None:
             return ExitCode.FAILED
+    if args.plan_only:
+        exact, near, feasibility = plan_dataset(samples)
+        for partition, labels in sorted(feasibility.counts.items()):
+            print(f"{partition}: " + ", ".join(f"{n} {lab}" for lab, n in sorted(labels.items())))
+        print(f"Removed: {exact} exact and {near} near duplicates.")
+        _print_feasibility(feasibility)
+        print("Plan only: nothing was labelled or written. Contested items are not known yet.")
+        return ExitCode.OK if feasibility.ok else ExitCode.NEEDS_OPERATOR
+    if args.real:
         try:
             claude, open_weights = _labellers()
         except llm.LiveCallRefused as refused:
@@ -188,9 +197,15 @@ def cmd_data_build(args) -> int:
         print(f"{partition}: " + ", ".join(f"{n} {label}" for label, n in sorted(labels.items())))
     print(f"Removed: {summary.exact_removed} exact and {summary.near_removed} near duplicates.")
     print("Pairs: " + ", ".join(f"{n} {name}" for name, n in sorted(summary.pairs.items())))
-    for shortfall in summary.feasibility.shortfalls:
-        print(f"Short: {shortfall}")
+    _print_feasibility(summary.feasibility)
     return ExitCode.OK if summary.feasibility.ok else ExitCode.NEEDS_OPERATOR
+
+
+def _print_feasibility(feasibility) -> None:
+    for note in feasibility.notes:
+        print(f"Note: {note}")
+    for shortfall in feasibility.shortfalls:
+        print(f"Short: {shortfall}")
 
 
 def _real_samples(args) -> list | None:
@@ -470,6 +485,11 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--raw-dir", type=Path, default=raw_dir)
     build.add_argument(
         "--pilot", type=int, default=0, metavar="N", help="label N items, print, write nothing"
+    )
+    build.add_argument(
+        "--plan-only",
+        action="store_true",
+        help="deduplicate, split and check sizes; no labelling, nothing written",
     )
     check = data.add_parser("check")
     check.add_argument("--judge-dir", type=Path, default=None)

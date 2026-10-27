@@ -122,7 +122,9 @@ generator_family = "llmail-human"
 non_claude = true
 private_only = false
 licence = "MIT, with notice"
-cap = 3000
+# Raised from 3,000 on 2026-10-27: the first real build left train with no attacks. Many rows are
+# close variants of one attack, so the stricter near-duplicate cut for this family removes many.
+cap = 6000
 max_chars = 6000
 transforms = ["attacker_address"]
 files = [

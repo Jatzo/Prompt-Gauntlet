@@ -49,6 +49,9 @@ SMALL = ArenaConfig(
     monitor_benign=20,
     ablation_eval_attacks=20,
     ablation_eval_benign=20,
+    train_min_attacks=20,
+    # The synthetic corpus's groups hold 20 samples, so a margin would add a whole group.
+    benign_quota_margin=0.0,
 )
 
 

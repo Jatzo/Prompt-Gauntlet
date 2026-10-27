@@ -12,7 +12,17 @@ from collections.abc import Callable, Sequence
 
 from arena.schemas import Sample
 
-PROBES = ("length", "language", "punctuation", "source", "template_family", "bag_of_words")
+# "channel" because most attacks arrive by email: a probe that only knows the channel must not come
+# close to a real detector.
+PROBES = (
+    "length",
+    "language",
+    "punctuation",
+    "source",
+    "channel",
+    "template_family",
+    "bag_of_words",
+)
 
 _WORD = re.compile(r"[a-z']+")
 _PUNCTUATION = re.compile(r"[^\w\s]")
@@ -70,6 +80,8 @@ def fit_probe(name: str, train: Sequence[Sample]) -> Probe:
         return _oriented(lambda s: float(len(_PUNCTUATION.findall(s.text))), train)
     if name == "source":
         return _rate_by(lambda s: s.source, train)
+    if name == "channel":
+        return _rate_by(lambda s: s.channel, train)
     if name == "template_family":
         return _rate_by(lambda s: s.template_family, train)
     if name == "bag_of_words":

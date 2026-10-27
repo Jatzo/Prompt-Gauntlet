@@ -230,3 +230,24 @@ def test_rule_timeouts_come_from_the_defaults_table():
         settings=ArenaConfig(regex_timeout_ms=7),
     )
     assert scorer.rules.timeout_seconds == pytest.approx(0.007)
+
+
+def test_the_channel_probe_finds_a_channel_shortcut_and_nothing_in_a_balanced_set():
+    from arena.data.templates import synthetic_corpus
+    from arena.detector.probes import fit_probe
+
+    corpus = synthetic_corpus()
+    attacks = [s for s in corpus if s.label == "attack"][:20]
+    benign = [s for s in corpus if s.label == "benign"][:20]
+
+    def on(samples, channel):
+        return [s.model_copy(update={"channel": channel}) for s in samples]
+
+    skewed = on(attacks, "email") + on(benign, "document")
+    probe = fit_probe("channel", skewed)
+    assert probe(on(attacks[:1], "email")[0]) > probe(on(benign[:1], "document")[0])
+
+    balanced = on(attacks[:10], "email") + on(attacks[10:], "document")
+    balanced += on(benign[:10], "email") + on(benign[10:], "document")
+    probe = fit_probe("channel", balanced)
+    assert probe(on(attacks[:1], "email")[0]) == probe(on(benign[:1], "document")[0])

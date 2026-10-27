@@ -64,6 +64,16 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   the whole pack simulated. Step 13c's checkpoint digest calls `evidence.build` with a cycle range,
   and `REQUIRED_EPISODES` grows as later steps join the cycle. Plan and critique in
   `private/evidence-plan.md`.
+- 2026-10-27, data split (the first real build left train with no attacks and four partitions
+  short). Approved by the operator: llmail cap 6,000; held out `persona.authority`; llmail
+  near-duplicate cut 0.6; attacks whose shorter text is 80% contained in the longer share a group;
+  attack groups over 60 go to train whole, and the 4 held-out attacks inside the 511-variant
+  llmail family are dropped and counted; train takes 200 varied attacks on top of those families;
+  monitor 200 attacks; benign quotas fill 5% over their minimum; attacks fill test, dev, train,
+  ablation_eval, monitor, interleaved by channel. A "channel" shortcut probe joins the others.
+  `data build --real --plan-only` is a free dry run; the last one showed no shortfalls (test 630,
+  dev 1,000, train 854, ablation_eval 501, monitor 200 attacks). Plan, critique and answers in
+  `private/data-shortfall-plan.md`.
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.
@@ -114,6 +124,11 @@ cybersecurity structure in PLAN.md section 13. No case study has been written ye
 - Approval of the new `config.py` defaults.
 
 ## Open items
+- `tests/test_server.py::test_every_event_kind_streams_only_allowlisted_fields` failed once in 4
+  full-suite runs on 2026-10-27 and passes alone; not yet traced. Watch for it in CI.
+- Five technique classes have fewer than 10 train attacks for the Defender (`obfuscation.homoglyph`,
+  `obfuscation.zero_width` and `persona.switch` have none), so its focus-class examples are thin
+  for them.
 - `CEOPlan.focus` is not checked against the code-computed shortlist, though its schema comment
   says the orchestrator checks it. Add the check in step 10, where the shortlist is built. Until
   then the evidence pack shows an unknown focus as "other".
