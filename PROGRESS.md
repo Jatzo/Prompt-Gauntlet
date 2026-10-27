@@ -56,6 +56,7 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   counted. Ollama is the operator's to install; the backend refuses until its digest is pinned.
 - 2026-10-26: `fastapi` and `uvicorn` are core dependencies. fastapi stays below 0.142, whose
   `opentelemetry-api>=1.44` requirement clashes with semgrep's pin in the same environment.
+- 2026-10-27, checker pass (the operator's instruction to change `arena/judge/labelcheck.py`): rung 0 plays every paired attack; rungs 1 and 2 play only attacks no earlier rung fired, so outcomes match the full pass at about a third of the calls or less. Run with `--trials 2`, since 3 rungs at 5 trials was about 35,000 episodes. An attack that fires only in trials 3 to 5 counts as rung_only or invalid.
 - 2026-10-27, evidence pack (the operator asked for every run to be shown as evidence):
   `python -m arena.cli evidence RUN_ID` reads the agent database read-only and writes
   `runs/RUN_ID/evidence/private/` (every field, attack text included) and `public/` (an allowlist of

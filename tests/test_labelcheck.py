@@ -1,5 +1,6 @@
 """The checker pass and the contested-FPR row, both inside the Judge (operator-decisions Part 3)."""
 
+import dataclasses
 import json
 
 import pytest
@@ -210,3 +211,83 @@ def test_a_rebuild_removes_the_old_checker_record(built, tmp_path):
     assert (judge_dir / "checker.json").exists()
     build_dataset(synthetic_corpus(), judge_dir=judge_dir, private_dir=tmp_path / "p", config=SMALL)
     assert not (judge_dir / "checker.json").exists()
+
+
+def spy_on_rungs(monkeypatch):
+    """Records, per call, the target, the payloads it was asked to play and those that fired."""
+    calls = []
+    real = measure.success_signals
+
+    def recorded(played, target):
+        found = real(played, target)
+        calls.append((target.key, {p.payload_sample_id for p in played.dev_pairs}, set(found)))
+        return found
+
+    monkeypatch.setattr(measure, "success_signals", recorded)
+    return calls
+
+
+def paired_attacks(judge_dir):
+    return {
+        pair.payload_sample_id
+        for partition in judge_data.label_partitions(REPO_ROOT, judge_dir).values()
+        for pair in partition.pairs
+        if pair.payload_sample_id in {row.sample.id for row in partition.rows}
+    }
+
+
+def test_each_later_rung_plays_only_the_attacks_no_earlier_rung_fired(built, monkeypatch):
+    judge_dir, context = built
+    calls = spy_on_rungs(monkeypatch)
+    labelcheck.run(check_request(targets=LADDER), context)
+    played: dict[str, set[str]] = {}
+    fired: dict[str, set[str]] = {}
+    for key, asked, found in calls:
+        played.setdefault(key, set()).update(asked)
+        fired.setdefault(key, set()).update(found)
+    remaining = paired_attacks(judge_dir)
+    assert played[LADDER[0].key] == remaining
+    assert fired[LADDER[0].key]
+    remaining -= fired[LADDER[0].key]
+    assert remaining, "the fixture must leave attacks for the later rungs"
+    for spec in LADDER[1:]:
+        assert played.get(spec.key, set()) == remaining, spec.key
+        remaining -= fired.get(spec.key, set())
+
+
+def test_outcomes_match_playing_every_attack_on_every_rung(built):
+    judge_dir, context = built
+    labelcheck.run(check_request(targets=LADDER), context)
+    items = json.loads((judge_dir / "checker.json").read_text())["items"]
+    base = measure.prepare(check_request().measure, context)
+    expected = {}
+    for partition in judge_data.label_partitions(REPO_ROOT, judge_dir).values():
+        samples = {row.sample.id: row.sample for row in partition.rows}
+        pairs = [pair for pair in partition.pairs if pair.payload_sample_id in samples]
+        full = dataclasses.replace(base, samples=samples, dev_pairs=pairs)
+        first = measure.success_signals(full, LADDER[0])
+        later = set().union(*(measure.success_signals(full, spec) for spec in LADDER[1:]))
+        paired = {pair.payload_sample_id for pair in pairs}
+        for sample_id, sample in samples.items():
+            if sample.label != "attack":
+                continue
+            if sample_id not in paired:
+                expected[sample_id] = "unpaired"
+            elif sample_id in first:
+                expected[sample_id] = "confirmed"
+            else:
+                expected[sample_id] = "rung_only" if sample_id in later else "invalid"
+    assert {i: item["outcome"] for i, item in items.items()} == expected
+
+
+def test_a_rung_with_nothing_left_to_play_is_not_called(built, monkeypatch):
+    _, context = built
+    asked = []
+
+    def everything_fires(played, target):
+        asked.append(target.key)
+        return {p.payload_sample_id: frozenset({"sent_to_attacker"}) for p in played.dev_pairs}
+
+    monkeypatch.setattr(measure, "success_signals", everything_fires)
+    labelcheck.run(check_request(targets=LADDER), context)
+    assert asked and set(asked) == {LADDER[0].key}
