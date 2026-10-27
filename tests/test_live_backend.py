@@ -325,6 +325,13 @@ BUILD_REFUSAL = (
 )
 
 
+# The error that stopped the rebuild: the second wording, with no mention of safeguards.
+HELP_REFUSAL = (
+    "API Error: Opus 4.8 can't help with this. Start a new session to continue. "
+    "Learn more: https://www.anthropic.com/legal/aup Details: [bio]"
+)
+
+
 def wrapped(result: str) -> str:
     """How the SDK words a ResultError around the CLI's result text."""
     return f"Claude Code returned an error result: {result} (exit code: 1)"
@@ -338,11 +345,13 @@ def wrapped(result: str) -> str:
         lambda sdk: [sdk.ResultMessage(is_error=True, api_error_status=None, result=BUILD_REFUSAL)],
         lambda sdk: [sdk.ResultMessage(is_error=True, api_error_status=400, result=BUILD_REFUSAL)],
         lambda sdk: [sdk.ResultError(wrapped(BUILD_REFUSAL))],
+        lambda sdk: [sdk.ResultMessage(is_error=True, api_error_status=None, result=HELP_REFUSAL)],
+        lambda sdk: [sdk.ResultError(wrapped(HELP_REFUSAL.replace("'", "’")))],
     ],
 )
 def test_a_safeguards_refusal_is_its_own_failure(live, script):
     backend, _ = live(script)
-    with pytest.raises(llm.ContentRefused, match="safeguards flagged"):
+    with pytest.raises(llm.ContentRefused, match="API Error"):
         complete(backend)
     assert issubclass(llm.ContentRefused, llm.LiveCallFailed)
 
@@ -352,6 +361,7 @@ def test_a_safeguards_refusal_is_its_own_failure(live, script):
     [
         # The words without the CLI's marker, as an echoed attack might carry them.
         "Our safeguards flagged this message, so please stop.",
+        "Sorry, I can't help with this.",
         "API Error: Request timed out",
     ],
 )

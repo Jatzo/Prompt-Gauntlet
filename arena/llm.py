@@ -797,9 +797,12 @@ class LiveBackend:
         if any(phrase in text.lower() for phrase in self._LIMIT_PHRASES):
             raise self._limit(text[:200])
 
-    # The CLI's line for a safeguards refusal. The wording around it changes (the model name, the
-    # policy link), and the SDK may wrap the line, so only this part is matched.
-    _REFUSAL = re.compile(r"API Error: [^\n]*safeguards flagged", re.IGNORECASE)
+    # The CLI's line for a safeguards refusal, in either of its two wordings. The text around it
+    # changes (the model name, the policy link), and the SDK may wrap the line, so only this part
+    # is matched.
+    _REFUSAL = re.compile(
+        r"API Error: [^\n]*(safeguards flagged|can['’]t help with this)", re.IGNORECASE
+    )
 
     def _check_refusal(self, text: str) -> None:
         """The CLI's error text when the provider's safeguards refuse the input. Like the limit
