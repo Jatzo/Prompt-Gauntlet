@@ -54,7 +54,7 @@ def test_a_killed_cycle_resumes_from_stored_outputs_without_calling_the_model_ag
 
     agent_db = sqlite3.connect(tmp_path / "arena.db")
     assert agent_db.execute("SELECT state FROM cycles").fetchall() == [("evaluating",)]
-    assert calls_by_step(call_log) == {"plan": 1} | ATTACK_STEPS
+    assert calls_by_step(call_log) == {"plan": 1, "defend": 1} | ATTACK_STEPS
 
     # Second process: same cycle, no blocking.
     second = subprocess.run(
@@ -64,18 +64,19 @@ def test_a_killed_cycle_resumes_from_stored_outputs_without_calling_the_model_ag
 
     assert agent_db.execute("SELECT id, state FROM cycles").fetchall() == [(1, "committed")]
     # Every agent step was called once across both processes, the post-mortem in the second only.
-    assert calls_by_step(call_log) == {"plan": 1, "postmortem": 1} | ATTACK_STEPS
+    assert calls_by_step(call_log) == {"plan": 1, "defend": 1, "postmortem": 1} | ATTACK_STEPS
     # The Judge evaluated once, before the kill, and kept one query per step and one batch.
     judge_db = sqlite3.connect(built_judge / "judge.db")
     assert judge_db.execute("SELECT cycle_id FROM evaluations").fetchall() == [(1,)]
     assert judge_db.execute("SELECT COUNT(*) FROM detector_queries").fetchone()[0] == 8
     assert judge_db.execute("SELECT COUNT(*) FROM attacks WHERE cycle_id = 1").fetchone()[0] == 1
     stored = dict(agent_db.execute("SELECT step, COUNT(*) FROM llm_calls GROUP BY step"))
-    assert stored == {"plan": 1, "postmortem": 1} | ATTACK_STEPS
+    assert stored == {"plan": 1, "defend": 1, "postmortem": 1} | ATTACK_STEPS
     kinds = agent_db.execute("SELECT kind FROM memory_episodic ORDER BY id").fetchall()
     assert kinds == [
         ("plan",),
         ("attack_batch",),
+        ("patch",),
         ("judge_report",),
         ("postmortem",),
         ("novelty_closed",),

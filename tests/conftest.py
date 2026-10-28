@@ -8,6 +8,7 @@ from arena.judge_client import HashReport
 from arena.schemas import (
     AttackVerdict,
     BatchReport,
+    EvaluateRequest,
     JudgeReport,
     QueryReply,
     QueryRequest,
@@ -31,9 +32,11 @@ STUB_REPORT = JudgeReport.model_validate(
 class FakeJudge:
     """Stands in for the Judge process in tests that are not about the process itself."""
 
-    def __init__(self, hashes_ok: bool = True):
+    def __init__(self, hashes_ok: bool = True, keep: bool = True):
         self.hashes_ok = hashes_ok
+        self.keep = keep
         self.evaluations: list[int] = []
+        self.candidates: list[EvaluateRequest] = []
         self.batches: list[ValidateBatchRequest] = []
         self.queries: list[QueryRequest] = []
         # Kept by (cycle, step), as the Judge keeps them, so a repeated step spends nothing.
@@ -50,6 +53,13 @@ class FakeJudge:
     def evaluate(self, cycle_id: int) -> JudgeReport:
         self.evaluations.append(cycle_id)
         return STUB_REPORT
+
+    def evaluate_candidate(self, request: EvaluateRequest) -> JudgeReport:
+        """Keeps every candidate unless `keep` is false; the decision is the test's to choose."""
+        self.candidates.append(request)
+        if self.keep:
+            return STUB_REPORT.model_copy(update={"decision": "keep", "reason_code": "kept"})
+        return STUB_REPORT.model_copy(update={"decision": "reject", "reason_code": "no_tpr_gain"})
 
     def query_detector(self, request: QueryRequest) -> QueryReply:
         self.queries.append(request)

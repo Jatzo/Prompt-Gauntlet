@@ -33,15 +33,19 @@ _NEXT_STATUS = {
     "kept_provisional": frozenset({"kept_reviewed", "rejected"}),
 }
 _STANDING = ("baseline", "kept_provisional", "kept_reviewed")
+# The configs of one run: a config belongs to the run of the cycle that stored it. A config whose
+# cycle has no row belongs to run None, so `IS` compares run ids with None as a value.
+_IN_RUN = "FROM detector_configs d LEFT JOIN cycles c ON c.id = d.cycle_id WHERE c.run_id IS ?"
 
 
-def incumbent(conn: sqlite3.Connection) -> tuple[int, DetectorConfig] | None:
-    """The config the next candidate is measured against: the newest one still standing."""
+def incumbent(conn: sqlite3.Connection, run_id: str | None) -> tuple[int, DetectorConfig] | None:
+    """The config the run's next candidate is measured against: its newest one still standing.
+    Each run has its own lineage, so two ablation arms in one database never share configs."""
     placeholders = ",".join("?" * len(_STANDING))
     row = conn.execute(
-        f"SELECT id, config FROM detector_configs WHERE status IN ({placeholders})"  # noqa: S608
-        " ORDER BY id DESC LIMIT 1",
-        _STANDING,
+        f"SELECT d.id, d.config {_IN_RUN} AND d.status IN ({placeholders})"  # noqa: S608
+        " ORDER BY d.id DESC LIMIT 1",
+        (run_id, *_STANDING),
     ).fetchone()
     if row is None:
         return None
@@ -73,11 +77,12 @@ def token_set_jaccard(left: str, right: str) -> float:
 
 # Every kind the episodic log accepts. A new kind is added here on purpose, together with a decision
 # on whether agents may read it; `record_episode` refuses anything else.
-EPISODE_KINDS = ("plan", "postmortem", "judge_report", "attack_batch", "novelty_closed")
+EPISODE_KINDS = ("plan", "postmortem", "judge_report", "attack_batch", "novelty_closed", "patch")
 
-# Episodes that hold the Attacker's batches, held-back attacks included. No briefing, recall or
-# other agent-facing read may select them.
-PRIVATE_EPISODE_KINDS = ("attack_batch", "novelty_closed")
+# Episodes that may hold attack text: the Attacker's batches, held-back attacks included, and the
+# Defender's patches, whose literal rules can quote an evasion. No briefing, recall or other
+# agent-facing read may select them.
+PRIVATE_EPISODE_KINDS = ("attack_batch", "novelty_closed", "patch")
 
 
 class Memory:
@@ -181,20 +186,26 @@ class Memory:
         step: str,
         role: str,
     ) -> int:
-        """Store a config. Only the first may have no parent: it is the baseline."""
+        """Store a config. Only a run's first may have no parent: it is the run's baseline. A
+        parent must belong to the same run."""
         self._require_transaction()
         config = DetectorConfig.model_validate(config.model_dump())
+        row = self.conn.execute("SELECT run_id FROM cycles WHERE id = ?", (cycle_id,)).fetchone()
+        run_id = row[0] if row else None
         if parent_id is None:
-            if self.conn.execute("SELECT 1 FROM detector_configs LIMIT 1").fetchone():
+            if self.conn.execute(f"SELECT 1 {_IN_RUN} LIMIT 1", (run_id,)).fetchone():  # noqa: S608
                 raise MemoryWriteRejected(
-                    "Only the first detector config, the baseline, has no parent."
+                    "Only a run's first detector config, its baseline, has no parent."
                 )
             status = "baseline"
         else:
             if not self.conn.execute(
-                "SELECT 1 FROM detector_configs WHERE id = ?", (parent_id,)
+                f"SELECT 1 {_IN_RUN} AND d.id = ?",  # noqa: S608
+                (run_id, parent_id),
             ).fetchone():
-                raise MemoryWriteRejected(f"Parent detector config {parent_id} does not exist.")
+                raise MemoryWriteRejected(
+                    f"Parent detector config {parent_id} does not exist in this run."
+                )
             status = "candidate"
         row_id = self._insert(
             "INSERT INTO detector_configs (parent_id, config, config_hash, status, cycle_id,"

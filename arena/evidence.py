@@ -40,7 +40,7 @@ IN_PROGRESS = "in progress"
 REQUIRED_EPISODES = ("plan", "judge_report", "postmortem")
 # Kept apart from memory.EPISODE_KINDS on purpose: a kind added there without being taught to this
 # exporter shows up as "not shown" in the report instead of disappearing.
-KNOWN_EPISODES = ("plan", "attack_batch", "judge_report", "postmortem", "novelty_closed")
+KNOWN_EPISODES = ("plan", "attack_batch", "patch", "judge_report", "postmortem", "novelty_closed")
 # Events whose detail carries why a cycle was rolled back. The reason is free text: private only.
 ROLLBACK_EVENTS = ("cycle_skipped", "cycle_abandoned")
 # The cycle step that will patch the defence. Until it exists, a cycle's defence reads "not wired".

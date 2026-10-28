@@ -146,4 +146,4 @@ def test_a_committed_cycle_closes_in_the_same_transaction(conn, tmp_path, monkey
 
 
 def test_batch_episodes_are_marked_private_to_agent_facing_reads():
-    assert set(PRIVATE_EPISODE_KINDS) == {"attack_batch", "novelty_closed"}
+    assert set(PRIVATE_EPISODE_KINDS) == {"attack_batch", "novelty_closed", "patch"}

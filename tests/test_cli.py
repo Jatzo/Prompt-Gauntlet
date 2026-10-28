@@ -11,8 +11,9 @@ CASSETTE = REPO_ROOT / "tests" / "fixtures" / "phase1_cycle.cassette.jsonl"
 
 
 @pytest.fixture
-def db_path(tmp_path, monkeypatch):
-    monkeypatch.setenv("ARENA_JUDGE_DIR", str(tmp_path / "judge"))
+def db_path(tmp_path, monkeypatch, built_judge):
+    # A Defender cycle reaches the Judge's keep rule, which measures on a built data folder.
+    monkeypatch.setenv("ARENA_JUDGE_DIR", str(built_judge))
     return str(tmp_path / "arena.db")
 
 

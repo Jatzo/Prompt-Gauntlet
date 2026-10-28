@@ -95,13 +95,13 @@ def test_the_lineage_walks_back_to_the_baseline_and_the_newest_keep_is_the_incum
     baseline = store(memory, REGEX_RULES, None)
     child_config = apply_patch(REGEX_RULES, patch({"op": "remove", "path": "/rules/0"}))
     child = store(memory, child_config, baseline)
-    assert incumbent(memory.conn)[0] == baseline
+    assert incumbent(memory.conn, None)[0] == baseline
     status(memory, child, "kept_provisional")
     grandchild = store(
         memory, apply_patch(child_config, patch({"op": "remove", "path": "/rules/0"})), child
     )
     assert lineage(memory.conn, grandchild) == [grandchild, child, baseline]
-    assert incumbent(memory.conn) == (child, child_config)
+    assert incumbent(memory.conn, None) == (child, child_config)
     row = memory.conn.execute(
         "SELECT config_hash FROM detector_configs WHERE id = ?", (child,)
     ).fetchone()
@@ -123,7 +123,7 @@ def test_rejecting_a_keep_reverts_its_lineage_and_leaves_not_kept_records_alone(
     )
     status(memory, tried, "not_kept")
     assert sorted(status(memory, kept, "rejected")) == sorted([kept, built_on])
-    assert incumbent(memory.conn)[0] == baseline
+    assert incumbent(memory.conn, None)[0] == baseline
     states = dict(memory.conn.execute("SELECT id, status FROM detector_configs"))
     assert states[tried] == "not_kept"
 

@@ -57,6 +57,12 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 - 2026-10-26: `fastapi` and `uvicorn` are core dependencies. fastapi stays below 0.142, whose
   `opentelemetry-api>=1.44` requirement clashes with semgrep's pin in the same environment.
 - 2026-10-27, checker pass (the operator's instruction to change `arena/judge/labelcheck.py`): rung 0 plays every paired attack; rungs 1 and 2 play only attacks no earlier rung fired, so outcomes match the full pass at about a third of the calls or less. Run with `--trials 2`, since 3 rungs at 5 trials was about 35,000 episodes. An attack that fires only in trials 3 to 5 counts as rung_only or invalid.
+- 2026-10-28, the whole cycle (step A of `private/phase3-remaining-plan.md`, approved with its
+  three answers): plan, attack, defend, judge, post-mortem. The Defender sees only the evasions the
+  Judge shows; its patch is stored as a private `patch` episode, since literal rules can quote an
+  evasion. The Judge runs the keep rule on fold 1 (fixed until checkpoints rotate it) against the
+  candidate's parent; a keep is `kept_provisional`. Detector configs belong to the run of their
+  cycle, so each run has its own baseline and lineage.
 - 2026-10-27, evidence pack (the operator asked for every run to be shown as evidence):
   `python -m arena.cli evidence RUN_ID` reads the agent database read-only and writes
   `runs/RUN_ID/evidence/private/` (every field, attack text included) and `public/` (an allowlist of
@@ -133,8 +139,6 @@ cybersecurity structure in PLAN.md section 13. No case study has been written ye
 - `CEOPlan.focus` is not checked against the code-computed shortlist, though its schema comment
   says the orchestrator checks it. Add the check in step 10, where the shortlist is built. Until
   then the evidence pack shows an unknown focus as "other".
-- `incumbent()` is not scoped to a run. Once the Defender keeps configs, two ablation arms in one
-  database would share them. Give each arm its own database, or scope configs by run.
 - The `built_judge` test fixture removes the sealed test files so the committed placeholder pin
   verifies, rather than writing the build's real pin as the plan said; the tamper tests still cover
   the real-pin path. The CLI tests use a Defender-only plan, since `run-cycle` against a real Judge

@@ -166,7 +166,11 @@ def test_one_attack_cycle_gives_the_same_shape_from_the_fake_and_the_real_judge(
 
 def cassette_from(script, path):
     """A cassette holding exactly what the mock script would answer, step by step."""
-    tools = {"plan": ("ceo", "propose_plan"), "postmortem": ("ceo", "write_postmortem")}
+    tools = {
+        "plan": ("ceo", "propose_plan"),
+        "defend": ("defender", "submit_detector_patch"),
+        "postmortem": ("ceo", "write_postmortem"),
+    }
     models = DEFAULTS.models
     with path.open("w") as out:
         for step, outputs in script.items():

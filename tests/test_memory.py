@@ -46,8 +46,17 @@ def test_writes_outside_a_transaction_are_refused(conn):
 
 def test_the_episode_kinds_are_pinned_and_the_private_ones_are_among_them():
     # Adding a kind is a decision about whether agents may read it, so it fails here first.
-    assert EPISODE_KINDS == ("plan", "postmortem", "judge_report", "attack_batch", "novelty_closed")
+    assert EPISODE_KINDS == (
+        "plan",
+        "postmortem",
+        "judge_report",
+        "attack_batch",
+        "novelty_closed",
+        "patch",
+    )
     assert set(PRIVATE_EPISODE_KINDS) <= set(EPISODE_KINDS)
+    # A patch's literal rules can quote an evasion, so no agent may read one back.
+    assert "patch" in PRIVATE_EPISODE_KINDS
 
 
 def test_an_unknown_episode_kind_is_rejected_and_nothing_is_written(conn):

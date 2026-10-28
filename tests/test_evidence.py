@@ -28,6 +28,9 @@ KNOWN_ASR = {1: 0.40, 2: 0.30, 3: 0.25}
 
 
 class MeasuringJudge(FakeJudge):
+    def evaluate_candidate(self, request):
+        return self.evaluate(request.cycle_id)
+
     def evaluate(self, cycle_id):
         self.evaluations.append(cycle_id)
         value = KNOWN_ASR[cycle_id]
@@ -143,7 +146,8 @@ def test_derived_counts_match_what_the_fake_judge_decided(ran):
             "SELECT SUM(input_tokens + output_tokens) FROM usage WHERE cycle_id = ?", (cycle_id,)
         ).fetchone()[0]
         assert record["tokens"]["value"] == tokens > 0
-    [baseline] = pack.public[0]["defence"]
+    baseline, candidate = pack.public[0]["defence"]
+    assert candidate["changed_fields"]["value"] == ["normalisers"]
     rules = json.loads(conn.execute("SELECT config FROM detector_configs").fetchone()[0])["rules"]
     assert baseline["rule_count"]["value"] == len(rules)
     assert baseline["changed_fields"]["value"] == []
@@ -230,6 +234,9 @@ class PausingJudge(MeasuringJudge):
         db.set_control(self.conn, "paused", "operator")
         return super().evaluate(cycle_id)
 
+    def evaluate_candidate(self, request):
+        return self.evaluate(request.cycle_id)
+
 
 def test_a_paused_cycle_is_in_progress_and_left_out_of_the_charts(conn, tmp_path):
     run(conn, cycles=2)
@@ -286,7 +293,8 @@ def test_a_rejected_lineage_is_never_shown_as_kept(conn, ran):
             candidate, "rejected", cycle_id=3, step="review", role="operator"
         )
     pack = evidence.build(read_only(ran), "default")
-    [change] = pack.private[1]["defence"]
+    defence = pack.private[1]["defence"]
+    [change] = [node for node in defence if node["config"]["value"] == candidate]
     assert change["standing"] == "rejected later"
 
 
