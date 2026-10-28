@@ -63,6 +63,12 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   evasion. The Judge runs the keep rule on fold 1 (fixed until checkpoints rotate it) against the
   candidate's parent; a keep is `kept_provisional`. Detector configs belong to the run of their
   cycle, so each run has its own baseline and lineage.
+- 2026-10-28, step B: the Judge measures with its own backend (`--judge simulated|live`,
+  simulated by default), whatever the agents run on. Each manifest records it (schema version 4),
+  a resumed cycle must keep it, and the evidence pack marks a cycle live only when its agents and
+  its Judge were both live. `run --cycles N` runs cycles back to back and stops at a pause; both
+  commands take `--backend live`. A live-agent run needs a calibrated novelty threshold, or the
+  attack step pauses with `NotCalibrated`: settle that before the first live demo (step E).
 - 2026-10-27, evidence pack (the operator asked for every run to be shown as evidence):
   `python -m arena.cli evidence RUN_ID` reads the agent database read-only and writes
   `runs/RUN_ID/evidence/private/` (every field, attack text included) and `public/` (an allowlist of

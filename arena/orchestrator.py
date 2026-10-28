@@ -56,6 +56,9 @@ STEPS = ("plan", "attack", "defend", "judge", "postmortem")
 # The undefended target that decides which attacks are valid: the evaluation target, the same one
 # the data build's checker pass uses.
 REFERENCE_TARGET = LADDER[0]
+# What the Judge measures with: its simulated models, or the real ones. Separate from the agents'
+# backend, so live agents can be watched without the Judge's long live measurements.
+JudgeBackend = Literal["simulated", "live"]
 # The dev fold the keep rule tests the TPR gain on; the other fold must replicate it. Fixed until
 # checkpoints rotate the folds (Phase 3 step 13c).
 PRIMARY_FOLD = 1
@@ -87,12 +90,18 @@ class Orchestrator:
         root: Path = REPO_ROOT,
         config: ArenaConfig = DEFAULTS,
         use_memory: bool = True,
+        judge_backend: JudgeBackend = "simulated",
     ):
         if backend.kind not in get_args(llm.BackendKind):
             raise ValueError(
                 f"Backend {backend.name!r} declares kind {backend.kind!r}; it must be one of "
                 f"{get_args(llm.BackendKind)}."
             )
+        if judge_backend not in get_args(JudgeBackend):
+            raise ValueError(
+                f"Judge backend {judge_backend!r} must be one of {get_args(JudgeBackend)}."
+            )
+        self.judge_backend = judge_backend
         self.conn = conn
         self.backend = backend
         self.judge = judge
@@ -162,14 +171,24 @@ class Orchestrator:
                 test_set=hashes.test_set,
             )
         model_ids = json.dumps(self.config.models.model_dump(), sort_keys=True)
-        current = {"config_hash": config_hash(self.config), "model_ids": model_ids}
+        current = {
+            "config_hash": config_hash(self.config),
+            "model_ids": model_ids,
+            "judge_backend": self.judge_backend,
+        }
         recorded = self.conn.execute(
-            "SELECT config_hash, model_ids FROM manifests WHERE cycle_id = ?", (cycle_id,)
+            "SELECT config_hash, model_ids, judge_backend FROM manifests WHERE cycle_id = ?",
+            (cycle_id,),
         ).fetchone()
         if recorded is not None:
             # A resumed cycle must finish under the configuration it started with, or its stored
-            # outputs and its manifest describe a different run from the one being completed.
-            changed = sorted(field for field in current if recorded[field] != current[field])
+            # outputs and its manifest describe a different run from the one being completed. A
+            # manifest from before the Judge backend was recorded has none to compare.
+            changed = sorted(
+                field
+                for field in current
+                if recorded[field] is not None and recorded[field] != current[field]
+            )
             if changed:
                 raise ConfigMismatch(
                     f"Cycle {cycle_id} started under a different configuration: {changed} changed. "
@@ -179,7 +198,8 @@ class Orchestrator:
             return
         self.conn.execute(
             "INSERT INTO manifests (run_id, cycle_id, model_ids, seed, config_hash,"
-            " git_sha, constitution_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " git_sha, constitution_hash, judge_backend, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 self.run_id,
                 cycle_id,
@@ -188,6 +208,7 @@ class Orchestrator:
                 current["config_hash"],
                 _git_sha(self.root),
                 hashes.constitution_hash,
+                self.judge_backend,
                 db.now(),
             ),
         )
@@ -355,18 +376,18 @@ class Orchestrator:
         )
 
     def _measure_settings(self, detector: DetectorConfig) -> MeasureRequest:
-        """What the Judge measures a query or a batch against: the incumbent detector at its
-        calibrated threshold, on the reference target.
+        """What the Judge measures a query, a batch or a candidate against: the given detector at
+        its calibrated threshold, on the reference target.
 
-        A live run measures live. A mock or replay run measures with the Judge's simulated models:
-        a cassette holds the agents' calls but not the Judge's target and detector answers, so a
-        replayed cycle could not finish otherwise. The Judge's numbers in a replay run are therefore
-        simulated, as in a mock run (docs/limitations.md)."""
+        The Judge measures with the models the run chose for it, whatever the agents run on. A
+        replay run uses the simulated ones: a cassette holds the agents' calls but not the Judge's
+        target and detector answers. Simulated numbers are marked as such in the manifest and the
+        evidence pack (docs/limitations.md)."""
         return MeasureRequest(
             arms=[ArmSpec(name="incumbent", kind="detector", detector=detector)],
             targets=[REFERENCE_TARGET],
             reference_target=REFERENCE_TARGET,
-            backend="live" if self.backend.kind == "live" else "mock",
+            backend="live" if self.judge_backend == "live" else "mock",
             trials=self.config.trials_per_pair,
             seed=self.config.seed,
         )

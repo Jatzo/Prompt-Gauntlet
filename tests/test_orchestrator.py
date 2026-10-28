@@ -421,6 +421,64 @@ def test_a_replay_run_is_not_treated_as_live(conn, tmp_path):
     assert orchestrator._measure_settings(REGEX_RULES).backend == "mock"
 
 
+@pytest.mark.parametrize("judge_backend", ["simulated", "live"])
+def test_the_judge_measures_with_its_own_backend_whatever_the_agents_run_on(conn, judge_backend):
+    judge = FakeJudge()
+    backend = llm.MockBackend(script=phase1_mock_script())
+    orchestrator = Orchestrator(conn, backend=backend, judge=judge, judge_backend=judge_backend)
+    assert orchestrator.run_cycle().status == "committed"
+    expected = "live" if judge_backend == "live" else "mock"
+    measured = [query.measure for query in judge.queries]
+    measured += [batch.measure for batch in judge.batches]
+    measured += [request.measure for request in judge.candidates]
+    assert measured and {settings.backend for settings in measured} == {expected}
+    row = conn.execute("SELECT judge_backend FROM manifests").fetchone()
+    assert row[0] == judge_backend
+
+
+def test_live_agents_still_get_the_simulated_judge_unless_asked(conn):
+    backend = llm.MockBackend(script={})
+    backend.kind = "live"
+    orchestrator = Orchestrator(conn, backend=backend, judge=FakeJudge())
+    assert orchestrator.judge_backend == "simulated"
+    assert orchestrator._measure_settings(REGEX_RULES).backend == "mock"
+
+
+def test_an_unknown_judge_backend_is_refused(conn):
+    with pytest.raises(ValueError, match="Judge backend"):
+        Orchestrator(
+            conn, backend=llm.MockBackend(script={}), judge=FakeJudge(), judge_backend="staging"
+        )
+
+
+def test_resuming_with_another_judge_backend_pauses_the_run(conn):
+    class PausingJudge(FakeJudge):
+        def evaluate_candidate(self, request):
+            db.set_control(conn, "paused", "operator")
+            return super().evaluate_candidate(request)
+
+    assert make(conn, judge=PausingJudge()).run_cycle().status == "paused"
+    db.set_control(conn, "running", "operator")
+    resumed = Orchestrator(
+        conn, backend=llm.MockBackend(script={}), judge=FakeJudge(), judge_backend="live"
+    ).run_cycle()
+    assert resumed.status == "paused"
+    assert db.control_state(conn) == ("paused", "anomaly: config_mismatch")
+
+
+def test_a_manifest_from_before_the_judge_backend_was_recorded_still_resumes(conn):
+    class PausingJudge(FakeJudge):
+        def evaluate_candidate(self, request):
+            db.set_control(conn, "paused", "operator")
+            return super().evaluate_candidate(request)
+
+    assert make(conn, judge=PausingJudge()).run_cycle().status == "paused"
+    conn.execute("UPDATE manifests SET judge_backend = NULL")
+    db.set_control(conn, "running", "operator")
+    script = {"postmortem": phase1_mock_script()["postmortem"]}
+    assert make(conn, script=script).run_cycle().status == "committed"
+
+
 def test_a_backend_with_an_unknown_kind_is_refused(conn):
     backend = llm.MockBackend(script={})
     backend.kind = "staging"

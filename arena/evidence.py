@@ -175,12 +175,24 @@ def _cycle(conn: sqlite3.Connection, cycle_id: int, state: str) -> dict:
             "SELECT DISTINCT backend FROM llm_calls WHERE cycle_id = ?", (cycle_id,)
         )
     )
-    if not names:
-        backend = "none yet"
-    elif set(names) <= LIVE_BACKENDS:
+    judge_row = conn.execute(
+        "SELECT id, judge_backend FROM manifests WHERE cycle_id = ?", (cycle_id,)
+    ).fetchone()
+    judge = judge_row["judge_backend"] if judge_row else None
+    agents = "none" if not names else "live" if set(names) <= LIVE_BACKENDS else "simulated"
+    # Live only when nothing in the cycle was simulated: the agents' calls and the Judge's models.
+    # A manifest from before the Judge backend was recorded leaves the agents to decide.
+    if "simulated" in (agents, judge):
+        backend = "simulated"
+    elif "live" in (agents, judge):
         backend = "live"
     else:
-        backend = "simulated"
+        backend = "none yet"
+    judge_source = (
+        f"manifests#{judge_row['id']}/judge_backend: {judge or 'not recorded'}"
+        if judge_row
+        else "no manifest"
+    )
     plan = episodes.get("plan")
     events = conn.execute(
         "SELECT id, kind, detail FROM events WHERE cycle_id = ? ORDER BY id", (cycle_id,)
@@ -196,6 +208,7 @@ def _cycle(conn: sqlite3.Connection, cycle_id: int, state: str) -> dict:
             "live_only_if_every_call_was_live",
             backend,
             f"llm_calls.backend for cycle {cycle_id}: {', '.join(names) or 'none'}",
+            judge_source,
         ),
         "manifest": _manifest(conn, cycle_id, committed),
         "plan": _plan(conn, cycle_id, plan),
@@ -246,7 +259,7 @@ def _manifest(conn: sqlite3.Connection, cycle_id: int, committed: bool) -> dict 
         if committed:
             raise EvidenceIncomplete(f"Committed cycle {cycle_id} has no manifest.")
         return None
-    fields = ("seed", "config_hash", "git_sha", "constitution_hash")
+    fields = ("seed", "config_hash", "git_sha", "constitution_hash", "judge_backend")
     manifest = {field: _stored(row[field], "manifests", row["id"], field) for field in fields}
     manifest["model_ids"] = {
         role: _stored(model, "manifests", row["id"], "model_ids", role)
@@ -546,8 +559,8 @@ def _report(pack: Pack, half: str, charts: list[tuple[str, str]]) -> str:
     lines = [f"# Evidence: run {run_name} ({half})", ""]
     if pack.simulated:
         lines += [
-            "> **Simulated.** At least one cycle ran on mock or replayed models, so these numbers",
-            "> test the machinery. They are not measurements.",
+            "> **Simulated.** At least one cycle used mock, replayed or simulated models, so these",
+            "> numbers test the machinery. They are not measurements.",
             "",
         ]
     if not private:

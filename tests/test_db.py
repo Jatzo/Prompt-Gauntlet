@@ -202,3 +202,21 @@ def test_a_reused_pid_that_is_not_an_arena_process_does_not_hold_the_runner(conn
     finally:
         unrelated.kill()
         unrelated.wait()
+
+
+def test_a_version_3_database_gains_the_judge_backend_column_and_keeps_its_manifests(tmp_path):
+    path = tmp_path / "arena.db"
+    old = sqlite3.connect(path, isolation_level=None)
+    for statement in db._statements(db.SCHEMA + db.VERSION_2 + db.VERSION_3):
+        old.execute(statement)
+    old.execute("INSERT INTO schema_version (version) VALUES (3)")
+    old.execute(
+        "INSERT INTO manifests (run_id, cycle_id, model_ids, seed, config_hash, git_sha,"
+        " constitution_hash, created_at) VALUES ('r', 1, '{}', 1, 'h', 'g', 'c', 't')"
+    )
+    old.close()
+    conn = db.connect(path)
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == db.SCHEMA_VERSION
+    assert conn.execute("SELECT judge_backend FROM manifests").fetchone()[0] is None
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("UPDATE manifests SET judge_backend = 'staging'")

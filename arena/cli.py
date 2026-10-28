@@ -2,7 +2,8 @@
 
 python -m arena.cli status
 python -m arena.cli control start|pause|resume|stop
-python -m arena.cli run-cycle --backend mock|replay [--cassette PATH]
+python -m arena.cli run-cycle --backend mock|replay|live [--cassette PATH] [--judge simulated|live]
+python -m arena.cli run --cycles N --backend mock|replay|live [--judge simulated|live]
 python -m arena.cli abandon-cycle --reason TEXT
 python -m arena.cli baseline --backend mock|replay|live [--profile clean|low_asr]
 python -m arena.cli data build --synthetic|--real --judge-dir PATH [--pilot N | --plan-only]
@@ -66,15 +67,39 @@ def cmd_control(conn, action: str) -> int:
     return 0
 
 
-def cmd_run_cycle(conn, backend_name: str, cassette: Path | None, run_id: str) -> int:
+def cmd_run(conn, args, cycles: int) -> int:
+    """Run cycles one after another, one line each, until `cycles` are done or one halts.
+
+    Live agents still get the simulated Judge unless `--judge live` is given: a live keep decision
+    is a long measurement on the operator's plan (private/phase3-remaining-plan.md). A rolled-back
+    cycle is skipped and the run goes on; a pause or stop, a usage limit included, ends it.
+    """
     state, reason = db.control_state(conn)
     if state != "running":
         print(f"The run is {state} ({reason}). Start it with: python -m arena.cli control start")
         return ExitCode.NEEDS_OPERATOR
-    backend = llm.get_backend(backend_name, mock_script=phase1_mock_script(), cassette=cassette)
+    # One mock output per step per cycle, since the mock answers each call from a queue.
+    script = {step: outputs * cycles for step, outputs in phase1_mock_script().items()}
+    try:
+        backend = llm.get_backend(args.backend, mock_script=script, cassette=args.cassette)
+    except llm.LiveCallRefused as refused:
+        print(refused, file=sys.stderr)
+        return ExitCode.FAILED
     with db.runner(conn), JudgeClient() as judge:
-        outcome = Orchestrator(conn, backend=backend, judge=judge, run_id=run_id).run_cycle()
-    print(f"Cycle {outcome.cycle_id}: {outcome.status} ({outcome.detail})")
+        orchestrator = Orchestrator(
+            conn, backend=backend, judge=judge, run_id=args.run_id, judge_backend=args.judge
+        )
+        for done in range(cycles):
+            try:
+                outcome = orchestrator.run_cycle()
+            except llm.ReplayMiss as miss:
+                print(
+                    f"The cassette has no more answers after {done} cycles: {miss}", file=sys.stderr
+                )
+                return ExitCode.FAILED
+            print(f"Cycle {outcome.cycle_id}: {outcome.status} ({outcome.detail})", flush=True)
+            if outcome.status in ("paused", "stopped"):
+                break
     codes = {
         "committed": ExitCode.OK,
         "paused": ExitCode.NEEDS_OPERATOR,
@@ -452,10 +477,14 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("status")
     control = commands.add_parser("control")
     control.add_argument("action", choices=sorted(CONTROL_TARGETS))
-    run = commands.add_parser("run-cycle")
-    run.add_argument("--backend", choices=["mock", "replay"], default="mock")
-    run.add_argument("--cassette", type=Path, default=None)
-    run.add_argument("--run-id", default="default")
+    run_cycle = commands.add_parser("run-cycle")
+    run = commands.add_parser("run")
+    run.add_argument("--cycles", type=int, required=True)
+    for command in (run_cycle, run):
+        command.add_argument("--backend", choices=["mock", "replay", "live"], default="mock")
+        command.add_argument("--cassette", type=Path, default=None)
+        command.add_argument("--run-id", default="default")
+        command.add_argument("--judge", choices=["simulated", "live"], default="simulated")
     baseline = commands.add_parser("baseline")
     baseline.add_argument("--backend", choices=["mock", "replay", "live"], default="mock")
     baseline.add_argument("--profile", choices=["clean", "low_asr"], default="clean")
@@ -500,6 +529,8 @@ def main(argv: list[str] | None = None) -> int:
     fetch.add_argument("--only", nargs="+", default=None, metavar="SOURCE")
     fetch.add_argument("--raw-dir", type=Path, default=raw_dir)
     args = parser.parse_args(argv)
+    if args.command == "run" and args.cycles < 1:
+        parser.error("--cycles must be at least 1")
 
     if args.command == "baseline":
         return cmd_baseline(args)
@@ -523,7 +554,7 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_control(conn, args.action)
         if args.command == "abandon-cycle":
             return cmd_abandon_cycle(conn, args.run_id, args.reason)
-        return cmd_run_cycle(conn, args.backend, args.cassette, args.run_id)
+        return cmd_run(conn, args, args.cycles if args.command == "run" else 1)
     except db.RunnerBusy as busy:
         print(busy, file=sys.stderr)
         return ExitCode.FAILED

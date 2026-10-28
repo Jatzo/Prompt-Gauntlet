@@ -115,3 +115,63 @@ def test_data_build_writes_the_synthetic_dataset_and_reports_its_shortfalls(tmp_
     # 440 synthetic samples cannot fill the default partition sizes, and the command says so.
     assert code == 3
     assert "Short: dev has" in capsys.readouterr().out
+
+
+def test_run_commits_one_cycle_after_another(db_path, capsys, monkeypatch):
+    monkeypatch.setattr(cli, "phase1_mock_script", defender_only_script)
+    cli.main(["--db", db_path, "control", "start"])
+    assert cli.main(["--db", db_path, "run", "--cycles", "3", "--backend", "mock"]) == 0
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("Cycle")]
+    assert [line.split(":")[0] for line in lines] == ["Cycle 1", "Cycle 2", "Cycle 3"]
+    assert all("committed" in line for line in lines)
+
+
+def test_run_stops_at_the_first_pause(db_path, capsys, monkeypatch):
+    from arena.orchestrator import CycleOutcome
+
+    outcomes = iter(
+        [CycleOutcome("committed", 1, "all steps done"), CycleOutcome("paused", 2, "operator")]
+    )
+    monkeypatch.setattr(cli.Orchestrator, "run_cycle", lambda self: next(outcomes))
+    cli.main(["--db", db_path, "control", "start"])
+    assert cli.main(["--db", db_path, "run", "--cycles", "5"]) == 3
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("Cycle")]
+    assert lines == ["Cycle 1: committed (all steps done)", "Cycle 2: paused (operator)"]
+
+
+def test_live_agents_are_refused_under_pytest_before_any_cycle_opens(db_path, capsys):
+    cli.main(["--db", db_path, "control", "start"])
+    assert cli.main(["--db", db_path, "run", "--cycles", "1", "--backend", "live"]) == 1
+    assert "never made from tests" in capsys.readouterr().err
+    conn = db.connect(Path(db_path))
+    assert conn.execute("SELECT COUNT(*) FROM cycles").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(("flags", "expected"), [([], "simulated"), (["--judge", "live"], "live")])
+def test_the_judge_flag_reaches_the_orchestrator(db_path, monkeypatch, flags, expected):
+    from arena.orchestrator import CycleOutcome
+
+    seen = []
+
+    def run_cycle(self):
+        seen.append(self.judge_backend)
+        return CycleOutcome("committed", 1, "all steps done")
+
+    monkeypatch.setattr(cli.Orchestrator, "run_cycle", run_cycle)
+    cli.main(["--db", db_path, "control", "start"])
+    assert cli.main(["--db", db_path, "run-cycle", *flags]) == 0
+    assert seen == [expected]
+
+
+def test_run_needs_at_least_one_cycle(db_path):
+    with pytest.raises(SystemExit):
+        cli.main(["--db", db_path, "run", "--cycles", "0"])
+
+
+def test_a_cassette_that_runs_out_ends_the_run_with_a_message(db_path, capsys):
+    cli.main(["--db", db_path, "control", "start"])
+    args = ["--db", db_path, "run", "--cycles", "3", "--backend", "replay", "--cassette"]
+    assert cli.main([*args, str(CASSETTE)]) == 1
+    captured = capsys.readouterr()
+    assert "Cycle 1: committed" in captured.out
+    assert "no more answers after 1 cycles" in captured.err

@@ -40,3 +40,11 @@ real target and detector inside the Judge, and the Judge keeps those answers in 
 in the cassette. So in a replay run the Judge answers the Attacker's queries and checks its batch
 with the same simulated models it uses in a mock run. The agents' outputs are the recorded ones; the
 Judge's labels and numbers in a replay run are simulated and say nothing about the live run.
+
+## Live agents, simulated Judge
+
+The Judge's models are chosen apart from the agents' (`--judge simulated|live`, simulated by
+default). A run with live agents and the simulated Judge shows real attacks and patches, but its
+validity labels, scores and keep decisions come from simulated target and detector models. Each
+manifest records the Judge's backend, and the evidence pack marks any such cycle as simulated. A
+placebo result vouches only for keeps made under the same Judge and sizes.

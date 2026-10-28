@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 CYCLE_STATES = ("planned", "running", "evaluating", "committed", "rolled_back")
 CONTROL_STATES = ("running", "paused", "stopped")
@@ -207,8 +207,14 @@ CREATE TABLE novelty_archive (
 );
 """
 
+# Added in version 4: which models the Judge measured a cycle with. Empty in older manifests, from
+# before the Judge's backend could differ from the agents'.
+VERSION_4 = """
+ALTER TABLE manifests ADD COLUMN judge_backend TEXT CHECK (judge_backend IN ('simulated', 'live'));
+"""
+
 # Each entry upgrades a database from that version to the next.
-MIGRATIONS = {1: VERSION_2, 2: VERSION_3}
+MIGRATIONS = {1: VERSION_2, 2: VERSION_3, 3: VERSION_4}
 
 
 class DatabaseIntegrityError(RuntimeError):
@@ -265,7 +271,7 @@ def _create_or_migrate(conn: sqlite3.Connection) -> None:
 
 
 def _create(conn: sqlite3.Connection) -> None:
-    for statement in _statements(SCHEMA + VERSION_2 + VERSION_3):
+    for statement in _statements(SCHEMA + VERSION_2 + VERSION_3 + VERSION_4):
         conn.execute(statement)
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
     conn.execute(

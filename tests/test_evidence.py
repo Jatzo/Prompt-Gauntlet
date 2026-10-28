@@ -217,6 +217,7 @@ def test_a_mock_run_is_marked_simulated(ran, tmp_path):
 
 def test_only_an_all_live_run_is_not_marked_simulated(conn, ran, tmp_path):
     conn.execute("UPDATE llm_calls SET backend = 'live'")
+    conn.execute("UPDATE manifests SET judge_backend = 'live'")
     pack = evidence.build(read_only(ran), "default")
     assert not pack.simulated
     evidence.write(pack, tmp_path / "evidence")
@@ -338,8 +339,28 @@ def test_an_unknown_run_is_refused(ran):
         evidence.build(read_only(ran), "nonexistent")
 
 
+def test_live_agents_measured_by_the_simulated_judge_are_simulated(conn, ran):
+    conn.execute("UPDATE llm_calls SET backend = 'live'")
+    pack = evidence.build(read_only(ran), "default")
+    assert {record["backend"]["value"] for record in pack.private} == {"simulated"}
+    assert pack.simulated
+    inputs = pack.private[0]["backend"]["inputs"]
+    assert inputs[1].endswith("/judge_backend: simulated")
+
+
+def test_a_live_judge_with_no_agent_calls_is_live(conn, ran):
+    """Scripted control and placebo runs make no agent calls; their Judge alone decides."""
+    conn.execute("DELETE FROM llm_calls")
+    conn.execute("UPDATE manifests SET judge_backend = 'live'")
+    pack = evidence.build(read_only(ran), "default")
+    assert {record["backend"]["value"] for record in pack.private} == {"live"}
+    assert not pack.simulated
+
+
 def test_cycles_with_no_model_calls_are_neither_live_nor_simulated(conn, ran, capsys):
     conn.execute("DELETE FROM llm_calls")
+    # A manifest from before the Judge backend was recorded.
+    conn.execute("UPDATE manifests SET judge_backend = NULL")
     pack = evidence.build(read_only(ran), "default")
     assert {record["backend"]["value"] for record in pack.private} == {"none yet"}
     assert not pack.simulated
