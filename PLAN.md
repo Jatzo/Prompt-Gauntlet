@@ -39,6 +39,8 @@ The CEO is never given a task list. It forms hypotheses, predicts outcomes, choo
 
 **Limits to state plainly in the write-up:** most data is synthetic or public-benchmark, the target app is a toy, and results show relative improvement on this setup, not real-world security.
 
+**The real ambition:** the operator's goal is to become expert at prompt injection, attack and defence both, not only to ship a working demo. The strongest result would be an attack class (a general technique or failure mode) that the published literature does not already describe, found by the Attacker and documented with care. A good ASR on the toy app ranks below that. Most of what the Attacker finds will be a known technique applied well, which is expected, and the pre-registered success criteria above do not depend on novelty. A candidate-technique finding (section 10) is where a possible new class first shows up. If one survives the operator's triage, it becomes the headline result and meets a higher bar: the cross-model check (section 13) must pass for any claim of novelty, and the literature check and disclosure process in section 12b, item 11, come before any write-up.
+
 ## 3. What is known, and the learning path
 
 ### 3a. State of the field (this shapes the design; verify each citation before using it)
@@ -297,6 +299,7 @@ Experiment history lives in the **database as versioned `DetectorConfig` rows** 
 8. **Clean history.** Never put private test content or secrets in commit messages.
 9. **CI allowlist guard:** `git ls-files` must not match `^(private|runs)/|\.db$|(^|/)voice\.md$|^data/test(?!\.sha256)`. Also runs tests, linting, secret scan, leakage and shortcut-probe checks, the AST import-boundary test, and the dispatcher allowlist test.
 10. **`voice.md` is private.** A personal writing-style guide, gitignored, never committed. The case-study writer may read it for tone; nothing from it is copied into public output.
+11. **Disclosure of a new, general technique.** Item 6 covers a weakness in someone else's named product. This covers a general attack class that would plausibly affect tool-using agents broadly, not only the toy app. Before any case study claims novelty: (a) search the current literature and known taxonomies again, trying to disprove novelty rather than confirm it; (b) if it still looks new, pause and agree the finding and a disclosure timeline with the operator before any public write-up; (c) the case study describes the technique class and the defensive lesson (section 13), never a ready-to-use payload library; (d) ask the operator whether to disclose to model and framework vendors before public release, as CVE-style norms work for conventional software, rather than assuming either way.
 
 ## 13. Case-study engine
 
@@ -327,6 +330,8 @@ A null or negative result is written up in the same structure and given the same
 **Dangerous detail:** case studies describe technique classes and defensive lessons, not a ready-made attack library. Reproducibility comes from the pinned config and the private seed procedure, not from publishing payload corpora.
 
 **Aggregates:** an auto-generated `RESULTS.md` (metrics with CIs, cross-play matrix, findings found/fixed, calibration scatter, ablation results) and one long-form write-up including limitations and null results. Every number quoted anywhere (README, write-up, summaries) must come from `RESULTS.md`. Keep a **negative-results log** and include it. Both `RESULTS.md` and the write-up state the labelling limitation in `docs/limitations.md`.
+
+**One-page PDF brief (`docs/brief.pdf`):** once there are real results, a single page a recruiter or hiring manager can read in under a minute: the problem in one line, the approach in two or three, the headline numbers (ASR, utility cost, out-of-sample FPR) from `RESULTS.md`, links to the repo and the recorded demo (section 12b, item 7), and the skills it shows. It is a leave-behind, not a replacement for the README or the dashboard, so it leads with numbers. It is built only once there is something real to summarise, never against placeholder numbers.
 
 ## 14. Pre-registered experiments
 
