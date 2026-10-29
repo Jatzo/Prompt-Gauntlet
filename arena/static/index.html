@@ -244,6 +244,7 @@
   .panel-head p { margin: 0; color: var(--muted); }
   .panel h3 { margin: 0 0 0.4rem; font-size: 0.8125rem; font-weight: 600; }
   .lower { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: 1rem; align-items: start; }
+  .stack { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
   .empty-state { margin: 0; max-width: 60ch; color: var(--muted); }
 
   details.log { padding: 0; overflow: hidden; }
@@ -542,6 +543,7 @@
 </main>
 </details>
 <div class="lower">
+  <div class="stack">
   <section class="panel scores" aria-labelledby="scores-title">
     <div class="panel-head">
       <h2 id="scores-title">Scores</h2>
@@ -557,6 +559,42 @@
     </div>
     <p class="chart-note" id="scores-note">Purple squares are cycles whose candidate the Judge kept. A kept change stays provisional until you review it; the review queue comes with step 13b. Cross-play scores come in Phase 4.</p>
   </section>
+  <section class="panel memory-panel" aria-labelledby="memory-title">
+    <div class="panel-head">
+      <h2 id="memory-title">Memory and briefing</h2>
+      <p>What the <span class="role-ceo">CEO</span> knew and planned. Agent text is shown as written and may quote an attack. It is never run as markup.</p>
+    </div>
+    <p class="empty-state" id="memory-empty">No plan yet. The CEO's plan and the briefing it was sent appear after the first plan step.</p>
+    <div class="memory" id="memory" hidden>
+      <div>
+        <section class="plan" aria-labelledby="plan-title">
+          <h3 id="plan-title">Latest plan</h3>
+          <dl>
+            <dt>Cycle</dt><dd id="plan-cycle"></dd>
+            <dt>Focus</dt><dd id="plan-focus"></dd>
+            <dt>Prediction</dt><dd id="plan-prediction"></dd>
+            <dt>Cites</dt><dd id="plan-cites"></dd>
+            <dt>Hypothesis</dt><dd class="agent-text" id="plan-hypothesis"></dd>
+          </dl>
+        </section>
+        <h3 id="briefing-title">Briefing the CEO was sent</h3>
+        <pre class="briefing" id="briefing" tabindex="0" aria-labelledby="briefing-title"></pre>
+      </div>
+      <div>
+        <h3>Lessons</h3>
+        <ul class="items" id="lesson-list"></ul>
+        <p class="empty-state" id="lesson-empty">No lessons yet.</p>
+        <h3>Open backlog</h3>
+        <ul class="items" id="backlog-list"></ul>
+        <p class="empty-state" id="backlog-empty">Nothing open.</p>
+        <figure class="chart">
+          <figcaption><strong class="role-ceo">Predicted against actual ASR change</strong><span id="calibration-count"></span></figcaption>
+          <svg class="plot" id="plot-calibration" viewBox="0 0 320 200" role="img" aria-label="Calibration: predicted against actual change in ASR"></svg>
+        </figure>
+      </div>
+    </div>
+  </section>
+  </div>
   <section class="panel ops" aria-labelledby="ops-title">
     <div class="panel-head"><h2 id="ops-title">Controls and alerts</h2></div>
     <section aria-labelledby="control-title">
@@ -605,41 +643,6 @@
     </section>
   </section>
 </div>
-<section class="panel memory-panel" aria-labelledby="memory-title">
-  <div class="panel-head">
-    <h2 id="memory-title">Memory and briefing</h2>
-    <p>What the <span class="role-ceo">CEO</span> knew and planned. Agent text is shown as written and may quote an attack. It is never run as markup.</p>
-  </div>
-  <p class="empty-state" id="memory-empty">No plan yet. The CEO's plan and the briefing it was sent appear after the first plan step.</p>
-  <div class="memory" id="memory" hidden>
-    <div>
-      <section class="plan" aria-labelledby="plan-title">
-        <h3 id="plan-title">Latest plan</h3>
-        <dl>
-          <dt>Cycle</dt><dd id="plan-cycle"></dd>
-          <dt>Focus</dt><dd id="plan-focus"></dd>
-          <dt>Prediction</dt><dd id="plan-prediction"></dd>
-          <dt>Cites</dt><dd id="plan-cites"></dd>
-          <dt>Hypothesis</dt><dd class="agent-text" id="plan-hypothesis"></dd>
-        </dl>
-      </section>
-      <h3 id="briefing-title">Briefing the CEO was sent</h3>
-      <pre class="briefing" id="briefing" tabindex="0" aria-labelledby="briefing-title"></pre>
-    </div>
-    <div>
-      <h3>Lessons</h3>
-      <ul class="items" id="lesson-list"></ul>
-      <p class="empty-state" id="lesson-empty">No lessons yet.</p>
-      <h3>Open backlog</h3>
-      <ul class="items" id="backlog-list"></ul>
-      <p class="empty-state" id="backlog-empty">Nothing open.</p>
-      <figure class="chart">
-        <figcaption><strong class="role-ceo">Predicted against actual ASR change</strong><span id="calibration-count"></span></figcaption>
-        <svg class="plot" id="plot-calibration" viewBox="0 0 320 200" role="img" aria-label="Calibration: predicted against actual change in ASR"></svg>
-      </figure>
-    </div>
-  </div>
-</section>
 <script src="/app.js"></script>
 <script src="/arena.js"></script>
 <script src="/dashboard.js"></script>
