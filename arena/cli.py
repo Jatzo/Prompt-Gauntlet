@@ -2,8 +2,8 @@
 
 python -m arena.cli status
 python -m arena.cli control start|pause|resume|stop
-python -m arena.cli run-cycle --backend mock|replay|live [--cassette PATH] [--judge simulated|live]
-python -m arena.cli run --cycles N --backend mock|replay|live [--judge simulated|live]
+python -m arena.cli run-cycle --backend mock|sim|replay|live [--cassette PATH] [--judge JUDGE]
+python -m arena.cli run --cycles N --backend mock|sim|replay|live [--judge simulated|live]
 python -m arena.cli abandon-cycle --reason TEXT
 python -m arena.cli baseline --backend mock|replay|live [--profile clean|low_asr]
 python -m arena.cli data build --synthetic|--real --judge-dir PATH [--pilot N | --plan-only]
@@ -38,6 +38,7 @@ from arena.judge_client import JudgeClient, JudgeError
 from arena.orchestrator import Orchestrator, phase1_mock_script
 from arena.report_tables import render
 from arena.schemas import LabelCheckRequest
+from arena.sim_agents import SimAgentsBackend
 from arena.target.ladder import LADDER
 
 CONTROL_TARGETS = {"start": "running", "resume": "running", "pause": "paused", "stop": "stopped"}
@@ -81,7 +82,11 @@ def cmd_run(conn, args, cycles: int) -> int:
     # One mock output per step per cycle, since the mock answers each call from a queue.
     script = {step: outputs * cycles for step, outputs in phase1_mock_script().items()}
     try:
-        backend = llm.get_backend(args.backend, mock_script=script, cassette=args.cassette)
+        backend = (
+            SimAgentsBackend(DEFAULTS.seed)
+            if args.backend == "sim"
+            else llm.get_backend(args.backend, mock_script=script, cassette=args.cassette)
+        )
     except llm.LiveCallRefused as refused:
         print(refused, file=sys.stderr)
         return ExitCode.FAILED
@@ -481,7 +486,8 @@ def main(argv: list[str] | None = None) -> int:
     run = commands.add_parser("run")
     run.add_argument("--cycles", type=int, required=True)
     for command in (run_cycle, run):
-        command.add_argument("--backend", choices=["mock", "replay", "live"], default="mock")
+        # sim: seeded CEO, Attacker and Defender that vary each cycle (arena/sim_agents.py).
+        command.add_argument("--backend", choices=["mock", "sim", "replay", "live"], default="mock")
         command.add_argument("--cassette", type=Path, default=None)
         command.add_argument("--run-id", default="default")
         command.add_argument("--judge", choices=["simulated", "live"], default="simulated")

@@ -175,3 +175,12 @@ def test_a_cassette_that_runs_out_ends_the_run_with_a_message(db_path, capsys):
     captured = capsys.readouterr()
     assert "Cycle 1: committed" in captured.out
     assert "no more answers after 1 cycles" in captured.err
+
+
+def test_run_with_simulated_agents_commits_and_stores_their_calls(db_path, capsys):
+    cli.main(["--db", db_path, "control", "start"])
+    assert cli.main(["--db", db_path, "run", "--cycles", "2", "--backend", "sim"]) == 0
+    assert capsys.readouterr().out.count("committed") == 2
+    conn = db.connect(Path(db_path))
+    backends = {row[0] for row in conn.execute("SELECT DISTINCT backend FROM llm_calls")}
+    assert backends == {"sim-agents-20261025"}

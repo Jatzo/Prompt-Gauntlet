@@ -69,6 +69,14 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   its Judge were both live. `run --cycles N` runs cycles back to back and stops at a pause; both
   commands take `--backend live`. A live-agent run needs a calibrated novelty threshold, or the
   attack step pauses with `NotCalibrated`: settle that before the first live demo (step E).
+- 2026-10-28, step C: seeded simulated agents (`arena/sim_agents.py`) for a free battle, reached
+  with `--backend sim`, not by changing `--backend mock` as the plan said: the mock backend's
+  scripted outputs and blocking hooks carry the kill-and-resume test. The CEO picks a focus, the
+  Attacker mixes payloads the regex baseline catches with variants it misses, and the Defender picks
+  from a menu of keepers, near misses, no-ops and refused patches. On the small synthetic folder,
+  8 cycles against the real Judge gave one keep and seven rejects. On that folder dev holds two
+  attack families, one per fold, and the regex baseline catches neither, so only a patch that
+  catches both passes the replication condition.
 - 2026-10-27, evidence pack (the operator asked for every run to be shown as evidence):
   `python -m arena.cli evidence RUN_ID` reads the agent database read-only and writes
   `runs/RUN_ID/evidence/private/` (every field, attack text included) and `public/` (an allowlist of
