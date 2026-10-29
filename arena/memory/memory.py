@@ -85,6 +85,7 @@ def token_set_jaccard(left: str, right: str) -> float:
 # on whether agents may read it; `record_episode` refuses anything else.
 EPISODE_KINDS = (
     "plan",
+    "briefing",
     "shortlist",
     "postmortem",
     "judge_report",
@@ -93,10 +94,10 @@ EPISODE_KINDS = (
     "patch",
 )
 
-# Episodes that may hold attack text: the Attacker's batches, held-back attacks included, and the
-# Defender's patches, whose literal rules can quote an evasion. No briefing, recall or other
-# agent-facing read may select them.
-PRIVATE_EPISODE_KINDS = ("attack_batch", "novelty_closed", "patch")
+# Episodes that may hold attack text: the Attacker's batches, held-back attacks included, the
+# Defender's patches, whose literal rules can quote an evasion, and the CEO's stored briefing, which
+# quotes agent text. No briefing, recall or other agent-facing read may select them.
+PRIVATE_EPISODE_KINDS = ("attack_batch", "novelty_closed", "patch", "briefing")
 
 
 class Memory:

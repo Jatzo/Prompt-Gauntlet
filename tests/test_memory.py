@@ -48,6 +48,7 @@ def test_the_episode_kinds_are_pinned_and_the_private_ones_are_among_them():
     # Adding a kind is a decision about whether agents may read it, so it fails here first.
     assert EPISODE_KINDS == (
         "plan",
+        "briefing",
         "shortlist",
         "postmortem",
         "judge_report",

@@ -76,6 +76,8 @@ function row(event) {
   const anomaly = event.severity === "anomaly";
   const tr = document.createElement("tr");
   tr.className = anomaly ? "anomaly fresh" : "fresh";
+  // For the dashboard's agent filter (dashboard.js); a role is an identifier or empty.
+  tr.dataset.role = event.role || "";
   const time = cell(clock(event.time), "num");
   time.title = event.time || "";
   const tool = cell(event.tool || "");

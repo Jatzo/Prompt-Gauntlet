@@ -322,3 +322,23 @@ def test_a_long_mock_run_follows_the_plateau_switch_without_a_refusal(conn):
     orchestrator = Orchestrator(conn, backend=backend, judge=FakeJudge(keep=False), config=config)
     assert [orchestrator.run_cycle().status for _ in range(8)] == ["committed"] * 8
     assert all(valid for valid, _ in plan_attempts(conn))
+
+
+def test_a_resumed_plan_step_sends_the_briefing_stored_before_the_crash(conn):
+    """The briefing is stored before the CEO call. A note added between a crash and the resume
+    changes neither the stored text nor the prompt the resumed call sends."""
+    with pytest.raises(RuntimeError, match="no output left"):
+        run_once(conn, {"plan": []})
+    [stored] = conn.execute("SELECT body FROM memory_episodic WHERE kind = ?", ("briefing",))
+    first = json.loads(stored[0])["text"]
+    with db.transaction(conn):
+        note = Memory(conn).add_operator_note("Added after the crash.")
+    script = phase1_mock_script()
+    postmortem = json.loads(script["postmortem"][0]) | {"operator_notes_acknowledged": [note]}
+    script["postmortem"] = [json.dumps(postmortem)]
+    Spy.prompts = []
+    assert run_once(conn, script, backend_class=Spy).status == "committed"
+    assert Spy.prompts[0] == first
+    assert "Added after the crash" not in first
+    rows = conn.execute("SELECT COUNT(*) FROM memory_episodic WHERE kind = ?", ("briefing",))
+    assert rows.fetchone()[0] == 1

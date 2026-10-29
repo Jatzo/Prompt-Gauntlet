@@ -43,6 +43,7 @@ REQUIRED_EPISODES = ("plan", "judge_report", "postmortem")
 # exporter shows up as "not shown" in the report instead of disappearing.
 KNOWN_EPISODES = (
     "plan",
+    "briefing",
     "shortlist",
     "attack_batch",
     "patch",

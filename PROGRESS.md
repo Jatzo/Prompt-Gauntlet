@@ -85,6 +85,16 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   `arena/arena_feed.py`; the evidence pack is unchanged. A fresh page plays only the latest cycle and
   puts the rest in the strip. The feed's status label reads "Connected" so it is never confused with
   a live run. A run_id per cycle and a run picker are left for when one database holds two runs.
+- 2026-10-29, step D (the four-panel dashboard, PLAN section 15; plan, critique and Joe's answers
+  in `private/dashboard-plan.md`): PLAN's four panels, with each part that waits on a later step
+  shown as a labelled empty state. Panels read one run, the newest by default, through
+  `arena/dashboard_feed.py`; only the memory panel carries agent text, shown as plain text. The
+  only writes are the control flag and operator notes, through `arena/operator_writes.py`: a token
+  made at server start, a matching Origin and a JSON body on every POST, no framing, a refusal on
+  a missing file or another schema, notes capped at 1,000 characters and refused while a run is
+  mid-cycle in a database holding more than one run. The CEO's briefing is stored before the call
+  and read back on resume. The event list and the bar's counts still cover all runs, and say so.
+  Screenshots in `docs/dashboard/` come from a fresh sim run and are retaken after steps 11 and 13b.
 - 2026-10-29, step 10 (the CEO; Joe's step F answers): code builds the focus shortlist each
   cycle: the technique this run focused on least, the one with the most evasions shown in recent
   batches, one in the scope of the oldest active lesson, and `explore`. Ties follow the seed and a

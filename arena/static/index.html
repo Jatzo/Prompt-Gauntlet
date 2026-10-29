@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Prompt Gauntlet: arena</title>
+<title>Prompt Gauntlet: dashboard</title>
 <style>
   :root {
     color-scheme: light dark;
@@ -127,13 +127,14 @@
   @media (max-width: 40rem) {
     .bar { padding: 0.6rem 1rem; }
     .bar .counts { margin-left: 0; }
-    /* The outcome matters most on a phone: drop the agent column and let cells wrap. */
-    table { min-width: 0; table-layout: fixed; }
-    th:nth-child(3), td:nth-child(3), col.agent { display: none; }
+    /* In the event list the outcome matters most on a phone: drop the agent column, let cells wrap. */
+    #scroller table { min-width: 0; table-layout: fixed; }
+    #scroller th:nth-child(3), #scroller td:nth-child(3), col.agent { display: none; }
     col.time { width: 4.75rem; }
     col.cycle { width: 3.25rem; }
     col.tool { width: 7.5rem; }
-    td, th { padding-inline: 0.5rem; overflow-wrap: anywhere; }
+    #scroller td, #scroller th { padding-inline: 0.5rem; overflow-wrap: anywhere; }
+    table.tally th, table.tally td { padding-inline: 0.4rem; }
   }
 
   /* The arena: one cycle's attacks travel from the Attacker through the Detector to the Target. */
@@ -251,13 +252,113 @@
     .arena { grid-template-columns: minmax(0, 1fr); padding-inline: 1rem; }
     .score dl { grid-template-columns: repeat(2, minmax(0, 1fr) auto); }
   }
+  /* Panels below the arena share one frame: a heading row, then content on the surface. */
+  .panel { padding: 1rem 1.25rem; border-bottom: 1px solid var(--rule); }
+  .panel > h2, .panel-head h2 { margin: 0; font-size: 1rem; font-weight: 650; }
+  .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; margin-bottom: 0.75rem; }
+  .panel-head p { margin: 0; color: var(--muted); }
+  .panel h3 { margin: 0 0 0.4rem; font-size: 0.8125rem; font-weight: 650; }
+  .lower { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; }
+  .lower > .panel + .panel { border-left: 1px solid var(--rule); }
+  .quiet-text, .empty-state { color: var(--muted); }
+  .empty-state { margin: 0; max-width: 60ch; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: end; margin: 0 0 0.75rem; }
+  .filters label { display: grid; gap: 0.15rem; color: var(--muted); font-size: 0.75rem; font-weight: 600; }
+  select, textarea, .controls button, #note-add {
+    font: inherit;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+  }
+  select { padding: 0.25rem 0.4rem; }
+  .bar select { font-size: 0.8125rem; }
+  #tally-wrap { overflow-x: auto; }
+  table.tally { min-width: 0; width: auto; }
+  table.tally th, table.tally td { padding: 0.25rem 0.75rem; }
+  table.tally thead th { position: static; }
+  table.tally td { text-align: right; font-variant-numeric: tabular-nums; }
+  table.tally th[scope="row"] { font-weight: 400; text-align: left; color: var(--ink); }
+  tr.filtered-out { display: none; }
+
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1rem 1.5rem; }
+  figure.chart { margin: 0; min-width: 0; }
+  figure.chart figcaption { display: flex; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.25rem; }
+  figure.chart figcaption strong { font-weight: 650; font-size: 0.8125rem; }
+  figure.chart figcaption span { color: var(--muted); font-variant-numeric: tabular-nums; }
+  svg.plot { display: block; width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+  svg.plot text { fill: var(--muted); font: 500 11px system-ui, sans-serif; }
+  svg.plot .grid { stroke: var(--rule); }
+  svg.plot .band { fill: var(--accent-soft); }
+  svg.plot .line { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+  svg.plot .point { fill: var(--ink); }
+  svg.plot .point[data-decision="keep"] { fill: var(--accent); }
+  svg.plot .cap { stroke: var(--warn-ink); stroke-dasharray: 4 3; }
+  svg.plot .fpr-bar { fill: var(--ink); }
+  svg.plot .fpr-bar[data-over] { fill: var(--warn-ink); }
+  svg.plot .diagonal { stroke: var(--rule); stroke-dasharray: 3 3; }
+  .chart-note { margin: 0.75rem 0 0; color: var(--muted); font-size: 0.75rem; max-width: 70ch; }
+
+  .memory { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1rem 1.5rem; }
+  .plan dl { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 0.75rem; margin: 0 0 0.75rem; }
+  .plan dt { color: var(--muted); }
+  .plan dd { margin: 0; overflow-wrap: anywhere; }
+  .agent-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  pre.briefing {
+    margin: 0;
+    max-height: 26rem;
+    overflow: auto;
+    padding: 0.75rem;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--surface);
+    font: 0.8125rem/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  ul.items { margin: 0 0 1rem; padding: 0; list-style: none; }
+  ul.items li { padding: 0.35rem 0; border-bottom: 1px solid var(--rule); }
+  ul.items li:last-child { border-bottom: 0; }
+  .empty-state + h3, ul.items + h3, .empty-state + figure { margin-top: 1rem; }
+  figure.chart:has(#plot-calibration) { max-width: 24rem; }
+  .meta { color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+  .status-word[data-status="disputed"], .status-word[data-status="retired"] { color: var(--warn-ink); }
+
+  .ops section { margin-bottom: 1.25rem; }
+  .ops section:last-child { margin-bottom: 0; }
+  #control-state { margin: 0 0 0.5rem; font-weight: 600; }
+  #control-state[data-state="paused"], #control-state[data-state="stopped"] { color: var(--warn-ink); }
+  .controls { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .controls button, #note-add { padding: 0.35rem 0.8rem; font-weight: 600; cursor: pointer; }
+  .controls button:hover, #note-add:hover { border-color: var(--ink); }
+  .controls button:disabled, #note-add:disabled { opacity: 0.5; cursor: default; }
+  .hint { margin: 0.4rem 0 0; color: var(--muted); font-size: 0.75rem; }
+  .write-error { margin: 0.4rem 0 0; color: var(--warn-ink); font-size: 0.8125rem; }
+  textarea { width: 100%; min-height: 4.5rem; padding: 0.4rem 0.5rem; resize: vertical; }
+  #note-add { margin-top: 0.4rem; }
+  table.usage { min-width: 0; }
+  table.usage thead th { position: static; }
+  table.usage td:not(:first-child), table.usage th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+  dl.later { display: grid; gap: 0.5rem; margin: 0; }
+  dl.later dt { font-weight: 600; }
+  dl.later dd { margin: 0; color: var(--muted); }
+
+  @media (max-width: 60rem) {
+    .lower, .memory { grid-template-columns: minmax(0, 1fr); }
+    .lower > .panel + .panel { border-left: 0; }
+  }
+  @media (max-width: 40rem) {
+    .panel { padding-inline: 1rem; }
+  }
 </style>
 </head>
 <body>
 <header class="bar">
-  <h1>Prompt Gauntlet <span>arena</span></h1>
+  <h1>Prompt Gauntlet <span>dashboard</span></h1>
   <p id="status" role="status" data-state="connecting">Connecting</p>
-  <p class="counts"><span class="events"><strong id="event-count">0</strong> <span id="event-word">events</span></span>, <span class="anomalies" id="anomaly-wrap"><strong id="anomaly-count">0</strong> <span id="anomaly-word">anomalies</span></span></p>
+  <p><label>Run <select id="run-pick" aria-label="Run shown"><option value="">newest</option></select></label></p>
+  <p class="counts"><span class="events"><strong id="event-count">0</strong> <span id="event-word">events</span></span>, <span class="anomalies" id="anomaly-wrap"><strong id="anomaly-count">0</strong> <span id="anomaly-word">anomalies</span></span> in all runs</p>
 </header>
 <section class="arena" aria-label="Arena">
   <div class="stage">
@@ -302,8 +403,33 @@
     <ol id="arena-strip" aria-labelledby="strip-head"></ol>
   </aside>
 </section>
+<section class="panel" aria-labelledby="feed-title">
+  <div class="panel-head">
+    <h2 id="feed-title">Attacks this run</h2>
+    <p>Counts by technique and outcome over every finished cycle shown above.</p>
+  </div>
+  <div class="filters">
+    <label>Technique <select id="filter-technique"><option value="">all</option></select></label>
+    <label>Outcome <select id="filter-outcome">
+      <option value="">all</option>
+      <option value="through">got past</option>
+      <option value="caught">caught</option>
+      <option value="no_effect">no effect</option>
+      <option value="refused">refused by the model</option>
+    </select></label>
+    <label>Agent, in the event list <select id="filter-agent">
+      <option value="">all</option>
+      <option value="ceo">CEO</option>
+      <option value="attacker">Attacker</option>
+      <option value="defender">Defender</option>
+      <option value="judge">Judge</option>
+      <option value="orchestrator">Orchestrator</option>
+    </select></label>
+  </div>
+  <div id="tally-wrap"><p class="empty-state" id="tally-empty">No attacks yet. Each finished cycle's batch is counted here.</p></div>
+</section>
 <details class="log">
-<summary>Event list</summary>
+<summary>Event list, all runs</summary>
 <main>
   <p id="dropped" hidden></p>
   <div id="scroller" tabindex="0" aria-label="Events, oldest first">
@@ -320,7 +446,107 @@
   <button id="jump" type="button" hidden>Jump to latest</button>
 </main>
 </details>
+<div class="lower">
+  <section class="panel" aria-labelledby="scores-title">
+    <div class="panel-head">
+      <h2 id="scores-title">Scores</h2>
+      <p>The Judge on dev, one point per committed cycle. Shaded bands are confidence intervals.</p>
+      <span class="badge" id="scores-badge" hidden></span>
+    </div>
+    <p class="empty-state" id="scores-empty">No Judge measurement yet. Scores appear after the first committed cycle.</p>
+    <div class="charts" id="charts" hidden>
+      <figure class="chart"><figcaption><strong>End-to-end ASR</strong><span id="asr-now"></span></figcaption><svg class="plot" id="plot-asr" viewBox="0 0 320 150" role="img" aria-label="Attack success rate by cycle"></svg></figure>
+      <figure class="chart"><figcaption><strong>Utility</strong><span id="utility-now"></span></figcaption><svg class="plot" id="plot-utility" viewBox="0 0 320 150" role="img" aria-label="Utility by cycle"></svg></figure>
+      <figure class="chart"><figcaption><strong>TPR at the target FPR</strong><span id="tpr-now"></span></figcaption><svg class="plot" id="plot-tpr" viewBox="0 0 320 150" role="img" aria-label="True positive rate by cycle"></svg></figure>
+      <figure class="chart"><figcaption><strong>False alarms by category</strong><span id="fpr-now"></span></figcaption><svg class="plot" id="plot-fpr" viewBox="0 0 320 150" role="img" aria-label="False positive rate per benign category, latest cycle"></svg></figure>
+    </div>
+    <p class="chart-note" id="scores-note">Orange points are cycles whose candidate the Judge kept. A kept change stays provisional until you review it; the review queue comes with step 13b. Cross-play scores come in Phase 4.</p>
+  </section>
+  <section class="panel ops" aria-labelledby="ops-title">
+    <div class="panel-head"><h2 id="ops-title">Controls and alerts</h2></div>
+    <section aria-labelledby="control-title">
+      <h3 id="control-title">Run control</h3>
+      <p id="control-state" data-state="">Reading the control flag</p>
+      <div class="controls">
+        <button type="button" data-action="start">Start</button>
+        <button type="button" data-action="pause">Pause</button>
+        <button type="button" data-action="resume">Resume</button>
+        <button type="button" data-action="stop">Stop</button>
+      </div>
+      <p class="hint">Start and resume let the next <code>run</code> command go ahead. The dashboard never launches a run itself.</p>
+      <p class="write-error" id="control-error" role="alert" hidden></p>
+    </section>
+    <section aria-labelledby="anomaly-title">
+      <h3 id="anomaly-title">Anomalies</h3>
+      <ul class="items" id="anomaly-list"></ul>
+      <p class="empty-state" id="anomaly-empty">None in this run.</p>
+    </section>
+    <section aria-labelledby="notes-title">
+      <h3 id="notes-title">Operator notes</h3>
+      <label for="note-text" class="hint">Every briefing in this database shows every note, in all runs, and a note is never edited or cut.</label>
+      <textarea id="note-text" maxlength="1000"></textarea>
+      <button type="button" id="note-add">Add note</button>
+      <p class="write-error" id="note-error" role="alert" hidden></p>
+      <ul class="items" id="note-list"></ul>
+    </section>
+    <section aria-labelledby="usage-title">
+      <h3 id="usage-title">Usage this run</h3>
+      <table class="usage" id="usage-table" hidden>
+        <thead><tr><th scope="col">Role</th><th scope="col">Calls</th><th scope="col">Tokens in</th><th scope="col">Tokens out</th><th scope="col" title="Share of the plan's rate limit left at the last call">Headroom</th></tr></thead>
+        <tbody id="usage-rows"></tbody>
+      </table>
+      <p class="empty-state" id="usage-empty">No model calls recorded yet.</p>
+    </section>
+    <section aria-labelledby="later-title">
+      <h3 id="later-title">Not built yet</h3>
+      <dl class="later">
+        <dt>Findings board</dt><dd>Comes with the findings and regression tracker (Phase 3 step 11).</dd>
+        <dt>Review and approve keeps</dt><dd>Comes with the review queue (step 13b).</dd>
+        <dt>Digests</dt><dd>Comes with checkpoints (step 13c).</dd>
+        <dt>Approve sources</dt><dd>Comes with the Researcher (step 12).</dd>
+        <dt>Operator questions</dt><dd>The CEO can call <code>ask_operator</code>, but its questions are not stored yet.</dd>
+        <dt>Case-study queue</dt><dd>Comes with the case-study engine (Phase 6).</dd>
+      </dl>
+    </section>
+  </section>
+</div>
+<section class="panel" aria-labelledby="memory-title">
+  <div class="panel-head">
+    <h2 id="memory-title">Memory and briefing</h2>
+    <p>Agent text is shown as written and may quote an attack. It is never run as markup.</p>
+  </div>
+  <p class="empty-state" id="memory-empty">No plan yet. The CEO's plan and the briefing it was sent appear after the first plan step.</p>
+  <div class="memory" id="memory" hidden>
+    <div>
+      <section class="plan" aria-labelledby="plan-title">
+        <h3 id="plan-title">Latest plan</h3>
+        <dl>
+          <dt>Cycle</dt><dd id="plan-cycle"></dd>
+          <dt>Focus</dt><dd id="plan-focus"></dd>
+          <dt>Prediction</dt><dd id="plan-prediction"></dd>
+          <dt>Cites</dt><dd id="plan-cites"></dd>
+          <dt>Hypothesis</dt><dd class="agent-text" id="plan-hypothesis"></dd>
+        </dl>
+      </section>
+      <h3 id="briefing-title">Briefing the CEO was sent</h3>
+      <pre class="briefing" id="briefing" tabindex="0" aria-labelledby="briefing-title"></pre>
+    </div>
+    <div>
+      <h3>Lessons</h3>
+      <ul class="items" id="lesson-list"></ul>
+      <p class="empty-state" id="lesson-empty">No lessons yet.</p>
+      <h3>Open backlog</h3>
+      <ul class="items" id="backlog-list"></ul>
+      <p class="empty-state" id="backlog-empty">Nothing open.</p>
+      <figure class="chart">
+        <figcaption><strong>Predicted against actual ASR change</strong><span id="calibration-count"></span></figcaption>
+        <svg class="plot" id="plot-calibration" viewBox="0 0 320 200" role="img" aria-label="Calibration: predicted against actual change in ASR"></svg>
+      </figure>
+    </div>
+  </div>
+</section>
 <script src="/app.js"></script>
 <script src="/arena.js"></script>
+<script src="/dashboard.js"></script>
 </body>
 </html>

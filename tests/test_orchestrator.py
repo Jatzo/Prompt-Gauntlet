@@ -14,15 +14,16 @@ from arena.orchestrator import PRIMARY_FOLD, REFERENCE_TARGET, Orchestrator, pha
 from tests.conftest import FakeJudge, numbered
 
 FULL_CYCLE = [
-    "plan",
+    "briefing",
     "shortlist",
+    "plan",
     "attack_batch",
     "patch",
     "judge_report",
     "postmortem",
     "novelty_closed",
 ]
-UP_TO_JUDGE = ["plan", "shortlist", "attack_batch", "patch", "judge_report"]
+UP_TO_JUDGE = ["briefing", "shortlist", "plan", "attack_batch", "patch", "judge_report"]
 
 
 def make(conn, script=None, judge=None, run_id="default", **backend_kwargs):

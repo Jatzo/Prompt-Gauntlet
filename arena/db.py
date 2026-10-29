@@ -18,6 +18,8 @@ SCHEMA_VERSION = 4
 
 CYCLE_STATES = ("planned", "running", "evaluating", "committed", "rolled_back")
 CONTROL_STATES = ("running", "paused", "stopped")
+# The operator's control actions and the state each sets; the CLI and the dashboard share them.
+CONTROL_TARGETS = {"start": "running", "resume": "running", "pause": "paused", "stop": "stopped"}
 
 SCHEMA = f"""
 CREATE TABLE schema_version (version INTEGER NOT NULL);

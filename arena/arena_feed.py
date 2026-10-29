@@ -30,21 +30,23 @@ _FIELDS = frozenset({"rules", "normalisers", "classifier_prompt", "layers"})
 _STANDING = ("baseline", "kept_provisional", "kept_reviewed")
 
 
-def cycles_after(conn: sqlite3.Connection, after: int) -> dict:
+def cycles_after(conn: sqlite3.Connection, after: int, run_id: str | None = None) -> dict:
     """Up to `PAGE` finished cycles with ids above `after`, oldest first, and where to ask next.
+    With `run_id`, only that run's cycles.
 
     `next_after` never passes a cycle that is still open, so a cycle finishing later is still
     fetched; the page drops any cycle it already holds.
     """
     placeholders = ",".join("?" * len(FINISHED))
+    scope, scope_args = (" AND run_id = ?", (run_id,)) if run_id is not None else ("", ())
     rows = conn.execute(
         f"SELECT id, run_id, state FROM cycles WHERE id > ? AND state IN ({placeholders})"  # noqa: S608
-        " ORDER BY id LIMIT ?",
-        (after, *FINISHED, PAGE),
+        f"{scope} ORDER BY id LIMIT ?",
+        (after, *FINISHED, *scope_args, PAGE),
     ).fetchall()
     open_row = conn.execute(
-        f"SELECT MIN(id) FROM cycles WHERE id > ? AND state NOT IN ({placeholders})",  # noqa: S608
-        (after, *FINISHED),
+        f"SELECT MIN(id) FROM cycles WHERE id > ? AND state NOT IN ({placeholders}){scope}",  # noqa: S608
+        (after, *FINISHED, *scope_args),
     ).fetchone()
     next_after = rows[-1]["id"] if rows else after
     if open_row[0] is not None:

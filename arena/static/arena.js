@@ -5,6 +5,9 @@
 (() => {
   "use strict";
 
+  // The run the page shows, chosen in the bar (dashboard.js); none means the newest run.
+  const RUN = new URLSearchParams(location.search).get("run");
+  const runQuery = RUN ? `&run=${encodeURIComponent(RUN)}` : "";
   const svg = document.getElementById("arena-svg");
   const NS = svg.namespaceURI;
   const dots = document.getElementById("arena-dots");
@@ -277,7 +280,7 @@
     if (fetching) return;
     fetching = true;
     try {
-      const response = await fetch(`/arena/cycles?after=${after}`);
+      const response = await fetch(`/arena/cycles?after=${after}${runQuery}`);
       if (!response.ok) return;
       const page = await response.json();
       for (const cycle of page.cycles) {

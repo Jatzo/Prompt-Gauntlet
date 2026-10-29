@@ -41,7 +41,7 @@ from arena.schemas import LabelCheckRequest
 from arena.sim_agents import SimAgentsBackend
 from arena.target.ladder import LADDER
 
-CONTROL_TARGETS = {"start": "running", "resume": "running", "pause": "paused", "stop": "stopped"}
+CONTROL_TARGETS = db.CONTROL_TARGETS
 
 
 def cmd_status(conn) -> int:

@@ -235,20 +235,12 @@ class Orchestrator:
         cycle.reach(self.conn, cycle_id, "running")
         if self._written(cycle_id, "plan"):
             return
-        self._check_plateau()
-        foci = shortlist.build(self.conn, self.run_id, self.config)
-        brief = briefing.build(
-            self.conn,
-            self.run_id,
-            config=self.config,
-            root=self.root,
-            foci=foci.foci,
-            use_memory=self.use_memory,
-        )
+        brief = self._briefing(cycle_id)
+        foci, shown = brief["foci"], brief["lesson_ids"]
 
         def check(plan: CEOPlan) -> str | None:
-            if plan.focus not in foci.foci:
-                return f"focus {plan.focus!r} is not on the shortlist {list(foci.foci)}"
+            if plan.focus not in foci:
+                return f"focus {plan.focus!r} is not on the shortlist {foci}"
             repeated = Memory(self.conn, self.config).duplicate_plan(
                 self.run_id, plan.hypothesis_text
             )
@@ -256,7 +248,7 @@ class Orchestrator:
                 return f"the hypothesis nearly repeats the one in cycle {repeated}"
             # Only lessons this briefing showed: an id from another run, or one the budget cut,
             # would steer the agents with memory this run never had.
-            unshown = sorted(set(plan.cites_lesson_ids) - set(brief.lesson_ids))
+            unshown = sorted(set(plan.cites_lesson_ids) - set(shown))
             if unshown:
                 return f"lessons {unshown} were not in this briefing"
             return None
@@ -264,18 +256,17 @@ class Orchestrator:
         def write(memory: Memory, plan: CEOPlan) -> str:
             where = {"cycle_id": cycle_id, "step": "plan", "role": "ceo"}
             memory.record_episode(kind="plan", body=plan.model_dump(mode="json"), **where)
-            memory.record_episode(kind="shortlist", body=foci.body(), **where)
             memory.record_prediction(plan.prediction, **where)
             # The briefing-usage check (PLAN section 9). The plan check allows only shown lessons.
             usage = {
                 "cites_lesson": bool(plan.cites_lesson_ids),
                 "cited": plan.cites_lesson_ids,
-                "shown": sorted(brief.lesson_ids),
+                "shown": shown,
             }
             db.log_event(self.conn, "briefing_usage", usage, cycle_id=cycle_id)
             return "plan recorded"
 
-        user = f"{brief.text}\n\n{foci.text(self.config)}\n\nCycle {cycle_id}. Call propose_plan."
+        user = brief["text"]
         self._run_step(
             cycle_id,
             "plan",
@@ -286,6 +277,37 @@ class Orchestrator:
             ),
             write,
         )
+
+    def _briefing(self, cycle_id: int) -> dict:
+        """The CEO's prompt for this cycle, built once and stored before the call, with the
+        shortlist and the lesson ids it showed. A resumed cycle reads it back rather than building
+        it again, so the stored text is always the one the CEO was sent, even if a note or a lesson
+        changed in between."""
+        memory = Memory(self.conn, self.config)
+        stored = memory.episode(cycle_id, "briefing")
+        if stored is not None:
+            return stored
+        self._check_plateau()
+        foci = shortlist.build(self.conn, self.run_id, self.config)
+        brief = briefing.build(
+            self.conn,
+            self.run_id,
+            config=self.config,
+            root=self.root,
+            foci=foci.foci,
+            use_memory=self.use_memory,
+        )
+        ask = f"Cycle {cycle_id}. Call propose_plan."
+        body = {
+            "text": f"{brief.text}\n\n{foci.text(self.config)}\n\n{ask}",
+            "foci": list(foci.foci),
+            "lesson_ids": sorted(brief.lesson_ids),
+        }
+        where = {"cycle_id": cycle_id, "step": "plan", "role": "orchestrator"}
+        with db.transaction(self.conn):
+            memory.record_episode(kind="briefing", body=body, **where)
+            memory.record_episode(kind="shortlist", body=foci.body(), **where)
+        return body
 
     def _check_plateau(self) -> None:
         """Pause once no change has been kept for `plateau_pause_m` cycles. The count restarts
