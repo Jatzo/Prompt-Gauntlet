@@ -33,6 +33,12 @@ _NEXT_STATUS = {
     "kept_provisional": frozenset({"kept_reviewed", "rejected"}),
 }
 _STANDING = ("baseline", "kept_provisional", "kept_reviewed")
+# How a lesson's status may move (PLAN section 9). A disputed lesson can be restored by a checkpoint
+# rewrite; superseded and retired are final.
+_NEXT_LESSON_STATUS = {
+    "active": frozenset({"disputed", "superseded", "retired"}),
+    "disputed": frozenset({"active", "superseded", "retired"}),
+}
 # The configs of one run: a config belongs to the run of the cycle that stored it. A config whose
 # cycle has no row belongs to run None, so `IS` compares run ids with None as a value.
 _IN_RUN = "FROM detector_configs d LEFT JOIN cycles c ON c.id = d.cycle_id WHERE c.run_id IS ?"
@@ -176,6 +182,36 @@ class Memory:
         )
         self._provenance("memory_predictions", row_id, role, cycle_id, step)
         return row_id
+
+    def record_actual(self, cycle_id: int, actual_delta: float, *, step: str, role: str) -> None:
+        """Pair the cycle's prediction with what happened. Set once; a second value is refused."""
+        self._require_transaction()
+        row = self.conn.execute(
+            "SELECT id, actual_delta FROM memory_predictions WHERE cycle_id = ?", (cycle_id,)
+        ).fetchone()
+        if row is None:
+            raise MemoryWriteRejected(f"Cycle {cycle_id} has no prediction to pair.")
+        if row[1] is not None:
+            raise MemoryWriteRejected(f"Cycle {cycle_id}'s prediction already has its actual.")
+        self.conn.execute(
+            "UPDATE memory_predictions SET actual_delta = ? WHERE id = ?", (actual_delta, row[0])
+        )
+        self._provenance("memory_predictions", row[0], role, cycle_id, step)
+
+    def set_lesson_status(
+        self, lesson_id: int, status: str, *, cycle_id: int, step: str, role: str
+    ) -> None:
+        """Move a lesson along its allowed statuses. Only code rules and checkpoints call this."""
+        self._require_transaction()
+        row = self.conn.execute(
+            "SELECT status FROM memory_lessons WHERE id = ?", (lesson_id,)
+        ).fetchone()
+        if row is None:
+            raise MemoryWriteRejected(f"Lesson {lesson_id} does not exist.")
+        if status not in _NEXT_LESSON_STATUS.get(row[0], ()):
+            raise MemoryWriteRejected(f"Lesson {lesson_id} cannot go from {row[0]} to {status}.")
+        self.conn.execute("UPDATE memory_lessons SET status = ? WHERE id = ?", (status, lesson_id))
+        self._provenance("memory_lessons", lesson_id, role, cycle_id, step)
 
     def add_detector_config(
         self,

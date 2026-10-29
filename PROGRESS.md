@@ -85,6 +85,15 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   `arena/arena_feed.py`; the evidence pack is unchanged. A fresh page plays only the latest cycle and
   puts the rest in the strip. The feed's status label reads "Connected" so it is never confused with
   a live run. A run_id per cycle and a run picker are left for when one database holds two runs.
+- 2026-10-29, step 9 (briefing and memory reads; Joe's step F answers in
+  `private/phase3-remaining-plan.md`): code builds the CEO's briefing each cycle in PLAN section 9's
+  order with per-section budgets; operator notes are never cut, weaker lessons go first, and agent
+  text arrives datamarked. The constitution stays in the system prompt and counts against the budget.
+  A prediction pairs with the dev ASR change (candidate minus incumbent, from the Judge's ASR
+  condition). A cited lesson is disputed when ASR moves against the prediction beyond the CI
+  half-width. Both happen at commit, so a rolled-back cycle teaches nothing. Calibration enters the
+  briefing after 50 committed pairs. Rejecting a lineage disputes nothing yet: that lands with the
+  review queue in 13b.
 - 2026-10-27, evidence pack (the operator asked for every run to be shown as evidence):
   `python -m arena.cli evidence RUN_ID` reads the agent database read-only and writes
   `runs/RUN_ID/evidence/private/` (every field, attack text included) and `public/` (an allowlist of

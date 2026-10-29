@@ -30,6 +30,8 @@ from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig, config_hash, private_
 from arena.defender_inputs import hard_benign, shown_evasions, train_attacks, train_samples
 from arena.detector.patch import PatchRefused, apply_patch
 from arena.judge_client import HashReport
+from arena.memory import briefing
+from arena.memory.lessons import actual_delta, dispute_contradicted, noise_band
 from arena.memory.memory import Memory, MemoryWriteRejected, incumbent
 from arena.run_novelty import RunNovelty
 from arena.schemas import (
@@ -136,8 +138,15 @@ class Orchestrator:
             # Closing in the same transaction as the commit, so a crash can never leave a
             # committed cycle whose held-back attacks were never offered to the archive.
             with db.transaction(self.conn):
+                memory = Memory(self.conn, self.config)
                 cycle.reach(self.conn, cycle_id, "committed")
-                self.novelty.close_cycle(Memory(self.conn, self.config), cycle_id)
+                self.novelty.close_cycle(memory, cycle_id)
+                # Learning waits for the commit: a cycle rolled back after its Judge report (a
+                # hijacked post-mortem, an abandoned cycle) must not pair a prediction or dispute
+                # a lesson.
+                report = memory.episode(cycle_id, "judge_report")
+                if report is not None:
+                    self._learn_from(memory, cycle_id, JudgeReport.model_validate(report))
             return CycleOutcome("committed", cycle_id, "all steps done")
         except Anomaly as anomaly:
             detail = {"message": str(anomaly), **_jsonable(anomaly.detail)}
@@ -222,14 +231,18 @@ class Orchestrator:
             memory.record_prediction(plan.prediction, **where)
             return "plan recorded"
 
-        self._run_step(
-            cycle_id,
-            "plan",
-            "ceo",
-            "propose_plan",
-            lambda: self._agent_call("ceo", "propose_plan", cycle_id, "plan", CEOPlan),
-            write,
-        )
+        def produce() -> CEOPlan:
+            brief = briefing.build(
+                self.conn,
+                self.run_id,
+                config=self.config,
+                root=self.root,
+                use_memory=self.use_memory,
+            )
+            user = f"{brief.text}\n\nCycle {cycle_id}. Call propose_plan."
+            return self._agent_call("ceo", "propose_plan", cycle_id, "plan", CEOPlan, user=user)
+
+        self._run_step(cycle_id, "plan", "ceo", "propose_plan", produce, write)
 
     def _step_attack(self, cycle_id: int) -> None:
         plan = CEOPlan.model_validate(Memory(self.conn, self.config).episode(cycle_id, "plan"))
@@ -347,6 +360,24 @@ class Orchestrator:
             return f"patch with {len(patch.ops)} ops"
 
         self._run_step(cycle_id, defender.STEP, defender.ROLE, defender.TOOL, produce, write)
+
+    def _learn_from(self, memory: Memory, cycle_id: int, report: JudgeReport) -> None:
+        """Pair the prediction with the measured ASR change, and dispute any lesson the plan cited
+        that the outcome contradicts beyond the noise band."""
+        actual = actual_delta(report, self.config)
+        if actual is None:
+            return
+        where = {"cycle_id": cycle_id, "step": "commit", "role": "orchestrator"}
+        memory.record_actual(cycle_id, actual, step="commit", role="orchestrator")
+        plan = CEOPlan.model_validate(memory.episode(cycle_id, "plan"))
+        dispute_contradicted(
+            memory,
+            cited=plan.cites_lesson_ids,
+            expected=plan.prediction.expected_delta,
+            actual=actual,
+            band=noise_band(report),
+            **where,
+        )
 
     def _candidate(self, cycle_id: int) -> tuple[int, DetectorConfig, DetectorConfig] | None:
         """This cycle's candidate, its id and its parent's config, if the Defender made one."""
