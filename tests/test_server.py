@@ -172,7 +172,7 @@ def test_the_endpoint_streams_events_and_reads_resume_points(events_db):
 def test_a_foreign_host_is_refused_and_every_response_carries_the_headers(events_db):
     with client(events_db) as http:
         assert http.get("/", headers={"Host": "evil.example"}).status_code == 400
-        for path in ("/", "/app.js", "/events"):
+        for path in ("/", "/app.js", "/arena.js", "/arena/cycles", "/events"):
             response = http.get(path)
             assert response.status_code == 200
             assert "default-src 'none'" in response.headers["content-security-policy"]
@@ -181,7 +181,7 @@ def test_a_foreign_host_is_refused_and_every_response_carries_the_headers(events
         assert http.get("/docs").status_code == 404
 
 
-@pytest.mark.parametrize("name", ["index.html", "app.js"])
+@pytest.mark.parametrize("name", ["index.html", "app.js", "arena.js"])
 def test_the_page_loads_nothing_external_and_never_parses_html(name):
     source = (server.STATIC / name).read_text()
     for banned in (
@@ -231,3 +231,32 @@ def test_a_quiet_stream_sends_a_keepalive(tmp_path):
     ticks = iter([0.0, 5.0, 16.0, 16.0, 20.0])
     chunks = list(server.stream(path, 0, polls=3, sleep=lambda _: None, clock=lambda: next(ticks)))
     assert chunks.count(": keepalive\n\n") == 1
+
+
+def test_the_arena_endpoint_serves_finished_cycles_as_json(tmp_path):
+    from arena import llm
+    from arena.orchestrator import Orchestrator, phase1_mock_script
+    from tests.conftest import FakeJudge
+
+    path = tmp_path / "arena.db"
+    conn = db.connect(path)
+    db.set_control(conn, "running", "test")
+    Orchestrator(
+        conn, backend=llm.MockBackend(script=phase1_mock_script()), judge=FakeJudge()
+    ).run_cycle()
+    conn.close()
+    with client(path) as http:
+        page = http.get("/arena/cycles?after=0").json()
+        assert [found["cycle"] for found in page["cycles"]] == [1]
+        assert page["next_after"] == 1
+        assert http.get("/arena/cycles?after=1").json() == {"cycles": [], "next_after": 1}
+        # A bad resume point reads as the start, as it does for the event stream.
+        assert http.get("/arena/cycles?after=nonsense").json()["next_after"] == 1
+
+
+def test_the_arena_endpoint_waits_for_a_database_that_does_not_exist_yet(tmp_path):
+    with client(tmp_path / "missing.db") as http:
+        response = http.get("/arena/cycles?after=4")
+        assert response.status_code == 200
+        assert response.json() == {"cycles": [], "next_after": 4}
+    assert not (tmp_path / "missing.db").exists()

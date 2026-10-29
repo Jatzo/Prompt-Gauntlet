@@ -21,7 +21,8 @@ const STATES = {
     "Waiting for the database",
     "No run database yet. Events appear here once a cycle starts: python -m arena.cli run-cycle.",
   ],
-  live: ["Live", "Connected. No events yet."],
+  // "Connected", not "Live": the arena badge says whether a cycle ran live or simulated.
+  live: ["Connected", "Connected. No events yet."],
   reconnecting: ["Reconnecting", "Lost the connection. Retrying."],
 };
 
@@ -155,6 +156,11 @@ source.addEventListener("status", (message) => {
   // A new run database replaced the old one, and its events start again from the first.
   if (state === "reset") clear();
   else setStatus(state);
+  document.dispatchEvent(new CustomEvent("feed:status", { detail: state }));
 });
-source.addEventListener("message", (message) => queue(row(JSON.parse(message.data))));
+source.addEventListener("message", (message) => {
+  queue(row(JSON.parse(message.data)));
+  // The arena asks for finished cycles whenever something happens in the run.
+  document.dispatchEvent(new CustomEvent("feed:event"));
+});
 source.addEventListener("error", () => setStatus("reconnecting"));

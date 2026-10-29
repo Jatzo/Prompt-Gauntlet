@@ -5,7 +5,8 @@ never through `arena.db`, which creates, migrates and writes. Each event reaches
 allowlist, so a later event that carries text, scores or sample ids cannot leak without a change
 here. Bound to 127.0.0.1 only, with a host check against DNS rebinding.
 
-Controls, review actions and the other dashboard panels come in Phase 3 step 15.
+The arena view reads , which returns codes, flags and counts per finished cycle
+through , never text. Controls and review actions come with the review queue.
 
 The page lives in `arena/static/`, which the package build does not ship; it runs from the repo.
 """
@@ -20,9 +21,10 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from arena.arena_feed import cycles_after
 from arena.config import agent_db_path
 from arena.schemas import STEP_OUTCOME
 
@@ -167,6 +169,24 @@ def create_app(
     @app.get("/app.js")
     def script() -> FileResponse:
         return FileResponse(STATIC / "app.js", media_type="text/javascript")
+
+    @app.get("/arena.js")
+    def arena_script() -> FileResponse:
+        return FileResponse(STATIC / "arena.js", media_type="text/javascript")
+
+    @app.get("/arena/cycles")
+    def arena_cycles(after: str | None = None) -> JSONResponse:
+        start = _start(after)
+        try:
+            conn = open_read_only(db_path)
+            try:
+                page = cycles_after(conn, start)
+            finally:
+                conn.close()
+        except sqlite3.OperationalError:
+            # No database yet, or one with no tables yet: nothing to draw until a run creates it.
+            page = {"cycles": [], "next_after": start}
+        return JSONResponse(page)
 
     @app.get("/events")
     def events(request: Request, after: str | None = None) -> StreamingResponse:

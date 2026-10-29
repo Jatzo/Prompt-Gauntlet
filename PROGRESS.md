@@ -77,6 +77,14 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   8 cycles against the real Judge gave one keep and seven rejects. On that folder dev holds two
   attack families, one per fold, and the regex baseline catches neither, so only a patch that
   catches both passes the replication condition.
+- 2026-10-29, the arena view (replaces step D's four panels; `private/arena-view-plan.md`, approved
+  with a clean-diagram look, live and replayable). Each finished cycle replays as dots from the
+  Attacker through the Detector to the Target in four lanes (refused, no effect, caught, got past;
+  held back ringed), then the patch at the gate and the Judge's stamp, with a scoreboard and a strip
+  that replays any past cycle. `/arena/cycles` serves codes, flags and counts only, through
+  `arena/arena_feed.py`; the evidence pack is unchanged. A fresh page plays only the latest cycle and
+  puts the rest in the strip. The feed's status label reads "Connected" so it is never confused with
+  a live run. A run_id per cycle and a run picker are left for when one database holds two runs.
 - 2026-10-27, evidence pack (the operator asked for every run to be shown as evidence):
   `python -m arena.cli evidence RUN_ID` reads the agent database read-only and writes
   `runs/RUN_ID/evidence/private/` (every field, attack text included) and `public/` (an allowlist of

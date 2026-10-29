@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Prompt Gauntlet: live feed</title>
+<title>Prompt Gauntlet: arena</title>
 <style>
   :root {
     color-scheme: light dark;
@@ -17,6 +17,8 @@
     --warn-ground: #fbe6d6;
     --focus: #8a3b0d;
     --select: #f2cdb0;
+    --accent: #b5470f;
+    --accent-soft: #f6dcc9;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -30,6 +32,8 @@
       --warn-ground: #3d2417;
       --focus: #f6b48a;
       --select: #5a3420;
+      --accent: #f39a5f;
+      --accent-soft: #4a2a19;
     }
   }
   * { box-sizing: border-box; }
@@ -63,9 +67,9 @@
   .counts strong { color: var(--ink); font-weight: 600; }
   .counts .anomalies[data-some] strong { color: var(--warn-ink); }
 
-  main { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  main { position: relative; display: flex; flex-direction: column; }
   #scroller {
-    flex: 1;
+    height: 45vh;
     overflow: auto;
     scrollbar-color: var(--rule) transparent;
     background: var(--surface);
@@ -131,14 +135,175 @@
     col.tool { width: 7.5rem; }
     td, th { padding-inline: 0.5rem; overflow-wrap: anywhere; }
   }
+
+  /* The arena: one cycle's attacks travel from the Attacker through the Detector to the Target. */
+  .arena {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 15rem;
+    gap: 1rem 1.5rem;
+    padding: 1rem 1.25rem 0.75rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .stage { min-width: 0; }
+  .stage-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+    margin: 0 0 0.5rem;
+  }
+  .stage-head h2 { margin: 0; font-size: 1rem; font-weight: 650; }
+  #arena-focus { color: var(--muted); }
+  .badge {
+    padding: 0.05rem 0.5rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .badge[data-kind="live"] { border-color: var(--accent); color: var(--accent); }
+  #arena-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+  /* SVG elements ignore the hidden attribute without this. */
+  #arena-svg [hidden] { display: none; }
+  #arena-svg text { fill: var(--muted); font: 600 13px system-ui, sans-serif; }
+  #arena-svg .station { fill: var(--head); stroke: var(--rule); }
+  #arena-svg .gate { fill: var(--ink); }
+  #arena-svg .gate-label { fill: var(--ink); }
+  #arena-svg .target[data-hit] { fill: var(--accent-soft); stroke: var(--accent); }
+  #arena-svg .track { stroke: var(--rule); stroke-dasharray: 2 6; }
+  #arena-svg .dot { fill: var(--ink); }
+  #arena-svg .dot[data-lane="through"] { fill: var(--accent); }
+  #arena-svg .dot[data-lane="refused"] { fill: none; stroke: var(--muted); stroke-dasharray: 2 2; }
+  #arena-svg .ring { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+  #arena-svg .cross { fill: var(--ink); font-size: 15px; }
+  #arena-svg .stamp-box { fill: var(--surface); stroke: var(--ink); stroke-width: 2; }
+  #arena-svg .stamp-text { fill: var(--ink); font-size: 15px; }
+  #arena-svg [data-verdict="keep"] .stamp-box { stroke: var(--accent); }
+  #arena-svg [data-verdict="keep"] .stamp-text { fill: var(--accent); }
+  #arena-caption { margin: 0.5rem 0 0; min-height: 1.45em; max-width: 70ch; }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin: 0.4rem 0 0;
+    padding: 0;
+    list-style: none;
+    color: var(--muted);
+    font-size: 0.75rem;
+  }
+  .legend svg { width: 0.75rem; height: 0.75rem; vertical-align: -0.1rem; margin-right: 0.3rem; }
+
+  .score { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+  .score dl {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.35rem 1rem;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .score dt { color: var(--muted); }
+  .score dd { margin: 0; text-align: right; font-weight: 600; }
+  .score .note { margin: 0; color: var(--muted); font-size: 0.75rem; }
+  .strip-head { margin: 0; color: var(--muted); font-size: 0.75rem; }
+  #arena-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  #arena-strip button {
+    width: 0.85rem;
+    height: 0.85rem;
+    padding: 0;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--head);
+    cursor: pointer;
+  }
+  #arena-strip button[data-outcome="keep"] { background: var(--accent); border-color: var(--accent); }
+  #arena-strip button[data-outcome="reject"] { background: var(--muted); border-color: var(--muted); }
+  #arena-strip button[data-playing] { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+  .legend-ink { fill: var(--ink); }
+  .legend-accent { fill: var(--accent); }
+  .legend-muted { fill: var(--muted); opacity: 0.45; }
+  .legend-ring { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+
+  details.log { border-top: 1px solid var(--rule); }
+  details.log > summary {
+    padding: 0.5rem 1.25rem;
+    color: var(--muted);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  @media (max-width: 52rem) {
+    .arena { grid-template-columns: minmax(0, 1fr); padding-inline: 1rem; }
+    .score dl { grid-template-columns: repeat(2, minmax(0, 1fr) auto); }
+  }
 </style>
 </head>
 <body>
 <header class="bar">
-  <h1>Prompt Gauntlet <span>live feed</span></h1>
+  <h1>Prompt Gauntlet <span>arena</span></h1>
   <p id="status" role="status" data-state="connecting">Connecting</p>
   <p class="counts"><span class="events"><strong id="event-count">0</strong> <span id="event-word">events</span></span>, <span class="anomalies" id="anomaly-wrap"><strong id="anomaly-count">0</strong> <span id="anomaly-word">anomalies</span></span></p>
 </header>
+<section class="arena" aria-label="Arena">
+  <div class="stage">
+    <div class="stage-head">
+      <h2 id="arena-title">Waiting for the first cycle</h2>
+      <span id="arena-focus"></span>
+      <span class="badge" id="arena-badge" hidden></span>
+    </div>
+    <svg id="arena-svg" viewBox="0 0 960 330" role="img" aria-labelledby="arena-title arena-caption">
+      <rect class="station" x="20" y="110" width="110" height="80" rx="8"/>
+      <text x="75" y="155" text-anchor="middle">Attacker</text>
+      <rect class="gate" x="472" y="40" width="16" height="220" rx="3"/>
+      <text class="gate-label" x="480" y="28" text-anchor="middle">Detector</text>
+      <text class="gate-label" id="arena-patch" x="480" y="306" text-anchor="middle"></text>
+      <rect class="station target" id="arena-target" x="830" y="110" width="110" height="80" rx="8"/>
+      <text x="885" y="155" text-anchor="middle">Target</text>
+      <g id="arena-dots"></g>
+      <g id="arena-stamp" hidden>
+        <rect class="stamp-box" x="640" y="282" width="160" height="38" rx="6"/>
+        <text class="stamp-text" id="arena-stamp-text" x="720" y="306" text-anchor="middle"></text>
+      </g>
+    </svg>
+    <p id="arena-caption" aria-live="polite">Start a run and each finished cycle plays here.</p>
+    <ul class="legend">
+      <li><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" class="legend-ink"/></svg>caught by the Detector</li>
+      <li><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" class="legend-accent"/></svg>got past; works on the undefended target</li>
+      <li><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" class="legend-muted"/></svg>no effect, even undefended</li>
+      <li><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.5" class="legend-ring"/></svg>held back to test the patch</li>
+    </ul>
+  </div>
+  <aside class="score" aria-label="Scoreboard">
+    <dl>
+      <dt>Cycles</dt><dd id="score-cycles">0</dd>
+      <dt>Kept</dt><dd id="score-kept">0</dd>
+      <dt>Rejected</dt><dd id="score-rejected">0</dd>
+      <dt>Detector rules</dt><dd id="score-rules">-</dd>
+      <dt>Judge ASR (dev)</dt><dd id="score-asr">-</dd>
+      <dt>Judge TPR (dev)</dt><dd id="score-tpr">-</dd>
+    </dl>
+    <p class="note">This cycle's attacks against the Detector before its patch. The Judge's ASR and TPR are measured on dev.</p>
+    <p class="strip-head" id="strip-head">Past cycles</p>
+    <ol id="arena-strip" aria-labelledby="strip-head"></ol>
+  </aside>
+</section>
+<details class="log">
+<summary>Event list</summary>
 <main>
   <p id="dropped" hidden></p>
   <div id="scroller" tabindex="0" aria-label="Events, oldest first">
@@ -154,6 +319,8 @@
   </div>
   <button id="jump" type="button" hidden>Jump to latest</button>
 </main>
+</details>
 <script src="/app.js"></script>
+<script src="/arena.js"></script>
 </body>
 </html>

@@ -169,30 +169,7 @@ def _cycle(conn: sqlite3.Connection, cycle_id: int, state: str) -> dict:
     if missing:
         raise EvidenceIncomplete(f"Committed cycle {cycle_id} has no {', '.join(missing)} episode.")
 
-    names = sorted(
-        name
-        for (name,) in conn.execute(
-            "SELECT DISTINCT backend FROM llm_calls WHERE cycle_id = ?", (cycle_id,)
-        )
-    )
-    judge_row = conn.execute(
-        "SELECT id, judge_backend FROM manifests WHERE cycle_id = ?", (cycle_id,)
-    ).fetchone()
-    judge = judge_row["judge_backend"] if judge_row else None
-    agents = "none" if not names else "live" if set(names) <= LIVE_BACKENDS else "simulated"
-    # Live only when nothing in the cycle was simulated: the agents' calls and the Judge's models.
-    # A manifest from before the Judge backend was recorded leaves the agents to decide.
-    if "simulated" in (agents, judge):
-        backend = "simulated"
-    elif "live" in (agents, judge):
-        backend = "live"
-    else:
-        backend = "none yet"
-    judge_source = (
-        f"manifests#{judge_row['id']}/judge_backend: {judge or 'not recorded'}"
-        if judge_row
-        else "no manifest"
-    )
+    backend, backend_inputs = backend_of(conn, cycle_id)
     plan = episodes.get("plan")
     events = conn.execute(
         "SELECT id, kind, detail FROM events WHERE cycle_id = ? ORDER BY id", (cycle_id,)
@@ -204,12 +181,7 @@ def _cycle(conn: sqlite3.Connection, cycle_id: int, state: str) -> dict:
             if state in FINISHED
             else _derived("unfinished_state", IN_PROGRESS, f"cycles#{cycle_id}/state")
         ),
-        "backend": _derived(
-            "live_only_if_every_call_was_live",
-            backend,
-            f"llm_calls.backend for cycle {cycle_id}: {', '.join(names) or 'none'}",
-            judge_source,
-        ),
+        "backend": _derived("live_only_if_every_call_was_live", backend, *backend_inputs),
         "manifest": _manifest(conn, cycle_id, committed),
         "plan": _plan(conn, cycle_id, plan),
         "attacks": _attacks(cycle_id, plan, episodes.get("attack_batch"), committed),
@@ -300,10 +272,44 @@ def _plan(conn: sqlite3.Connection, cycle_id: int, plan: tuple[int, dict] | None
     }
 
 
-def _technique(name: str) -> str:
+def technique_code(name: str) -> str:
     """A technique name as the taxonomy knows it, or "other". The CEO's focus is an agent's choice,
     and nothing yet checks it against the shortlist, so it may only be shown as a known code."""
     return name if name in TECHNIQUES else "other"
+
+
+def backend_of(conn: sqlite3.Connection, cycle_id: int) -> tuple[str, list[str]]:
+    """Whether a cycle ran live, simulated or not yet, and the rows that say so.
+
+    Live only when nothing in the cycle was simulated: the agents' calls and the Judge's models. A
+    manifest from before the Judge backend was recorded leaves the agents to decide.
+    """
+    names = sorted(
+        name
+        for (name,) in conn.execute(
+            "SELECT DISTINCT backend FROM llm_calls WHERE cycle_id = ?", (cycle_id,)
+        )
+    )
+    judge_row = conn.execute(
+        "SELECT id, judge_backend FROM manifests WHERE cycle_id = ?", (cycle_id,)
+    ).fetchone()
+    judge = judge_row["judge_backend"] if judge_row else None
+    agents = "none" if not names else "live" if set(names) <= LIVE_BACKENDS else "simulated"
+    if "simulated" in (agents, judge):
+        backend = "simulated"
+    elif "live" in (agents, judge):
+        backend = "live"
+    else:
+        backend = "none yet"
+    judge_source = (
+        f"manifests#{judge_row['id']}/judge_backend: {judge or 'not recorded'}"
+        if judge_row
+        else "no manifest"
+    )
+    return backend, [
+        f"llm_calls.backend for cycle {cycle_id}: {', '.join(names) or 'none'}",
+        judge_source,
+    ]
 
 
 def _attacks(
@@ -340,7 +346,9 @@ def _attacks(
             f"memory_episodic#{row_id}/bands",
         ),
         "by_technique": _derived(
-            "valid_by_technique", dict(Counter(_technique(v["technique"]) for v in valid)), source
+            "valid_by_technique",
+            dict(Counter(technique_code(v["technique"]) for v in valid)),
+            source,
         ),
         "by_behaviour": _derived(
             "valid_by_behaviour", dict(Counter(v["behaviour"] for v in valid)), source
@@ -439,7 +447,7 @@ def _public(record: dict) -> dict:
         }
         public_plan["focus"] = (
             focus
-            if _technique(focus["value"]) == focus["value"]
+            if technique_code(focus["value"]) == focus["value"]
             else _derived("focus_not_a_known_technique", "other", focus["from"])
         )
     public_defence = defence
