@@ -365,13 +365,15 @@ def call_batch[Model: pydantic.BaseModel](
     backend: Backend,
     config: ArenaConfig = DEFAULTS,
     refusals_are_items: bool = False,
+    switch_share: float = _SWITCH_SHARE,
 ) -> list[Model | Unscorable]:
     """Results in the order of `requests`. A cached key makes no call, valid or not.
 
     With `refusals_are_items`, an input the provider's safeguards refuse is stored as an
     Unscorable `REFUSED` item, asked once and never retried. Without it, a refusal stops the batch
     as any failed call does, even one already stored, so a caller that counts Unscorable as a miss
-    never meets one by accident.
+    never meets one by accident. `switch_share` is the share of the whole batch that may come back
+    from another model before the batch stops as a configuration fault.
 
     Unlike `call()`, a schema failure or an out-of-schema output on one item does not raise and does
     not count towards the schema-failure pause: the item comes back `Unscorable`. A wrong model id
@@ -515,7 +517,7 @@ def call_batch[Model: pydantic.BaseModel](
         if error is not None:
             raise error
 
-    _check_switches(role, pinned, [outputs[key] for key in dict.fromkeys(keys)])
+    _check_switches(role, pinned, [outputs[key] for key in dict.fromkeys(keys)], switch_share)
     results: list[Model | Unscorable] = []
     for key in keys:
         output = outputs[key]

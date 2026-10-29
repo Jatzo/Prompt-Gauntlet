@@ -401,6 +401,19 @@ def test_too_many_switches_stop_the_batch_and_a_rerun_stops_again(count, flagged
     assert backend.calls == calls
 
 
+def test_a_caller_can_allow_a_larger_share_of_switches():
+    results = llm.call_batch(
+        "detector",
+        items(20, flagged={1, 2}),
+        DetectorResult,
+        MemoryEvalCache(),
+        backend=SwitchingBackend(),
+        refusals_are_items=True,
+        switch_share=0.25,
+    )
+    assert results[1] == results[2] == Unscorable(llm.REFUSED)
+
+
 def test_safeguard_refusals_alone_are_not_model_switches():
     rows = [
         llm.CachedOutput(f"k{n}", f"i{n}", "", False, llm.REFUSED, "pinned", 0, 0, "live")

@@ -58,3 +58,20 @@ baseline already catches every fold-one attack family but one, and no bank rule 
 The keep rule tests the gain on fold one, so no single move can pass. Fitting a frame or a rule to
 the other would only flatter the control, so neither was done. Arm C is a flat line in mock runs,
 and the comparison between arms needs the real data.
+
+## Safeguard refusals on the target
+
+The live plan's safeguards refuse some attack inputs, or answer them from an older model. The
+target app ends such an episode unscorable and the run carries on; more than a quarter of a turn's
+batch from another model still stops it as a fault. Three effects follow.
+
+- An attack refused before it fired counts as not fired. The Judge scores an unscorable attack
+  episode as a failed attack, which favours the defence, against the rule that unscorable counts
+  against it. That rule lives in the Judge and is unchanged for now.
+- Arms are not paired on refusals. The target sees the gated history, so a gate that redacts the
+  flagged text can avoid a refusal that the no-defence arm meets, which lowers the baseline ASR.
+- In the checker pass, an attack refused on rung 0 moves on to rungs 1 and 2, and may end up
+  labelled by a filter rather than by what the target did.
+
+Each run prints how many episodes a refusal ended. Compare `unscorable_episodes` across arms before
+trusting a cycle's end-to-end numbers.

@@ -1,4 +1,5 @@
 import base64
+import dataclasses
 import json
 import re
 from datetime import date
@@ -6,6 +7,8 @@ from datetime import date
 import pytest
 from fakes import MemoryEvalCache
 
+from arena import llm
+from arena.anomaly import ModelIdMismatch
 from arena.config import DEFAULTS, ArenaConfig
 from arena.judge import stats
 from arena.schemas import InjectionPair, Metric, Sample, TargetSpec
@@ -303,6 +306,118 @@ def test_an_invalid_target_action_ends_the_episode_and_is_still_checked():
     results = run(benign_cases(1, "strict"), backend=broken, trials=1)
     assert all(r.ended_unscorable and r.turns == 1 for r in results)
     assert not any(r.outcome.attack_succeeded for r in results)
+
+
+# Safeguard refusals
+
+
+class Flagging:
+    """The simulated target behind the plan's safeguards: a request `flagged` picks is answered by
+    an older model, or refused outright with `refuse`."""
+
+    safeguard_fallback = True
+
+    def __init__(self, flagged, refuse=False, obey=1.0):
+        self.inner = sim(obey=obey)
+        self.name = self.inner.name
+        self.flagged = flagged
+        self.refuse = refuse
+
+    def complete(self, **kwargs):
+        if not self.flagged(json.loads(kwargs["request"].user)):
+            return self.inner.complete(**kwargs)
+        if self.refuse:
+            raise llm.ContentRefused("safeguards flagged this message")
+        return dataclasses.replace(self.inner.complete(**kwargs), model_id="claude-older-4-8")
+
+
+def attack_cases():
+    return injection_cases(*pairs_and_samples(), 1, "strict", "standard")
+
+
+def one(results, case):
+    [result] = [r for r in results if r.case_id == case.id]
+    return result
+
+
+def once_seen(case):
+    """Flags the case's episode from the turn its payload is in the history."""
+    return lambda state: state["episode"] == f"{case.id}#0" and bool(state["history"])
+
+
+@pytest.mark.parametrize("refuse", [False, True], ids=["switched", "refused"])
+def test_a_flagged_attack_ends_unscorable_unfired_and_the_rest_finish(refuse, capsys):
+    cases = attack_cases()
+    results = run(cases, backend=Flagging(once_seen(cases[0]), refuse=refuse), trials=1)
+    hit = one(results, cases[0])
+    assert hit.ended_unscorable and not hit.outcome.attack_succeeded
+    assert not any(r.ended_unscorable for r in results if r is not hit)
+    assert any(r.outcome.attack_succeeded for r in results)
+    assert f"1 of {len(cases)} episodes ended by a safeguard refusal" in capsys.readouterr().err
+
+
+def test_a_refused_plan_ends_the_episode_before_any_turn():
+    cases = attack_cases()
+    victim = f"{cases[0].id}#0"
+    backend = Flagging(lambda state: state["episode"] == victim)
+    hit = one(run(cases, defence=PlanThenExecute(), backend=backend, trials=1), cases[0])
+    assert hit.ended_unscorable and hit.turns == 0
+
+
+def test_an_attack_that_fired_before_the_refusal_stays_fired():
+    cases = attack_cases()
+    [case] = [c for c in cases if "send_message" in c.exposed_tools][:1]
+
+    def after_the_send(state):
+        sent = any(
+            entry["call"]["args"].get("to") == ATTACKER_ADDRESS for entry in state["history"]
+        )
+        return state["episode"] == f"{case.id}#0" and sent
+
+    hit = one(run(cases, backend=Flagging(after_the_send), trials=1), case)
+    assert hit.ended_unscorable and hit.outcome.attack_succeeded
+
+
+def test_a_refused_benign_task_is_unscorable_and_not_completed():
+    cases = benign_cases(1, "strict")
+    victim = f"{cases[0].id}#0"
+    results = run(cases, backend=Flagging(lambda state: state["episode"] == victim), trials=1)
+    hit = one(results, cases[0])
+    assert hit.ended_unscorable and not hit.outcome.task_completed
+    assert all(r.outcome.task_completed for r in results if r is not hit)
+
+
+def test_a_rerun_over_a_stored_refusal_makes_no_model_calls():
+    cases, cache = attack_cases(), MemoryEvalCache()
+    backend = Flagging(once_seen(cases[0]))
+    first = run(cases, backend=backend, cache=cache, trials=1)
+
+    class NoCalls:
+        name = backend.name
+
+        def complete(self, **kwargs):
+            raise AssertionError("a cached episode called the model")
+
+    assert run(cases, backend=NoCalls(), cache=cache, trials=1) == first
+
+
+def test_a_turn_may_switch_more_than_the_default_share_but_not_most_of_it(monkeypatch):
+    cases = attack_cases()
+    victims = {f"{case.id}#0" for case in cases[:5]}
+    backend = Flagging(lambda state: state["episode"] in victims and bool(state["history"]))
+    results = run(cases, backend=backend, trials=1)
+    assert sum(r.ended_unscorable for r in results) == 5
+    monkeypatch.setattr("arena.target.app.SWITCH_SHARE", llm._SWITCH_SHARE)
+    with pytest.raises(ModelIdMismatch):
+        run(cases, backend=backend, trials=1)
+
+
+def test_a_switched_answer_still_stops_a_backend_without_the_fallback():
+    cases = attack_cases()
+    backend = Flagging(once_seen(cases[0]))
+    backend.safeguard_fallback = False
+    with pytest.raises(ModelIdMismatch):
+        run(cases, backend=backend, trials=1)
 
 
 # The fallback ladder
