@@ -165,7 +165,10 @@ def test_one_attack_cycle_gives_the_same_shape_from_the_fake_and_the_real_judge(
 
 
 def cassette_from(script, path):
-    """A cassette holding exactly what the mock script would answer, step by step."""
+    """A cassette holding exactly what the mock script would answer, step by step. A replay
+    fills in nothing, so the plan's placeholder focus becomes `explore`, which is always listed."""
+    from arena.memory.shortlist import EXPLORE, FIRST_LISTED
+
     tools = {
         "plan": ("ceo", "propose_plan"),
         "defend": ("defender", "submit_detector_patch"),
@@ -182,7 +185,7 @@ def cassette_from(script, path):
                     "role": role,
                     "step": step,
                     "tool": tool,
-                    "raw_output": raw,
+                    "raw_output": raw.replace(FIRST_LISTED, EXPLORE),
                     "model_id": getattr(models, role),
                 }
                 out.write(json.dumps(entry) + "\n")

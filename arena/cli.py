@@ -79,8 +79,8 @@ def cmd_run(conn, args, cycles: int) -> int:
     if state != "running":
         print(f"The run is {state} ({reason}). Start it with: python -m arena.cli control start")
         return ExitCode.NEEDS_OPERATOR
-    # One mock output per step per cycle, since the mock answers each call from a queue.
-    script = {step: outputs * cycles for step, outputs in phase1_mock_script().items()}
+    first = conn.execute("SELECT COUNT(*) FROM cycles").fetchone()[0] + 1
+    script = phase1_mock_script(cycles, first)
     try:
         backend = (
             SimAgentsBackend(DEFAULTS.seed)

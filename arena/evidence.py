@@ -28,6 +28,7 @@ import pydantic
 
 from arena import db
 from arena.cycle import FINISHED
+from arena.memory.shortlist import EXPLORE
 from arena.orchestrator import STEPS
 from arena.schemas import DetectorConfig, JudgeReport
 from arena.taxonomy import TECHNIQUES
@@ -40,7 +41,15 @@ IN_PROGRESS = "in progress"
 REQUIRED_EPISODES = ("plan", "judge_report", "postmortem")
 # Kept apart from memory.EPISODE_KINDS on purpose: a kind added there without being taught to this
 # exporter shows up as "not shown" in the report instead of disappearing.
-KNOWN_EPISODES = ("plan", "attack_batch", "patch", "judge_report", "postmortem", "novelty_closed")
+KNOWN_EPISODES = (
+    "plan",
+    "shortlist",
+    "attack_batch",
+    "patch",
+    "judge_report",
+    "postmortem",
+    "novelty_closed",
+)
 # Events whose detail carries why a cycle was rolled back. The reason is free text: private only.
 ROLLBACK_EVENTS = ("cycle_skipped", "cycle_abandoned")
 # The cycle step that will patch the defence. Until it exists, a cycle's defence reads "not wired".
@@ -273,9 +282,10 @@ def _plan(conn: sqlite3.Connection, cycle_id: int, plan: tuple[int, dict] | None
 
 
 def technique_code(name: str) -> str:
-    """A technique name as the taxonomy knows it, or "other". The CEO's focus is an agent's choice,
-    and nothing yet checks it against the shortlist, so it may only be shown as a known code."""
-    return name if name in TECHNIQUES else "other"
+    """A technique name as the taxonomy knows it, `explore`, or "other". A plan's focus is
+    checked against the shortlist, but verdicts and older rows come from agents, so only known
+    codes are shown."""
+    return name if name in TECHNIQUES or name == EXPLORE else "other"
 
 
 def backend_of(conn: sqlite3.Connection, cycle_id: int) -> tuple[str, list[str]]:

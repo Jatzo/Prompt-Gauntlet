@@ -130,11 +130,8 @@ def _in_run(table: str) -> str:
     return f"{table} t JOIN cycles c ON c.id = t.cycle_id WHERE c.run_id = ?"
 
 
-def _notes(
-    conn: sqlite3.Connection, run_id: str, config: ArenaConfig
-) -> tuple[str, tuple[int, ...]]:
-    """Every operator note, newest first. A note no committed post-mortem of this run has
-    acknowledged is marked new; the next post-mortem must acknowledge it."""
+def unacknowledged_notes(conn: sqlite3.Connection, run_id: str) -> tuple[int, ...]:
+    """Operator notes no committed post-mortem of this run has acknowledged; the next one must."""
     acknowledged: set[int] = set()
     for (body,) in conn.execute(
         "SELECT t.body FROM memory_episodic t JOIN cycles c ON c.id = t.cycle_id"
@@ -142,8 +139,16 @@ def _notes(
         (run_id,),
     ):
         acknowledged.update(json.loads(body).get("operator_notes_acknowledged", []))
+    ids = conn.execute("SELECT id FROM memory_operator_notes ORDER BY id").fetchall()
+    return tuple(row[0] for row in ids if row[0] not in acknowledged)
+
+
+def _notes(
+    conn: sqlite3.Connection, run_id: str, config: ArenaConfig
+) -> tuple[str, tuple[int, ...]]:
+    """Every operator note, newest first, the unacknowledged ones marked new."""
     rows = conn.execute("SELECT id, text FROM memory_operator_notes ORDER BY id DESC").fetchall()
-    new_ids = tuple(sorted(row[0] for row in rows if row[0] not in acknowledged))
+    new_ids = unacknowledged_notes(conn, run_id)
     new = " (new: acknowledge it in your post-mortem)"
     lines = [
         f"- Note {row[0]}{new if row[0] in new_ids else ''}:\n{quote(row[1], config.seed)}"

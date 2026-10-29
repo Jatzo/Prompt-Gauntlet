@@ -83,7 +83,15 @@ def token_set_jaccard(left: str, right: str) -> float:
 
 # Every kind the episodic log accepts. A new kind is added here on purpose, together with a decision
 # on whether agents may read it; `record_episode` refuses anything else.
-EPISODE_KINDS = ("plan", "postmortem", "judge_report", "attack_batch", "novelty_closed", "patch")
+EPISODE_KINDS = (
+    "plan",
+    "shortlist",
+    "postmortem",
+    "judge_report",
+    "attack_batch",
+    "novelty_closed",
+    "patch",
+)
 
 # Episodes that may hold attack text: the Attacker's batches, held-back attacks included, and the
 # Defender's patches, whose literal rules can quote an evasion. No briefing, recall or other
@@ -331,6 +339,19 @@ class Memory:
                 list(ids),
             )
         ]
+
+    def duplicate_plan(self, run_id: str, hypothesis: str) -> int | None:
+        """The committed cycle of this run whose plan hypothesis this one nearly repeats, if any."""
+        rows = self.conn.execute(
+            "SELECT t.cycle_id, json_extract(t.body, '$.hypothesis_text') FROM memory_episodic t"
+            " JOIN cycles c ON c.id = t.cycle_id"
+            " WHERE c.run_id = ? AND c.state = 'committed' AND t.kind = 'plan'",
+            (run_id,),
+        )
+        for cycle_id, existing in rows:
+            if token_set_jaccard(hypothesis, existing) >= self.config.backlog_duplicate_jaccard:
+                return cycle_id
+        return None
 
     def episode(self, cycle_id: int, kind: str) -> dict | None:
         """The newest episode of one kind for one cycle, or None."""

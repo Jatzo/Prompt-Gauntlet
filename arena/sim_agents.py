@@ -1,19 +1,24 @@
 """Simulated agents for the free mock battle: a seeded CEO, Attacker and Defender.
 
 `MockBackend` answers each step from a fixed script, so every cycle looks the same. These policies
-vary instead: the CEO picks a focus from the corpus's techniques, the Attacker mixes payloads the
+vary instead: the CEO picks a focus from its shortlist, the Attacker mixes payloads the
 regex baseline catches with variants it misses, and the Defender picks one patch from a menu that
 holds keepers, near misses, no-ops and patches the schema refuses. So a run on the synthetic corpus
 shows evasions, patches, keeps and rejects without one live call.
 
-Each answer depends only on the seed, the role, the cycle and the step, so a run is repeatable and
-a recorded run replays exactly. Kept apart from `arena/simulated.py` and `arena/sim_profiles.py`,
-whose models the Judge measures with and fingerprints. The numbers a sim run produces are simulated,
-and the evidence pack marks them so.
+Each answer depends only on the seed, the role, the cycle, the step and the prompt, so a run is
+repeatable and a recorded run replays exactly. The prompt matters to the CEO alone: it picks its
+focus from the shortlist there, acknowledges the operator notes listed there, and a plan asked
+again (the prompt then carries the refusal) gets a fresh draw.
+
+Kept apart from `arena/simulated.py` and `arena/sim_profiles.py`, whose models the Judge measures
+with and fingerprints. The numbers a sim run produces are simulated, and the evidence pack marks
+them so.
 """
 
 import hashlib
 import json
+import re
 
 import numpy as np
 
@@ -21,9 +26,11 @@ from arena.agents import defender
 from arena.agents.attacker import SUBMIT_STEP
 from arena.config import DEFAULTS
 from arena.llm import LLMRequest, LLMResponse, MockBackend
+from arena.memory import shortlist
 from arena.target.world import ATTACKER_PLACEHOLDER
 
-# The synthetic corpus's techniques, less the held-out one, which the Attacker may not use.
+# The synthetic corpus's techniques, less the held-out one, which the Attacker may not use. The CEO
+# falls back on these when its prompt holds no shortlist.
 FOCI = tuple(
     technique
     for technique in (
@@ -36,6 +43,37 @@ FOCI = tuple(
     if technique not in DEFAULTS.held_out_techniques
 )
 SUBJECTS = ("budget", "rota", "invoice", "launch", "audit", "offsite", "roadmap", "survey")
+CLAIMS = (
+    "payloads in {focus} still pass the incumbent",
+    "{focus} slips through when the wording shifts",
+    "the rules miss {focus} written another way",
+    "{focus} evades every literal pattern so far",
+    "nothing yet stops {focus} variants",
+)
+# Four of these name where the CEO saw it; two plans repeat only if all four words match.
+SEEN_IN = (
+    "invoice",
+    "rota",
+    "budget",
+    "launch",
+    "audit",
+    "offsite",
+    "roadmap",
+    "survey",
+    "payroll",
+    "minutes",
+    "contract",
+    "helpdesk",
+    "newsletter",
+    "onboarding",
+    "expenses",
+    "tender",
+    "appraisal",
+    "inventory",
+    "booking",
+    "refund",
+)
+NOTES = re.compile(r"Operator notes to acknowledge: ([0-9, ]+)\.")
 # (technique, impact class, channel, frame). The first frame of each pair is close to the corpus,
 # the second a variant the corpus does not hold, so some evasions survive a keep.
 PAYLOADS = (
@@ -122,7 +160,9 @@ class SimAgentsBackend:
 
     def complete(self, *, role, model_id, step_key, request: LLMRequest) -> LLMResponse:
         cycle, step = step_key
-        digest = hashlib.sha256(f"{self.seed}:{role}:{cycle}:{step}".encode()).digest()
+        prompt = request.user if role == "ceo" else ""
+        key = f"{self.seed}:{role}:{cycle}:{step}:{prompt}"
+        digest = hashlib.sha256(key.encode()).digest()
         rng = np.random.default_rng(int.from_bytes(digest[:8], "big"))
         policies = {"ceo": self._ceo, "attacker": self._attacker, "defender": self._defender}
         if role not in policies:
@@ -143,11 +183,14 @@ class SimAgentsBackend:
                 "best_explanation": "The simulated Defender picks its patch from a fixed menu.",
                 "what_would_change_it": "Live agents reading the evasions they are shown.",
                 "lesson_candidates": [],
-                "operator_notes_acknowledged": [],
+                "operator_notes_acknowledged": _notes(request.user),
             }
-        focus = FOCI[int(rng.integers(len(FOCI)))]
+        foci = shortlist.listed(request.user) or FOCI
+        focus = foci[int(rng.integers(len(foci)))]
+        claim = CLAIMS[int(rng.integers(len(CLAIMS)))].format(focus=focus)
+        seen = sorted(str(word) for word in rng.choice(SEEN_IN, size=4, replace=False))
         return {
-            "hypothesis_text": f"Cycle {cycle}: payloads in {focus} still pass the incumbent.",
+            "hypothesis_text": f"Cycle {cycle}: {claim}, as in the {', '.join(seen)} threads.",
             "focus": focus,
             "agents_to_run": ["attacker", "defender"],
             "prediction": {
@@ -182,3 +225,8 @@ class SimAgentsBackend:
         weights = np.array([2.0] + [0.8] * (len(menu) - 1))
         rationale, ops = menu[int(rng.choice(len(menu), p=weights / weights.sum()))]
         return {"ops": ops, "rationale": rationale}
+
+
+def _notes(prompt: str) -> list[int]:
+    found = NOTES.search(prompt)
+    return [int(n) for n in found.group(1).split(",")] if found else []

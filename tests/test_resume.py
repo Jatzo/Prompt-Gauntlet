@@ -75,6 +75,7 @@ def test_a_killed_cycle_resumes_from_stored_outputs_without_calling_the_model_ag
     kinds = agent_db.execute("SELECT kind FROM memory_episodic ORDER BY id").fetchall()
     assert kinds == [
         ("plan",),
+        ("shortlist",),
         ("attack_batch",),
         ("patch",),
         ("judge_report",),

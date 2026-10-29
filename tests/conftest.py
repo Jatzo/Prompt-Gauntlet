@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from arena import db
@@ -27,6 +29,19 @@ STUB_REPORT = JudgeReport.model_validate(
         "reason_code": "not_implemented",
     }
 )
+
+
+def numbered(script: dict[str, list], conn) -> dict[str, list]:
+    """Number each scripted plan after the cycles already in the database, since a hypothesis an
+    earlier cycle tried is refused. Plans that are not JSON objects are left as they are."""
+    start = conn.execute("SELECT COUNT(*) FROM cycles").fetchone()[0]
+    plans = []
+    for n, raw in enumerate(script.get("plan", []), start + 1):
+        plan = json.loads(raw) if isinstance(raw, str) else None
+        if isinstance(plan, dict) and plan:
+            raw = json.dumps(plan | {"hypothesis_text": f"Scripted plan {n}."})
+        plans.append(raw)
+    return script | {"plan": plans}
 
 
 class FakeJudge:

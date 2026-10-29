@@ -49,6 +49,12 @@ class ForbiddenTool(Anomaly):
     kind = "forbidden_tool"
 
 
+class PlateauReached(Anomaly):
+    """No kept change for `plateau_pause_m` cycles; the detail is the state-of-the-lab report."""
+
+    kind = "plateau"
+
+
 class ConfigMismatch(Anomaly):
     """A resumed cycle's configuration differs from the one recorded in its manifest."""
 

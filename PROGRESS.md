@@ -85,6 +85,16 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   `arena/arena_feed.py`; the evidence pack is unchanged. A fresh page plays only the latest cycle and
   puts the rest in the strip. The feed's status label reads "Connected" so it is never confused with
   a live run. A run_id per cycle and a run picker are left for when one database holds two runs.
+- 2026-10-29, step 10 (the CEO; Joe's step F answers): code builds the focus shortlist each
+  cycle: the technique this run focused on least, the one with the most evasions shown in recent
+  batches, one in the scope of the oldest active lesson, and `explore`. Ties follow the seed and a
+  held-out technique is never listed. A focus off the list, a hypothesis with a token overlap of 0.7
+  or more with a committed plan of the run, a cited lesson the briefing did not show, or a
+  post-mortem missing a new operator note is stored as a failed attempt and asked again with the
+  reason. My choices, open to change: after `plateau_switch_n` cycles with no keep the focus type
+  chosen last leaves the list; after `plateau_pause_m` the run pauses with a state-of-the-lab
+  report, and the count restarts after each pause. The mock plan takes the first focus its
+  shortlist lists, so a long mock run follows the switch.
 - 2026-10-29, step 9 (briefing and memory reads; Joe's step F answers in
   `private/phase3-remaining-plan.md`): code builds the CEO's briefing each cycle in PLAN section 9's
   order with per-section budgets; operator notes are never cut, weaker lessons go first, and agent
@@ -167,9 +177,6 @@ cybersecurity structure in PLAN.md section 13. No case study has been written ye
 - Five technique classes have fewer than 10 train attacks for the Defender (`obfuscation.homoglyph`,
   `obfuscation.zero_width` and `persona.switch` have none), so its focus-class examples are thin
   for them.
-- `CEOPlan.focus` is not checked against the code-computed shortlist, though its schema comment
-  says the orchestrator checks it. Add the check in step 10, where the shortlist is built. Until
-  then the evidence pack shows an unknown focus as "other".
 - The `built_judge` test fixture removes the sealed test files so the committed placeholder pin
   verifies, rather than writing the build's real pin as the plan said; the tamper tests still cover
   the real-pin path. The CLI tests use a Defender-only plan, since `run-cycle` against a real Judge

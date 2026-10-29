@@ -8,16 +8,27 @@ from arena.agents.attacker import canary
 from arena.baselines import REGEX_RULES
 from arena.config import ArenaConfig, ModelIds
 from arena.judge_client import JudgeError
+from arena.memory import shortlist
 from arena.memory.memory import Memory, MemoryWriteRejected, incumbent, lineage
 from arena.orchestrator import PRIMARY_FOLD, REFERENCE_TARGET, Orchestrator, phase1_mock_script
-from tests.conftest import FakeJudge
+from tests.conftest import FakeJudge, numbered
 
-FULL_CYCLE = ["plan", "attack_batch", "patch", "judge_report", "postmortem", "novelty_closed"]
-UP_TO_JUDGE = ["plan", "attack_batch", "patch", "judge_report"]
+FULL_CYCLE = [
+    "plan",
+    "shortlist",
+    "attack_batch",
+    "patch",
+    "judge_report",
+    "postmortem",
+    "novelty_closed",
+]
+UP_TO_JUDGE = ["plan", "shortlist", "attack_batch", "patch", "judge_report"]
 
 
 def make(conn, script=None, judge=None, run_id="default", **backend_kwargs):
-    backend = llm.MockBackend(script=script or phase1_mock_script(), **backend_kwargs)
+    backend = llm.MockBackend(
+        script=numbered(script or phase1_mock_script(), conn), **backend_kwargs
+    )
     return Orchestrator(conn, backend=backend, judge=judge or FakeJudge(), run_id=run_id)
 
 
@@ -378,11 +389,12 @@ def test_the_no_memory_arm_gets_no_lessons_and_no_last_batch(conn, monkeypatch):
     script = plan_with(cites_lesson_ids=[1])
     postmortem = json.loads(script["postmortem"][0])
     script["postmortem"] = [json.dumps(dict(postmortem, lesson_candidates=[lesson]))]
-    script["plan"] *= 2
+    # Cycle 1 writes the lesson, so only cycle 2 can cite it.
+    script["plan"].insert(0, plan_with(cites_lesson_ids=[])["plan"][0])
     script["postmortem"].append(phase1_mock_script()["postmortem"][0])
     for step in [s for s in script if s.startswith("attack.")] + ["defend"]:
         script[step] *= 2
-    backend = llm.MockBackend(script=script)
+    backend = llm.MockBackend(script=numbered(script, conn))
     with_memory = Orchestrator(conn, backend=backend, judge=FakeJudge())
     assert with_memory.run_cycle().status == "committed"
     assert with_memory.run_cycle().status == "committed"
@@ -390,13 +402,20 @@ def test_the_no_memory_arm_gets_no_lessons_and_no_last_batch(conn, monkeypatch):
     assert remembering.directive.cited_lesson_texts == [lesson["text"]]
     assert remembering.last_batch
 
+    # The no-memory arm is shown no lessons, so a plan citing one is refused and asked again.
+    script = plan_with(cites_lesson_ids=[1])
+    script["plan"].append(plan_with(cites_lesson_ids=[])["plan"][0])
     without = Orchestrator(
         conn,
-        backend=llm.MockBackend(script=plan_with(cites_lesson_ids=[1])),
+        backend=llm.MockBackend(script=numbered(script, conn)),
         judge=FakeJudge(),
         use_memory=False,
     )
     assert without.run_cycle().status == "committed"
+    failure = conn.execute(
+        "SELECT failure FROM llm_calls WHERE step = 'plan' AND valid = 0 ORDER BY id DESC"
+    ).fetchone()[0]
+    assert failure == "schema: lessons [1] were not in this briefing"
     assert seen[-1].directive.cited_lesson_texts == []
     assert seen[-1].last_batch == ()
 
@@ -632,6 +651,9 @@ def test_the_defender_gets_focus_class_attacks_and_benign_cases_from_train_only(
         return real_run(self, cycle_id, view, ports)
 
     monkeypatch.setattr(defender.Defender, "run", spy)
+    # The shortlist decides which techniques may be a focus; this test needs one train holds.
+    listed = shortlist.Shortlist((shortlist.Entry("least_tested", focus, "test"),))
+    monkeypatch.setattr(shortlist, "build", lambda *args: listed)
     assert make(conn, script=plan_with(focus=focus)).run_cycle().status == "committed"
     [view] = seen
     attacks = {s.text: s.technique for s in train if s.label == "attack"}

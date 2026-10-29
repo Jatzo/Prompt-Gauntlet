@@ -32,9 +32,9 @@ import time
 import urllib.parse
 import urllib.request
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -49,6 +49,7 @@ from arena.anomaly import (
     UsageLimitReached,
 )
 from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig
+from arena.memory import shortlist
 
 
 @dataclass(frozen=True)
@@ -121,11 +122,16 @@ def call[Model: pydantic.BaseModel](
     *,
     backend: Backend,
     config: ArenaConfig = DEFAULTS,
+    check: Callable[[Model], str | None] | None = None,
 ) -> Model:
     """Return the validated output for this step, calling the model only if none is stored.
 
     `store` is the agent database for agent calls and the Judge database for anything the Judge
     runs, so per-sample test output can never land where memory or briefing code reads.
+
+    `check` refuses a well-formed output that breaks a rule only code knows (a focus off the
+    shortlist, say) by returning the reason. The attempt is stored as a schema failure, counts
+    towards the pause, and the model is asked again with the reason added.
     """
     cycle_id, step = step_key
     stored = store.execute(
@@ -137,15 +143,21 @@ def call[Model: pydantic.BaseModel](
         return response_model.model_validate_json(stored[0])
 
     pinned = _pinned_model(role, config)
+    asked = request
     for _ in range(config.retries + 1):
         usage.check_cap(store, config)
-        response = backend.complete(role=role, model_id=pinned, step_key=step_key, request=request)
+        response = backend.complete(role=role, model_id=pinned, step_key=step_key, request=asked)
         if response.model_id != pinned:
             _store(
                 store, role, step_key, backend, response, failure="wrong_model_id", config=config
             )
             raise _wrong_model(role, pinned, response)
         parsed, failure = _validate(response, request, response_model)
+        refused = parsed is not None and check is not None and check(parsed)
+        if refused:
+            parsed, failure = None, f"schema: {refused}"
+            retry = f"{request.user}\n\nYour last output was refused: {refused}."
+            asked = replace(request, user=retry)
         _store(store, role, step_key, backend, response, failure=failure, config=config)
         if parsed is not None:
             return parsed
@@ -597,6 +609,9 @@ class MockBackend:
             raise RuntimeError(f"Mock script has no output left for step {step!r}.")
         entry = queue.popleft()
         tool, raw = entry if isinstance(entry, tuple) else (request.tool, entry)
+        # A scripted plan cannot know the shortlist in advance, so it takes the first focus listed.
+        first = (shortlist.listed(request.user) or (shortlist.EXPLORE,))[0]
+        raw = raw.replace(shortlist.FIRST_LISTED, first)
         if self.call_log is not None:
             with self.call_log.open("a") as log:
                 log.write(json.dumps({"cycle": cycle_id, "step": step, "role": role}) + "\n")

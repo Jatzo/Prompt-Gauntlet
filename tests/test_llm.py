@@ -152,7 +152,7 @@ def test_a_recording_outside_runs_or_private_is_refused(tmp_path):
 def test_replay_returns_the_cassette_output(conn):
     backend = llm.get_backend("replay", cassette=FIXTURES / "plan_step.cassette.jsonl")
     plan = llm.call("ceo", (1, "plan"), REQUEST, CEOPlan, conn, backend=backend)
-    assert plan.focus == "obfuscation.base64"
+    assert plan.focus == "explore"
 
 
 def test_replay_fails_loudly_when_the_cassette_has_no_entry(conn):
@@ -216,3 +216,19 @@ def test_every_backend_declares_a_kind_the_run_and_the_judge_accept():
     }
     for cls in backends:
         assert getattr(cls, "kind", None) in get_args(llm.BackendKind), cls.__name__
+
+
+def test_a_checked_output_that_breaks_a_rule_is_stored_as_failed_and_asked_again(conn):
+    verdicts = iter(["focus off the list", None])
+    plan = llm.call(
+        "ceo",
+        (1, "plan"),
+        REQUEST,
+        CEOPlan,
+        conn,
+        backend=mock(VALID, VALID),
+        check=lambda _: next(verdicts),
+    )
+    assert plan.focus == PLAN["focus"]
+    rows = [tuple(row) for row in attempts(conn)]
+    assert rows == [(1, 0, "schema: focus off the list"), (2, 1, None)]

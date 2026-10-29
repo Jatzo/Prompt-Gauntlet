@@ -32,12 +32,12 @@ def test_control_sets_the_run_state(db_path, action, state):
     assert db.control_state(conn)[0] == state
 
 
-def defender_only_script():
-    """The mock cycle with a plan that does not run the Attacker. These tests cover the command
+def defender_only_script(cycles=1, first=1):
+    """The mock cycles with plans that do not run the Attacker. These tests cover the command
     line; the attack step against a real Judge has its own tests, with a built data folder."""
-    script = phase1_mock_script()
-    plan = json.loads(script["plan"][0])
-    script["plan"] = [json.dumps(dict(plan, agents_to_run=["defender"]))]
+    script = phase1_mock_script(cycles, first)
+    plans = [json.loads(raw) for raw in script["plan"]]
+    script["plan"] = [json.dumps(dict(plan, agents_to_run=["defender"])) for plan in plans]
     return script
 
 

@@ -151,3 +151,26 @@ def test_a_recorded_30_cycle_sim_run_replays_to_the_same_schema_valid_artifacts(
         verdicts = [AttackVerdict.model_validate(verdict) for verdict in batch["verdicts"]]
         assert len(verdicts) == len(batch["texts"]) > 0
         DefenderPatch.model_validate(memory.episode(cycle_id, "patch")["patch"])
+
+
+def test_the_ceo_picks_from_the_shortlist_in_its_prompt():
+    backend = SimAgentsBackend(seed=7)
+    prompt = "## Focus shortlist (pick one)\n- tool.argument: least tested\n- explore: new\n\nGo."
+    request = llm.LLMRequest(tool="propose_plan", tools=(), system="s", user=prompt)
+    foci = {
+        CEOPlan.model_validate_json(
+            backend.complete(
+                role="ceo", model_id="m", step_key=(cycle, "plan"), request=request
+            ).raw_output
+        ).focus
+        for cycle in range(1, 20)
+    }
+    assert foci == {"tool.argument", "explore"}
+
+
+def test_the_ceo_acknowledges_the_notes_its_prompt_lists():
+    backend = SimAgentsBackend(seed=7)
+    prompt = "Cycle 3. Operator notes to acknowledge: 2, 5. Call write_postmortem."
+    request = llm.LLMRequest(tool="write_postmortem", tools=(), system="s", user=prompt)
+    raw = backend.complete(role="ceo", model_id="m", step_key=(3, "postmortem"), request=request)
+    assert json.loads(raw.raw_output)["operator_notes_acknowledged"] == [2, 5]

@@ -109,6 +109,8 @@ FALLBACK = {
     "user": "override.direct",
 }
 
+# The techniques a rule recognises, without the channel fallbacks.
+RULE_TECHNIQUES: tuple[str, ...] = tuple(name for name, _ in _RULES)
 TECHNIQUES: tuple[str, ...] = tuple(
     dict.fromkeys([name for name, _ in _RULES] + list(FALLBACK.values()))
 )

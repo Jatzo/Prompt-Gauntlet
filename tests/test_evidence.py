@@ -8,15 +8,18 @@ import re
 import pytest
 
 from arena import cli, db, evidence, llm
+from arena.memory import shortlist
 from arena.memory.memory import Memory
 from arena.orchestrator import Orchestrator, phase1_mock_script
 from arena.schemas import AttackCandidate, DetectorConfig, DetectorQuery, JudgeReport
-from tests.conftest import STUB_REPORT, FakeJudge
+from arena.taxonomy import TECHNIQUES
+from tests.conftest import STUB_REPORT, FakeJudge, numbered
 
 ATTACK_TEXT = AttackCandidate.model_config["json_schema_extra"]["examples"][0]["text"]
 QUERY_TEXT = DetectorQuery.model_config["json_schema_extra"]["examples"][0]["text"]
 # The forms a careless agent might quote an attack in: plain, base64 (one long token, no 5-grams),
-# with Cyrillic lookalike letters (escaped as \uXXXX in JSON), and as a code-shaped focus.
+# with Cyrillic lookalike letters (escaped as \uXXXX in JSON). A code-shaped focus can no longer
+# be committed (the shortlist check refuses it), so `technique_code` is tested on its own.
 LEAKS = [
     ATTACK_TEXT,
     base64.b64encode(ATTACK_TEXT.encode()).decode(),
@@ -46,11 +49,10 @@ class MeasuringJudge(FakeJudge):
 
 def leaky_script(cycles: int) -> dict[str, list]:
     """Mock outputs for several cycles in which the CEO quotes the attack everywhere it can: the
-    focus, the hypothesis, the post-mortem and a lesson."""
-    script = {step: outputs * cycles for step, outputs in phase1_mock_script().items()}
+    first hypothesis (later ones would be refused as repeats), the post-mortem and a lesson."""
+    script = phase1_mock_script(cycles)
     quoted = " ".join(LEAKS)
     plan = json.loads(script["plan"][0])
-    plan["focus"] = LEAKY_FOCUS
     plan["hypothesis_text"] = f"Try this again: {quoted}"
     postmortem = json.loads(script["postmortem"][0])
     postmortem["what_happened"] = f"The attack that worked was: {quoted}"
@@ -62,7 +64,7 @@ def leaky_script(cycles: int) -> dict[str, list]:
             "confidence": 0.5,
         }
     ]
-    script["plan"] = [json.dumps(plan)] * cycles
+    script["plan"][0] = json.dumps(plan)
     script["postmortem"] = [json.dumps(postmortem)] * cycles
     return script
 
@@ -185,10 +187,15 @@ def test_the_public_pack_carries_no_attack_text(ran, tmp_path):
         for (body,) in conn.execute("SELECT body FROM memory_episodic WHERE kind = 'attack_batch'")
         for text in json.loads(body)["texts"]
     ]
-    assert_public_clean(out, [*LEAKS, LEAKY_FOCUS, *stored])
+    assert_public_clean(out, [*LEAKS, *stored])
     # The Attacker's probe queries never reach either half: they stay in llm_calls.
     assert QUERY_TEXT not in (out / "public" / "cycles.jsonl").read_text()
-    assert {record["plan"]["focus"]["value"] for record in pack.public} == {"other"}
+    assert {record["plan"]["focus"]["value"] for record in pack.public} <= set(TECHNIQUES)
+
+
+def test_a_focus_outside_the_taxonomy_is_shown_as_other():
+    assert evidence.technique_code(LEAKY_FOCUS) == "other"
+    assert evidence.technique_code("override.direct") == "override.direct"
 
 
 def test_a_committed_cycle_missing_its_manifest_stops_the_export(conn, ran):
@@ -241,7 +248,7 @@ class PausingJudge(MeasuringJudge):
 
 def test_a_paused_cycle_is_in_progress_and_left_out_of_the_charts(conn, tmp_path):
     run(conn, cycles=2)
-    script = leaky_script(1)
+    script = numbered(leaky_script(1), conn)
     judge = PausingJudge(conn)
     Orchestrator(conn, backend=llm.MockBackend(script=script), judge=judge).run_cycle()
     pack = evidence.build(read_only(tmp_path / "arena.db"), "default")
@@ -253,7 +260,8 @@ def test_a_paused_cycle_is_in_progress_and_left_out_of_the_charts(conn, tmp_path
 def test_an_abandoned_cycle_says_why_in_private_only(conn, tmp_path):
     run(conn, cycles=2)
     judge = PausingJudge(conn)
-    Orchestrator(conn, backend=llm.MockBackend(script=leaky_script(1)), judge=judge).run_cycle()
+    backend = llm.MockBackend(script=numbered(leaky_script(1), conn))
+    Orchestrator(conn, backend=backend, judge=judge).run_cycle()
     path = tmp_path / "arena.db"
     assert cli.main(["--db", str(path), "abandon-cycle", "--reason", ATTACK_TEXT]) == 0
     pack = evidence.build(read_only(path), "default")
@@ -369,7 +377,9 @@ def test_cycles_with_no_model_calls_are_neither_live_nor_simulated(conn, ran, ca
     assert "no model calls yet" in capsys.readouterr().out
 
 
-def test_a_known_technique_focus_is_shown_as_it_is(conn, tmp_path):
+def test_a_known_technique_focus_is_shown_as_it_is(conn, tmp_path, monkeypatch):
+    listed = shortlist.Shortlist((shortlist.Entry("least_tested", "override.direct", "test"),))
+    monkeypatch.setattr(shortlist, "build", lambda *args: listed)
     script = leaky_script(1)
     plan = json.loads(script["plan"][0])
     plan["focus"] = "override.direct"
