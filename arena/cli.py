@@ -3,7 +3,9 @@
 python -m arena.cli status
 python -m arena.cli control start|pause|resume|stop
 python -m arena.cli run-cycle --backend mock|sim|replay|live [--cassette PATH] [--judge JUDGE]
+    [--arm full|no_memory|control]
 python -m arena.cli run --cycles N --backend mock|sim|replay|live [--judge simulated|live]
+    [--arm full|no_memory|control]
 python -m arena.cli abandon-cycle --reason TEXT
 python -m arena.cli baseline --backend mock|replay|live [--profile clean|low_asr]
 python -m arena.cli data build --synthetic|--real --judge-dir PATH [--pilot N | --plan-only]
@@ -95,7 +97,12 @@ def cmd_run(conn, args, cycles: int) -> int:
         return ExitCode.FAILED
     with db.runner(conn), JudgeClient() as judge:
         orchestrator = Orchestrator(
-            conn, backend=backend, judge=judge, run_id=args.run_id, judge_backend=args.judge
+            conn,
+            backend=backend,
+            judge=judge,
+            run_id=args.run_id,
+            arm=args.arm,
+            judge_backend=args.judge,
         )
         for done in range(cycles):
             try:
@@ -556,6 +563,8 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--cassette", type=Path, default=None)
         command.add_argument("--run-id", default="default")
         command.add_argument("--judge", choices=["simulated", "live"], default="simulated")
+        # PLAN section 14: full memory, no memory, or the scripted hill-climb control.
+        command.add_argument("--arm", choices=["full", "no_memory", "control"], default="full")
     baseline = commands.add_parser("baseline")
     baseline.add_argument("--backend", choices=["mock", "replay", "live"], default="mock")
     baseline.add_argument("--profile", choices=["clean", "low_asr"], default="clean")

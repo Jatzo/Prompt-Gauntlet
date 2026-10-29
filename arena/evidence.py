@@ -37,8 +37,10 @@ from arena.taxonomy import TECHNIQUES
 # backend can never pass its numbers off as measurements.
 LIVE_BACKENDS = frozenset({"live", "record"})
 IN_PROGRESS = "in progress"
-# What a committed cycle must leave behind. Add to it as later steps join the cycle.
+# What a committed cycle must leave behind. Add to it as later steps join the cycle. The control
+# arm has no CEO, so no post-mortem.
 REQUIRED_EPISODES = ("plan", "judge_report", "postmortem")
+CONTROL_REQUIRED_EPISODES = ("plan", "judge_report", "control_move")
 # Kept apart from memory.EPISODE_KINDS on purpose: a kind added there without being taught to this
 # exporter shows up as "not shown" in the report instead of disappearing.
 KNOWN_EPISODES = (
@@ -50,6 +52,7 @@ KNOWN_EPISODES = (
     "judge_report",
     "postmortem",
     "novelty_closed",
+    "control_move",
 )
 # Events whose detail carries why a cycle was rolled back. The reason is free text: private only.
 ROLLBACK_EVENTS = ("cycle_skipped", "cycle_abandoned")
@@ -175,7 +178,11 @@ def _cycle(conn: sqlite3.Connection, cycle_id: int, state: str) -> dict:
             "SELECT id, kind, body FROM memory_episodic WHERE cycle_id = ? ORDER BY id", (cycle_id,)
         )
     }
-    missing = [kind for kind in REQUIRED_EPISODES if committed and kind not in episodes]
+    arm_row = conn.execute("SELECT arm FROM manifests WHERE cycle_id = ?", (cycle_id,)).fetchone()
+    required = (
+        CONTROL_REQUIRED_EPISODES if arm_row and arm_row["arm"] == "control" else REQUIRED_EPISODES
+    )
+    missing = [kind for kind in required if committed and kind not in episodes]
     if missing:
         raise EvidenceIncomplete(f"Committed cycle {cycle_id} has no {', '.join(missing)} episode.")
 
@@ -241,7 +248,15 @@ def _manifest(conn: sqlite3.Connection, cycle_id: int, committed: bool) -> dict 
         if committed:
             raise EvidenceIncomplete(f"Committed cycle {cycle_id} has no manifest.")
         return None
-    fields = ("seed", "config_hash", "git_sha", "constitution_hash", "judge_backend")
+    fields = (
+        "seed",
+        "config_hash",
+        "git_sha",
+        "constitution_hash",
+        "judge_backend",
+        "arm",
+        "control_bank_hash",
+    )
     manifest = {field: _stored(row[field], "manifests", row["id"], field) for field in fields}
     manifest["model_ids"] = {
         role: _stored(model, "manifests", row["id"], "model_ids", role)
@@ -258,22 +273,30 @@ def _plan(conn: sqlite3.Connection, cycle_id: int, plan: tuple[int, dict] | None
         "SELECT id, actual_delta FROM memory_predictions WHERE cycle_id = ? ORDER BY id DESC",
         (cycle_id,),
     ).fetchone()
+    if body["prediction"] is None:
+        # A control-arm plan: scripted, so it makes no forecast.
+        source = f"memory_episodic#{row_id}/prediction"
+        expected = _derived("scripted_control_makes_no_prediction", None, source)
+        confidence = _derived("scripted_control_makes_no_prediction", None, source)
+    else:
+        expected = _stored(
+            body["prediction"]["expected_delta"],
+            "memory_episodic",
+            row_id,
+            "prediction",
+            "expected_delta",
+        )
+        confidence = _stored(
+            body["prediction"]["confidence"], "memory_episodic", row_id, "prediction", "confidence"
+        )
     return {
         "focus": _stored(body["focus"], "memory_episodic", row_id, "focus"),
         "hypothesis": _stored(
             body["hypothesis_text"], "memory_episodic", row_id, "hypothesis_text"
         ),
         "agents_to_run": _stored(body["agents_to_run"], "memory_episodic", row_id, "agents_to_run"),
-        "expected_delta": _stored(
-            body["prediction"]["expected_delta"],
-            "memory_episodic",
-            row_id,
-            "prediction",
-            "expected_delta",
-        ),
-        "confidence": _stored(
-            body["prediction"]["confidence"], "memory_episodic", row_id, "prediction", "confidence"
-        ),
+        "expected_delta": expected,
+        "confidence": confidence,
         "actual_delta": (
             _stored(actual["actual_delta"], "memory_predictions", actual["id"], "actual_delta")
             if actual is not None and actual["actual_delta"] is not None
@@ -649,11 +672,14 @@ def _cycle_line(record: dict, full: dict | None) -> str:
         parts.append(f"Focus `{_value(plan['focus'])}`.")
         if full:
             parts.append(f"Hypothesis: {_value(full['plan']['hypothesis'])}")
-        parts.append(
-            f"Predicted change {_value(plan['expected_delta']):+.2f} "
-            f"(confidence {_value(plan['confidence']):.2f}); "
-            f"actual {_value(plan['actual_delta'])}."
-        )
+        if _value(plan["expected_delta"]) is None:
+            parts.append("Scripted control: no prediction.")
+        else:
+            parts.append(
+                f"Predicted change {_value(plan['expected_delta']):+.2f} "
+                f"(confidence {_value(plan['confidence']):.2f}); "
+                f"actual {_value(plan['actual_delta'])}."
+            )
     if isinstance(attacks, str):
         parts.append(f"Attacks: {attacks}.")
     else:

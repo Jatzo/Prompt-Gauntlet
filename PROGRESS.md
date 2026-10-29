@@ -160,6 +160,17 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   cycles on noise, and 10 of the 30 real gains failed on utility or category FPR. Mock draws have
   no item difficulty, so this number vouches only for simulated-Judge keeps; the real-data
   placebo stays with step 16. Plan and critique in `private/placebo-plan.md`.
+- 2026-10-29, hill-climb control (Phase 3 step 8, arm C). Approved by the operator: a bank of 11
+  regex rules written from the taxonomy's technique descriptions (none for a held-out technique,
+  none on the attacker's address); moves over normalisers and rules only, not the classifier
+  prompt; arm B now shows the Attacker its last batch as every arm does (PLAN section 14); control
+  keeps are reviewed with the queue in step 13b. `run --arm full|no_memory|control`. The control
+  arm makes no CEO or Defender call: the focus rotates over each cycle's shortlist, one move is
+  chosen at plan time and stored privately, a move rejected against an incumbent is not tried
+  again until every move has been, and there is no post-mortem, prediction or lesson. A run is one
+  arm (schema 5 records the arm and the bank's hash). On the small synthetic folder a one-step
+  move is rarely kept: dev holds two attack families, one per fold, so a rule for one family fails
+  to replicate on fold two. Plan and critique in `private/hillclimb-plan.md`.
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.
@@ -250,13 +261,13 @@ cybersecurity structure in PLAN.md section 13. No case study has been written ye
 
 ## Next session
 Phase 3, in the order of `private/phase3-remaining-plan.md`. Done: steps A to D, 9 and 10, and
-step 8's placebo (mock). Next:
+step 8 (the placebo in mock, and the hill-climb control). Next:
 1. The Phase 2 checker pass (`bash ~/.pgscratch/run t_check.sh`, log `~/.pgscratch/check.log`),
    then the live baseline, the seal and pre-registration.
 2. Step E, the live demo: calibrate a novelty threshold first, since a live-agent run pauses with
    NotCalibrated without one.
-3. Step G: the hill-climb control (after the placebo, as planned), 11 findings and regression
-   tracker, 12 Researcher, 13b review queue, 13c checkpoints and digests.
+3. Step G: 11 findings and regression tracker, 12 Researcher, 13b review queue (with the
+   automated review and sampled audit for placebo and control keeps), 13c checkpoints and digests.
 4. Step H, the phase close-out.
 Small leftovers: retake `docs/dashboard/1-replay-in-flight.jpg` with the notes showing; dashboard
 step D findings 4 (redrawing lists loses text selection) and 5 (two scripts page `/arena/cycles`

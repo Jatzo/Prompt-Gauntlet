@@ -136,6 +136,8 @@ def memory(conn: sqlite3.Connection, run_id: str) -> dict:
             "hypothesis": str(body.get("hypothesis_text", "")),
             "expected_delta": _number(prediction.get("expected_delta")),
             "confidence": _number(prediction.get("confidence")),
+            # A control-arm plan is scripted and makes no forecast.
+            "scripted": body.get("prediction") is None,
             "cites": [n for n in body.get("cites_lesson_ids", []) if isinstance(n, int)],
         }
     lessons = [

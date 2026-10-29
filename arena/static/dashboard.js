@@ -347,8 +347,9 @@
       $("plan-cycle").textContent = plan.cycle;
       $("plan-focus").textContent = plan.focus;
       const confidence = typeof plan.confidence === "number" ? plan.confidence.toFixed(2) : "-";
-      $("plan-prediction").textContent =
-        `ASR change ${signed(plan.expected_delta)} at confidence ${confidence}`;
+      $("plan-prediction").textContent = plan.scripted
+        ? "Scripted control: no prediction"
+        : `ASR change ${signed(plan.expected_delta)} at confidence ${confidence}`;
       $("plan-cites").textContent = plan.cites.length
         ? plan.cites.map((id) => `lesson ${id}`).join(", ")
         : "no lessons";

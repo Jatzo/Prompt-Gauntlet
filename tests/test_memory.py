@@ -55,6 +55,7 @@ def test_the_episode_kinds_are_pinned_and_the_private_ones_are_among_them():
         "attack_batch",
         "novelty_closed",
         "patch",
+        "control_move",
     )
     assert set(PRIVATE_EPISODE_KINDS) <= set(EPISODE_KINDS)
     # A patch's literal rules can quote an evasion, so no agent may read one back.

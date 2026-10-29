@@ -5,6 +5,11 @@ checks; the Defender patches the incumbent from the evasions the Judge chose to 
 applies the keep rule to the candidate; the CEO writes the post-mortem. Every cycle also checks the
 pinned hashes and writes a run manifest.
 
+The arm sets who plans and patches (PLAN section 14). `full` is the CEO with memory; `no_memory` is
+the CEO with no lessons in its briefing or directive; `control` has no CEO and no Defender: the plan
+is scripted from the code-built shortlist and the patch is one hill-climb move (arena/control/
+hillclimb.py). The Attacker and the Judge are the same in every arm.
+
 Each step stores its model output first, then makes its writes in one transaction together with a
 `step_writes` row. A step resumed after a crash reuses the stored output and, if that row exists,
 skips the writes, so nothing is ever written twice.
@@ -33,8 +38,9 @@ from arena.anomaly import (
 )
 from arena.baselines import REGEX_RULES
 from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig, config_hash, private_data_dir
+from arena.control import hillclimb
 from arena.defender_inputs import hard_benign, shown_evasions, train_attacks, train_samples
-from arena.detector.patch import PatchRefused, apply_patch
+from arena.detector.patch import PatchRefused, apply_patch, fingerprint
 from arena.judge_client import HashReport
 from arena.memory import briefing, shortlist
 from arena.memory.lessons import actual_delta, dispute_contradicted, noise_band
@@ -70,6 +76,7 @@ REFERENCE_TARGET = LADDER[0]
 # What the Judge measures with: its simulated models, or the real ones. Separate from the agents'
 # backend, so live agents can be watched without the Judge's long live measurements.
 JudgeBackend = Literal["simulated", "live"]
+Arm = Literal["full", "no_memory", "control"]
 # The dev fold the keep rule tests the TPR gain on; the other fold must replicate it. Fixed until
 # checkpoints rotate the folds (Phase 3 step 13c).
 PRIMARY_FOLD = 1
@@ -100,7 +107,7 @@ class Orchestrator:
         run_id: str = "default",
         root: Path = REPO_ROOT,
         config: ArenaConfig = DEFAULTS,
-        use_memory: bool = True,
+        arm: Arm = "full",
         judge_backend: JudgeBackend = "simulated",
     ):
         if backend.kind not in get_args(llm.BackendKind):
@@ -108,6 +115,8 @@ class Orchestrator:
                 f"Backend {backend.name!r} declares kind {backend.kind!r}; it must be one of "
                 f"{get_args(llm.BackendKind)}."
             )
+        if arm not in get_args(Arm):
+            raise ValueError(f"Arm {arm!r} must be one of {get_args(Arm)}.")
         if judge_backend not in get_args(JudgeBackend):
             raise ValueError(
                 f"Judge backend {judge_backend!r} must be one of {get_args(JudgeBackend)}."
@@ -119,8 +128,9 @@ class Orchestrator:
         self.run_id = run_id
         self.root = root
         self.config = config
-        # The no-memory ablation arm: no lessons in the directive, no last batch for the Attacker.
-        self.use_memory = use_memory
+        self.arm = arm
+        # The no-memory ablation arm: no lessons in the briefing or the directive.
+        self.use_memory = arm != "no_memory"
         # The agent-visible data: train only, read through `defender_inputs` and the novelty code.
         self.private_dir = private_data_dir()
         self.novelty = RunNovelty(
@@ -154,7 +164,7 @@ class Orchestrator:
                 # hijacked post-mortem, an abandoned cycle) must not pair a prediction or dispute
                 # a lesson.
                 report = memory.episode(cycle_id, "judge_report")
-                if report is not None:
+                if report is not None and self.arm != "control":
                     self._learn_from(memory, cycle_id, JudgeReport.model_validate(report))
             return CycleOutcome("committed", cycle_id, "all steps done")
         except Anomaly as anomaly:
@@ -193,9 +203,25 @@ class Orchestrator:
             "config_hash": config_hash(self.config),
             "model_ids": model_ids,
             "judge_backend": self.judge_backend,
+            "arm": self.arm,
+            "control_bank_hash": hillclimb.bank_hash() if self.arm == "control" else None,
         }
+        # A run is one arm from start to end. Manifests from before arms were recorded have none,
+        # so the first one that has an arm sets it.
+        first = self.conn.execute(
+            "SELECT arm FROM manifests WHERE run_id = ? AND arm IS NOT NULL"
+            " ORDER BY cycle_id LIMIT 1",
+            (self.run_id,),
+        ).fetchone()
+        if first is not None and first["arm"] != self.arm:
+            raise ConfigMismatch(
+                f"Run {self.run_id} is a {first['arm']} run; it cannot go on as {self.arm}. "
+                "Start a new run id for another arm.",
+                changed=["arm"],
+            )
         recorded = self.conn.execute(
-            "SELECT config_hash, model_ids, judge_backend FROM manifests WHERE cycle_id = ?",
+            "SELECT config_hash, model_ids, judge_backend, arm, control_bank_hash"
+            " FROM manifests WHERE cycle_id = ?",
             (cycle_id,),
         ).fetchone()
         if recorded is not None:
@@ -216,8 +242,8 @@ class Orchestrator:
             return
         self.conn.execute(
             "INSERT INTO manifests (run_id, cycle_id, model_ids, seed, config_hash,"
-            " git_sha, constitution_hash, judge_backend, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " git_sha, constitution_hash, judge_backend, arm, control_bank_hash, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 self.run_id,
                 cycle_id,
@@ -227,6 +253,8 @@ class Orchestrator:
                 _git_sha(self.root),
                 hashes.constitution_hash,
                 self.judge_backend,
+                self.arm,
+                current["control_bank_hash"],
                 db.now(),
             ),
         )
@@ -234,6 +262,9 @@ class Orchestrator:
     def _step_plan(self, cycle_id: int) -> None:
         cycle.reach(self.conn, cycle_id, "running")
         if self._written(cycle_id, "plan"):
+            return
+        if self.arm == "control":
+            self._control_plan(cycle_id)
             return
         brief = self._briefing(cycle_id)
         foci, shown = brief["foci"], brief["lesson_ids"]
@@ -278,6 +309,75 @@ class Orchestrator:
             write,
         )
 
+    def _control_plan(self, cycle_id: int) -> None:
+        """Arm C's plan: the focus by rotation over the shortlist, and one hill-climb move, chosen
+        once here and stored, so the defend step and a resumed cycle use the same move. The plan
+        names no move, since the Attacker reads the hypothesis and arm A's Attacker never sees the
+        Defender's patch. It carries no prediction: a scripted number is not a forecast."""
+        foci = self._shortlist(cycle_id)
+        committed = self.conn.execute(
+            "SELECT COUNT(*) FROM cycles WHERE run_id = ? AND state = 'committed'", (self.run_id,)
+        ).fetchone()[0]
+        focus = foci[committed % len(foci)]
+        config = self._incumbent()[1]
+        history = [
+            body
+            for (body,) in self.conn.execute(
+                "SELECT t.body FROM memory_episodic t JOIN cycles c ON c.id = t.cycle_id"
+                " WHERE c.run_id = ? AND c.state = 'committed' AND t.kind = 'control_move'"
+                " ORDER BY t.cycle_id",
+                (self.run_id,),
+            )
+        ]
+        tried = hillclimb.tried_since_restart((json.loads(b) for b in history), config)
+        choice = hillclimb.next_move(config, focus, tried, self.config.seed + cycle_id)
+        move = choice.move
+
+        def write(memory: Memory, _) -> str:
+            where = {"cycle_id": cycle_id, "step": "plan", "role": "orchestrator"}
+            plan = {
+                "hypothesis_text": f"Control cycle {cycle_id}: {focus}.",
+                "focus": focus,
+                "agents_to_run": ["attacker", "defender"],
+                "prediction": None,
+                "cites_lesson_ids": [],
+            }
+            memory.record_episode(kind="plan", body=plan, **where)
+            body = {
+                "label": move.label if move else None,
+                "patch": move.patch.model_dump(mode="json") if move else None,
+                "parent": fingerprint(config),
+                "restarted": choice.restarted,
+            }
+            memory.record_episode(kind="control_move", body=body, **where)
+            if choice.restarted:
+                db.log_event(self.conn, "control_restarted", {"cycle": cycle_id}, cycle_id=cycle_id)
+            return "control plan recorded"
+
+        self._run_step(cycle_id, "plan", "orchestrator", "control_plan", lambda: None, write)
+
+    def _plan(self, cycle_id: int) -> CEOPlan:
+        """The stored plan. A control plan has no prediction; a neutral one stands in for the
+        schema, and nothing reads it, since the control arm records and pairs no prediction."""
+        body = dict(Memory(self.conn, self.config).episode(cycle_id, "plan"))
+        if body["prediction"] is None:
+            body["prediction"] = {"expected_delta": 0.0, "confidence": 0.5}
+        return CEOPlan.model_validate(body)
+
+    def _shortlist(self, cycle_id: int) -> list[str]:
+        """The control arm's shortlist, built and stored once per cycle as the briefing stores
+        the CEO's, with the plateau checks the briefing runs."""
+        memory = Memory(self.conn, self.config)
+        stored = memory.episode(cycle_id, "shortlist")
+        if stored is not None:
+            return [focus for _, focus in stored["entries"]]
+        self._check_plateau()
+        foci = shortlist.build(self.conn, self.run_id, self.config)
+        where = {"cycle_id": cycle_id, "step": "plan", "role": "orchestrator"}
+        with db.transaction(self.conn):
+            memory.record_episode(kind="shortlist", body=foci.body(), **where)
+        return list(foci.foci)
+
     def _briefing(self, cycle_id: int) -> dict:
         """The CEO's prompt for this cycle, built once and stored before the call, with the
         shortlist and the lesson ids it showed. A resumed cycle reads it back rather than building
@@ -319,14 +419,19 @@ class Orchestrator:
         ).fetchone()
         streak = shortlist.no_keep_streak(self.conn, self.run_id, after_cycle=row[0] or 0)
         if streak >= self.config.plateau_pause_m:
+            # The control arm has no CEO to read an operator note.
+            choices = (
+                "resume or stop"
+                if self.arm == "control"
+                else "resume, add an operator note or stop"
+            )
             raise PlateauReached(
-                f"No change kept in {streak} cycles. Read the state of the lab, then resume, "
-                "add an operator note or stop.",
+                f"No change kept in {streak} cycles. Read the state of the lab, then {choices}.",
                 **shortlist.state_of_the_lab(self.conn, self.run_id),
             )
 
     def _step_attack(self, cycle_id: int) -> None:
-        plan = CEOPlan.model_validate(Memory(self.conn, self.config).episode(cycle_id, "plan"))
+        plan = self._plan(cycle_id)
         if "attacker" not in plan.agents_to_run:
             self._run_step(
                 cycle_id,
@@ -347,7 +452,7 @@ class Orchestrator:
                 return self.judge.query_detector(request)
 
             directive = self._directive(plan)
-            view = AttackerView(directive, self.novelty.last_view() if self.use_memory else ())
+            view = AttackerView(directive, self.novelty.last_view())
             # The Judge counts the query budget; the turns never ask for more than it allows.
             turns = min(self.config.attacker_query_turns, DEFAULTS.query_budget_t2)
             attacker = Attacker(turns=turns, seed=self.config.seed)
@@ -385,8 +490,11 @@ class Orchestrator:
         )
 
     def _step_defend(self, cycle_id: int) -> None:
+        if self.arm == "control":
+            self._control_defend(cycle_id)
+            return
         memory = Memory(self.conn, self.config)
-        plan = CEOPlan.model_validate(memory.episode(cycle_id, "plan"))
+        plan = self._plan(cycle_id)
         if "defender" not in plan.agents_to_run:
             self._run_step(
                 cycle_id,
@@ -419,28 +527,49 @@ class Orchestrator:
             return Defender(seed=self.config.seed).run(cycle_id, view, ports)
 
         def write(memory: Memory, patch: DefenderPatch) -> str:
-            where = {"cycle_id": cycle_id, "step": defender.STEP, "role": defender.ROLE}
-            parent_id = self._store_baseline(memory, cycle_id, defender.STEP)
-            try:
-                candidate = apply_patch(config, patch)
-            except PatchRefused as refused:
-                # The reason can echo the patch, so it stays in the private episode, not an event.
-                body = {"patch": patch.model_dump(mode="json"), "refused": str(refused)}
-                memory.record_episode(kind="patch", body=body, **where)
-                return "patch refused"
-            memory.record_episode(
-                kind="patch", body={"patch": patch.model_dump(mode="json")}, **where
-            )
-            memory.add_detector_config(
-                candidate,
-                parent_id=parent_id,
-                cycle_id=cycle_id,
-                step=defender.STEP,
-                role="orchestrator",
-            )
-            return f"patch with {len(patch.ops)} ops"
+            return self._write_patch(memory, cycle_id, config, patch, defender.ROLE)
 
         self._run_step(cycle_id, defender.STEP, defender.ROLE, defender.TOOL, produce, write)
+
+    def _control_defend(self, cycle_id: int) -> None:
+        move = Memory(self.conn, self.config).episode(cycle_id, "control_move")
+        config = self._incumbent()[1]
+
+        def write(memory: Memory, _) -> str:
+            if move["patch"] is None:
+                return "no control move left"
+            patch = DefenderPatch.model_validate(move["patch"])
+            return self._write_patch(memory, cycle_id, config, patch, "orchestrator")
+
+        self._run_step(cycle_id, defender.STEP, "orchestrator", "control_move", lambda: None, write)
+
+    def _write_patch(
+        self,
+        memory: Memory,
+        cycle_id: int,
+        config: DetectorConfig,
+        patch: DefenderPatch,
+        role: str,
+    ) -> str:
+        """Apply a patch to the incumbent and store the candidate with its lineage."""
+        where = {"cycle_id": cycle_id, "step": defender.STEP, "role": role}
+        parent_id = self._store_baseline(memory, cycle_id, defender.STEP)
+        try:
+            candidate = apply_patch(config, patch)
+        except PatchRefused as refused:
+            # The reason can echo the patch, so it stays in the private episode, not an event.
+            body = {"patch": patch.model_dump(mode="json"), "refused": str(refused)}
+            memory.record_episode(kind="patch", body=body, **where)
+            return "patch refused"
+        memory.record_episode(kind="patch", body={"patch": patch.model_dump(mode="json")}, **where)
+        memory.add_detector_config(
+            candidate,
+            parent_id=parent_id,
+            cycle_id=cycle_id,
+            step=defender.STEP,
+            role="orchestrator",
+        )
+        return f"patch with {len(patch.ops)} ops"
 
     def _learn_from(self, memory: Memory, cycle_id: int, report: JudgeReport) -> None:
         """Pair the prediction with the measured ASR change, and dispute any lesson the plan cited
@@ -450,7 +579,7 @@ class Orchestrator:
             return
         where = {"cycle_id": cycle_id, "step": "commit", "role": "orchestrator"}
         memory.record_actual(cycle_id, actual, step="commit", role="orchestrator")
-        plan = CEOPlan.model_validate(memory.episode(cycle_id, "plan"))
+        plan = self._plan(cycle_id)
         dispute_contradicted(
             memory,
             cited=plan.cites_lesson_ids,
@@ -548,6 +677,18 @@ class Orchestrator:
         self._run_step(cycle_id, "judge", "judge", "evaluate", produce, write)
 
     def _step_postmortem(self, cycle_id: int) -> None:
+        if self.arm == "control":
+            # No CEO, so no lesson and no operator note acknowledged on its behalf.
+            self._run_step(
+                cycle_id,
+                "postmortem",
+                "orchestrator",
+                "control_postmortem",
+                lambda: None,
+                lambda memory, _: "no CEO in the control arm",
+            )
+            return
+
         def write(memory: Memory, postmortem: PostMortem) -> str:
             where = {"cycle_id": cycle_id, "step": "postmortem", "role": "ceo"}
             memory.record_episode(

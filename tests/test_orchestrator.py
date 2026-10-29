@@ -11,6 +11,7 @@ from arena.judge_client import JudgeError
 from arena.memory import shortlist
 from arena.memory.memory import Memory, MemoryWriteRejected, incumbent, lineage
 from arena.orchestrator import PRIMARY_FOLD, REFERENCE_TARGET, Orchestrator, phase1_mock_script
+from arena.run_novelty import RunNovelty
 from tests.conftest import FakeJudge, numbered
 
 FULL_CYCLE = [
@@ -366,7 +367,7 @@ def test_a_planted_canary_in_the_attackers_output_rolls_back_before_the_judge(co
     assert judge.queries == [] and judge.batches == []
 
 
-def test_the_no_memory_arm_gets_no_lessons_and_no_last_batch(conn, monkeypatch):
+def test_the_no_memory_arm_gets_no_lessons_but_the_same_last_batch_view(conn, monkeypatch):
     seen = []
     real_run = attacker.Attacker.run
 
@@ -403,14 +404,18 @@ def test_the_no_memory_arm_gets_no_lessons_and_no_last_batch(conn, monkeypatch):
     assert remembering.directive.cited_lesson_texts == [lesson["text"]]
     assert remembering.last_batch
 
-    # The no-memory arm is shown no lessons, so a plan citing one is refused and asked again.
+    # The no-memory arm is shown no lessons, so a plan citing one is refused and asked again. Its
+    # Attacker sees its own last batch as every arm's does (PLAN section 14); a run is one arm, so
+    # it runs under its own id, and its view is pinned to the one the first arm saw.
+    monkeypatch.setattr(RunNovelty, "last_view", lambda self: remembering.last_batch)
     script = plan_with(cites_lesson_ids=[1])
     script["plan"].append(plan_with(cites_lesson_ids=[])["plan"][0])
     without = Orchestrator(
         conn,
         backend=llm.MockBackend(script=numbered(script, conn)),
         judge=FakeJudge(),
-        use_memory=False,
+        run_id="no-memory",
+        arm="no_memory",
     )
     assert without.run_cycle().status == "committed"
     failure = conn.execute(
@@ -418,7 +423,7 @@ def test_the_no_memory_arm_gets_no_lessons_and_no_last_batch(conn, monkeypatch):
     ).fetchone()[0]
     assert failure == "schema: lessons [1] were not in this briefing"
     assert seen[-1].directive.cited_lesson_texts == []
-    assert seen[-1].last_batch == ()
+    assert seen[-1].last_batch == remembering.last_batch
 
 
 def test_an_outcome_the_live_feed_cannot_show_is_refused(conn):

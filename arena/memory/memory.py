@@ -92,12 +92,15 @@ EPISODE_KINDS = (
     "attack_batch",
     "novelty_closed",
     "patch",
+    # The control arm's scripted move for the cycle, chosen at plan time (arena/control).
+    "control_move",
 )
 
 # Episodes that may hold attack text: the Attacker's batches, held-back attacks included, the
 # Defender's patches, whose literal rules can quote an evasion, and the CEO's stored briefing, which
-# quotes agent text. No briefing, recall or other agent-facing read may select them.
-PRIVATE_EPISODE_KINDS = ("attack_batch", "novelty_closed", "patch", "briefing")
+# quotes agent text. No briefing, recall or other agent-facing read may select them. The control
+# arm's move is private too: it names the patch, which no Attacker may see.
+PRIVATE_EPISODE_KINDS = ("attack_batch", "novelty_closed", "patch", "briefing", "control_move")
 
 
 class Memory:
