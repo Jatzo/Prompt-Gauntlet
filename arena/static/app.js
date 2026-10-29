@@ -1,6 +1,43 @@
 // The live feed. Every value from the server is set with textContent, never parsed as HTML.
 "use strict";
 
+// Motion: one switch, one source of truth. `data-motion` on <html> is "on" or "off"; the CSS and
+// arena.js read it. Until the operator chooses, it follows this computer's reduced-motion setting.
+// A choice is stored as "on" or "off" (never a bare boolean), so clearing it returns to the
+// computer's setting. Storage can be blocked; the switch then lasts for this page only.
+(() => {
+  const KEY = "arena-motion";
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const toggle = document.getElementById("motion-toggle");
+  const read = () => {
+    try {
+      return localStorage.getItem(KEY);
+    } catch {
+      return null;
+    }
+  };
+  let chosen = read();
+  function apply() {
+    const on = chosen ? chosen === "on" : !reduced.matches;
+    document.documentElement.dataset.motion = on ? "on" : "off";
+    toggle.setAttribute("aria-pressed", String(on));
+    toggle.title = chosen
+      ? "Animations as you chose. Click to switch."
+      : "Animations follow this computer's setting until you choose here.";
+  }
+  toggle.addEventListener("click", () => {
+    chosen = document.documentElement.dataset.motion === "on" ? "off" : "on";
+    try {
+      localStorage.setItem(KEY, chosen);
+    } catch {
+      // Blocked storage: the choice holds until the page reloads.
+    }
+    apply();
+  });
+  reduced.addEventListener("change", apply);
+  apply();
+})();
+
 const MAX_ROWS = 2000;
 const rows = document.getElementById("rows");
 const scroller = document.getElementById("scroller");
@@ -97,6 +134,8 @@ function row(event) {
 function flush() {
   scheduled = false;
   const added = pending.childElementCount;
+  // Only a small live batch slides in; a backfill of history appears at once.
+  if (added > 20) for (const tr of pending.children) tr.classList.remove("fresh");
   rows.append(pending);
   pending = document.createDocumentFragment();
   while (rows.childElementCount > MAX_ROWS) {

@@ -114,14 +114,24 @@
     const table = el("table", undefined, "tally");
     const head = table.createTHead().insertRow();
     head.append(el("th", "Technique"));
-    for (const column of columns) head.append(el("th", OUTCOME_NAMES[column]));
+    for (const column of columns) {
+      const th = el("th", OUTCOME_NAMES[column]);
+      th.dataset.outcome = column;
+      head.append(th);
+    }
     const body = table.createTBody();
     for (const technique of shown) {
       const row = body.insertRow();
       const name = el("th", technique);
       name.scope = "row";
       row.append(name);
-      for (const column of columns) row.append(el("td", counts.get(technique)[column]));
+      for (const column of columns) {
+        const count = counts.get(technique)[column];
+        const td = el("td", count);
+        td.dataset.outcome = column;
+        if (!count) td.dataset.zero = "";
+        row.append(td);
+      }
     }
     wrap.append(table);
   }
@@ -187,15 +197,28 @@
     const upper = usable.map((point, i) => `${x(i)},${y(point[key].ci_high)}`);
     const lower = usable.map((point, i) => `${x(i)},${y(point[key].ci_low)}`).reverse();
     svg.append(svgEl("polygon", { class: "band", points: [...upper, ...lower].join(" ") }));
-    svg.append(
-      svgEl("polyline", {
-        class: "line",
-        points: usable.map((point, i) => `${x(i)},${y(point[key].value)}`).join(" "),
-      }),
-    );
+    const line = svgEl("polyline", {
+      class: "line",
+      points: usable.map((point, i) => `${x(i)},${y(point[key].value)}`).join(" "),
+      pathLength: 1,
+      "stroke-dasharray": 1,
+    });
+    svg.append(line);
+    // The line draws itself in; the caller only redraws when a new cycle arrived.
+    if (document.documentElement.dataset.motion === "on") {
+      line.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], {
+        duration: 900,
+        easing: "cubic-bezier(0.3, 0, 0.2, 1)",
+      });
+    }
     usable.forEach((point, i) => {
-      const dot = svgEl("circle", { class: "point", cx: x(i), cy: y(point[key].value), r: 3 });
-      dot.setAttribute("data-decision", point.decision);
+      // A kept cycle is a square as well as amber, so the shape says it without the colour.
+      const cx = x(i);
+      const cy = y(point[key].value);
+      const kept = point.decision === "keep";
+      const dot = kept
+        ? svgEl("rect", { class: "point kept", x: cx - 4, y: cy - 4, width: 8, height: 8 })
+        : svgEl("circle", { class: "point", cx, cy, r: 3 });
       const tip = svgEl("title");
       const standing = point.standing ? `, ${point.standing.replace("_", " ")}` : "";
       const interval = `${pct(point[key].ci_low)} to ${pct(point[key].ci_high)}`;
@@ -247,6 +270,8 @@
     svg.append(svgEl("line", { class: "cap", x1: left, x2: width - right, y1: y(cap), y2: y(cap) }));
   }
 
+  let drawnPoints = 0;
+
   function showScores(data) {
     const points = data.points || [];
     $("scores-empty").hidden = points.length > 0;
@@ -256,7 +281,9 @@
     badge.hidden = !points.length;
     badge.textContent = simulated ? "simulated Judge" : "live Judge";
     badge.dataset.kind = simulated ? "simulated" : "live";
-    if (!points.length) return;
+    // Redraw only when a cycle was added, so the lines draw in once per cycle, not every poll.
+    if (!points.length || points.length === drawnPoints) return;
+    drawnPoints = points.length;
     for (const [key, id] of [["asr", "asr-now"], ["utility", "utility-now"], ["tpr", "tpr-now"]]) {
       const now = series($(`plot-${key}`), points, key);
       $(id).textContent = now ? `${pct(now.value)} now` : "";

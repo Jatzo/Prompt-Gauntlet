@@ -85,6 +85,14 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   `arena/arena_feed.py`; the evidence pack is unchanged. A fresh page plays only the latest cycle and
   puts the rest in the strip. The feed's status label reads "Connected" so it is never confused with
   a live run. A run_id per cycle and a run picker are left for when one database holds two runs.
+- 2026-10-29, dashboard redesign (Joe asked for motion and security role colours; plan, critique and
+  answers in `private/dashboard-redesign-plan.md`): a dark-first threat console, light kept as a
+  fallback. Attacker red, Defender blue, CEO purple, Judge amber, each with a shape and a name as
+  well as a colour; every text colour passes AA in both modes. Each cycle replays as one sequence
+  (CEO beams, comets, shield ripple or target hit, patch sweep, stamp, count-up), with a slow grid
+  drift between replays. A "Motion" switch follows the computer's reduced-motion setting until the
+  operator chooses; the in-app browser runs with reduced motion, which is why the first version
+  looked still there. Front end only; screenshots in `docs/dashboard/` replaced.
 - 2026-10-29, step D (the four-panel dashboard, PLAN section 15; plan, critique and Joe's answers
   in `private/dashboard-plan.md`): PLAN's four panels, with each part that waits on a later step
   shown as a labelled empty state. Panels read one run, the newest by default, through
