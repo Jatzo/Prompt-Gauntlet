@@ -4,6 +4,7 @@ import json
 
 from arena import arena_feed, cycle, db, llm
 from arena.agents.attacker import SUBMIT_STEP
+from arena.config import DEFAULTS
 from arena.memory.memory import Memory
 from arena.orchestrator import Orchestrator, phase1_mock_script
 from arena.schemas import AttackVerdict, BatchReport
@@ -87,7 +88,8 @@ def test_every_level_holds_only_allowlisted_keys(conn):
     assert set(found["patch"]) == {"ops", "refused"}
     assert all(set(op) == {"op", "field"} for op in found["patch"]["ops"])
     assert set(found["judge"]) == {"decision", "reason", "asr", "tpr"}
-    assert set(found["rules"]) == {"before", "after"}
+    assert set(found["rules"]) == {"before", "after", "cap"}
+    assert found["rules"]["cap"] == DEFAULTS.max_rules
 
 
 def test_each_attack_lands_in_its_lane_and_unknown_techniques_show_as_other(conn):

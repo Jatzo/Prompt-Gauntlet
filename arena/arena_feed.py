@@ -8,7 +8,7 @@ module reads only the fields that picture needs, from a read-only connection the
 - the batch's verdicts, never its texts: technique code, valid, evaded, held back, refused;
 - the patch's op kinds and the fields they touch, never its patterns, values or rationale;
 - the Judge's decision, reason code and aggregate ASR and TPR;
-- the rule counts of the config patched and of the incumbent after the cycle;
+- the rule counts of the config patched and of the incumbent after the cycle, and the rule cap;
 - whether the cycle ran live or simulated, through `evidence.backend_of`.
 
 A valid attack is one that acted on the undefended target; evaded means the incumbent missed it. The
@@ -20,6 +20,7 @@ cycle never hides the others.
 import json
 import sqlite3
 
+from arena.config import DEFAULTS
 from arena.cycle import FINISHED
 from arena.evidence import backend_of, technique_code
 
@@ -136,7 +137,8 @@ def _rule_count(config: str) -> int:
 
 
 def _rules(conn: sqlite3.Connection, cycle_id: int, run_id: str) -> dict:
-    """The rule count of the config the cycle patched, and of the run's incumbent after it."""
+    """The rule counts of the config the cycle patched and of the run's incumbent after it, and
+    the cap."""
     placeholders = ",".join("?" * len(_STANDING))
     standing = conn.execute(
         f"SELECT d.config FROM detector_configs d JOIN cycles c ON c.id = d.cycle_id"  # noqa: S608
@@ -151,4 +153,4 @@ def _rules(conn: sqlite3.Connection, cycle_id: int, run_id: str) -> dict:
     ).fetchone()
     after = _rule_count(standing["config"]) if standing else None
     before = _rule_count(candidate["config"]) if candidate else after
-    return {"before": before, "after": after}
+    return {"before": before, "after": after, "cap": DEFAULTS.max_rules}

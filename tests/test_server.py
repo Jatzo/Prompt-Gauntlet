@@ -172,13 +172,32 @@ def test_the_endpoint_streams_events_and_reads_resume_points(events_db):
 def test_a_foreign_host_is_refused_and_every_response_carries_the_headers(events_db):
     with client(events_db) as http:
         assert http.get("/", headers={"Host": "evil.example"}).status_code == 400
-        for path in ("/", "/app.js", "/arena.js", "/arena/cycles", "/events"):
+        for path in (
+            "/",
+            "/app.js",
+            "/arena.js",
+            "/arena/cycles",
+            "/events",
+            "/fonts/IBMPlexSans-Regular-Latin1.woff2",
+        ):
             response = http.get(path)
             assert response.status_code == 200
             assert "default-src 'none'" in response.headers["content-security-policy"]
             assert "script-src 'self'" in response.headers["content-security-policy"]
             assert response.headers["x-content-type-options"] == "nosniff"
         assert http.get("/docs").status_code == 404
+
+
+def test_fonts_are_served_by_exact_name_only(events_db):
+    with client(events_db) as http:
+        for name in server.FONTS:
+            response = http.get(f"/fonts/{name}")
+            assert response.status_code == 200
+            assert response.headers["content-type"] == "font/woff2"
+            assert response.content[:4] == b"wOF2"
+        for path in ("/fonts/OFL.txt", "/fonts/..%2Fserver.py", "/fonts/..%2F..%2Fserver.py"):
+            assert http.get(path).status_code == 404
+        assert "font-src 'self'" in http.get("/").headers["content-security-policy"]
 
 
 @pytest.mark.parametrize("name", ["index.html", "app.js", "arena.js"])

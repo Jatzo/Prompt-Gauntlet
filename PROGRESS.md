@@ -85,6 +85,14 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   `arena/arena_feed.py`; the evidence pack is unchanged. A fresh page plays only the latest cycle and
   puts the rest in the strip. The feed's status label reads "Connected" so it is never confused with
   a live run. A run_id per cycle and a run picker are left for when one database holds two runs.
+- 2026-10-29, siege arena (Joe's chosen design; plan, critique and answers in
+  `private/siege-plan.md`): the arena is now a ring. The blue shield carries one slot per allowed
+  rule, lit for each rule in use; attacks fly from the red launch node at the ring, cut into one
+  slice per technique, so a mark's position names its technique. Caught attacks stop with a cross,
+  ones that get past reach the target in the centre and leave a red notch, held-back ones (which
+  also got past) show an amber ring. Red, blue and purple cards give the cycle's numbers. Purple is
+  now the target and the Judge, so kept cycles are purple squares. Dark only, IBM Plex served from
+  two fixed font routes, every panel restyled to match. The arena feed gains `rules.cap`.
 - 2026-10-29, dashboard redesign (Joe asked for motion and security role colours; plan, critique and
   answers in `private/dashboard-redesign-plan.md`): a dark-first threat console, light kept as a
   fallback. Attacker red, Defender blue, CEO purple, Judge amber, each with a shape and a name as

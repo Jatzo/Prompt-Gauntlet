@@ -30,7 +30,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -42,6 +42,16 @@ from arena.schemas import STEP_OUTCOME
 HOST = "127.0.0.1"
 PORT = 8765
 STATIC = Path(__file__).parent / "static"
+# The page's typefaces, served by exact name only, so no request can reach another file.
+FONTS = frozenset(
+    {
+        "IBMPlexSans-Regular-Latin1.woff2",
+        "IBMPlexSans-SemiBold-Latin1.woff2",
+        "IBMPlexSans-Bold-Latin1.woff2",
+        "IBMPlexMono-Regular-Latin1.woff2",
+        "IBMPlexMono-SemiBold-Latin1.woff2",
+    }
+)
 POLL_SECONDS = 1.0
 KEEPALIVE_SECONDS = 15.0
 # Rows per poll, so a first connect to a long run does not read the whole table at once.
@@ -51,7 +61,8 @@ BATCH = 500
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
 _HEADERS = {
     "Content-Security-Policy": (
-        "default-src 'none'; connect-src 'self'; script-src 'self'; style-src 'unsafe-inline';"
+        "default-src 'none'; connect-src 'self'; script-src 'self'; font-src 'self';"
+        " style-src 'unsafe-inline';"
         " frame-ancestors 'none'; form-action 'none'"
     ),
     "X-Content-Type-Options": "nosniff",
@@ -194,6 +205,12 @@ def create_app(
     @app.get("/dashboard.js")
     def dashboard_script() -> FileResponse:
         return FileResponse(STATIC / "dashboard.js", media_type="text/javascript")
+
+    @app.get("/fonts/{name}")
+    def font(name: str) -> FileResponse:
+        if name not in FONTS:
+            raise HTTPException(404)
+        return FileResponse(STATIC / "fonts" / name, media_type="font/woff2")
 
     @app.get("/arena/cycles")
     def arena_cycles(after: str | None = None, run: str | None = None) -> JSONResponse:

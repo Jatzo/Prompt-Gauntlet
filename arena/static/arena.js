@@ -1,6 +1,7 @@
-// The arena: each finished cycle replays as one sequence. The CEO sends its focus to both agents,
-// the Attacker's attacks fly at the Detector, caught ones break on a shield ripple and the rest hit
-// the Target, the Defender's patch sweeps the Detector, and the Judge stamps its verdict. The server
+// The siege arena: each finished cycle replays on a ring. The detector is the blue shield, its
+// rules the lit slots; the Attacker's attacks fly from the red launch node at the ring, one slice
+// per technique, so a mark's angle names its technique. Caught attacks stop on the shield, the
+// ones that get past reach the target in the centre, and the Judge's verdict lands last. The server
 // sends codes, flags and counts only (arena/arena_feed.py). Every value is set with textContent or
 // setAttribute.
 // Motion follows `data-motion` on <html> (set in app.js). With motion off every step lands on its
@@ -15,42 +16,58 @@
   const $ = (id) => document.getElementById(id);
   const svg = $("arena-svg");
   const NS = svg.namespaceURI;
-  const dots = $("arena-dots");
-  const fx = $("arena-fx");
-  const gate = $("arena-gate");
-  const ceo = $("arena-ceo");
-  const title = $("arena-title");
-  const focusLine = $("arena-focus");
-  const badge = $("arena-badge");
-  const caption = $("arena-caption");
-  const patchLabel = $("arena-patch");
-  const target = $("arena-target");
-  const stamp = $("arena-stamp");
-  const stampText = $("arena-stamp-text");
-  const strip = $("arena-strip");
-  const score = {
-    cycles: $("score-cycles"),
-    kept: $("score-kept"),
-    rejected: $("score-rejected"),
-    rules: $("score-rules"),
-    asr: $("score-asr"),
-    tpr: $("score-tpr"),
+  const view = {
+    core: $("arena-core"),
+    slots: $("ring-slots"),
+    notches: $("ring-notches"),
+    marks: $("arena-marks"),
+    fx: $("arena-fx"),
+    orbits: { a: $("orbit-a"), b: $("orbit-b"), c: $("orbit-c") },
+    redSub: $("ring-red-sub"),
+    blueSub: $("ring-blue-sub"),
+    title: $("arena-title"),
+    badge: $("arena-badge"),
+    focus: $("arena-focus"),
+    caption: $("arena-caption"),
+    strip: $("arena-strip"),
+    redTally: $("red-tally"),
+    redList: $("red-list"),
+    redNote: $("red-note"),
+    blueTally: $("blue-tally"),
+    blueNote: $("blue-note"),
+    tprValue: $("tpr-value"),
+    tprFill: $("tpr-fill"),
+    asrValue: $("asr-value"),
+    asrFill: $("asr-fill"),
+    purpleTally: $("purple-tally"),
+    verdict: $("verdict"),
+    verdictTitle: $("verdict-title"),
+    verdictDetail: $("verdict-detail"),
   };
 
-  // Positions in the SVG's own units (viewBox 0 0 960 410).
-  const START_X = 140;
-  const GATE_X = 472;
-  const GATE_MID = 480;
-  const FADE_X = 330;
-  const TARGET_X = 820;
-  const TOP_Y = 116;
-  const BOTTOM_Y = 302;
-  const CEO_X = 480;
-  const CEO_Y = 42;
+  // Positions in the SVG's own units (viewBox 0 0 900 800), around the ring's centre.
+  const C = 450;
+  const R_CORE = 90;
+  const R_SHIELD = 230;
+  const R_MARK = 266;
+  const ORBIT = { a: 320, b: 350, c: 380 };
+  const LAUNCH = [202, 697];
   const POLL_MS = 10000;
-  // More cycles than this waiting to play: skip to the newest, since the strip and scoreboard
-  // already hold the rest.
+  // More cycles than this waiting to play: skip to the newest, since the strip and cards already
+  // hold the rest.
   const MAX_WAITING = 3;
+  // Slices on the ring and rows in the red card; a bigger batch is summed up in a line.
+  const MAX_SLICES = 12;
+  const MAX_ROWS = 8;
+  // The whole volley lands within this, however large the batch.
+  const VOLLEY_MS = 3100;
+  // Slots drawn before the first cycle arrives: the default rule cap (config.max_rules).
+  const DEFAULT_SLOTS = 40;
+
+  // Worst first: a technique's row takes the colour of its worst outcome.
+  const KINDS = ["through", "held", "caught", "none", "refused"];
+  const KIND_WORDS = { through: "got past", held: "got past, held back", caught: "caught", none: "no effect", refused: "refused" };
+  const ORBIT_OF = { through: "a", caught: "a", held: "b", none: "c", refused: "c" };
 
   const REASONS = {
     kept: "kept",
@@ -76,7 +93,8 @@
   let loaded = false;
   let playing = false;
   let token = 0;
-  let totals = { kept: 0, rejected: 0 };
+  let kept = 0;
+  let slotCount = 0;
 
   const motionOn = () => document.documentElement.dataset.motion === "on";
 
@@ -84,6 +102,23 @@
     const element = document.createElementNS(NS, name);
     for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
     return element;
+  }
+
+  function html(name, text, attributes = {}) {
+    const element = document.createElement(name);
+    if (text !== undefined) element.textContent = text;
+    for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
+    return element;
+  }
+
+  // A point on the ring, `degrees` clockwise from the top.
+  function polar(radius, degrees) {
+    const rad = (degrees * Math.PI) / 180;
+    return [C + radius * Math.sin(rad), C - radius * Math.cos(rad)];
+  }
+
+  function fixed(n) {
+    return Math.round(n * 10) / 10;
   }
 
   // One animation, tracked. With motion off it runs in zero time, so it still lands on its end.
@@ -104,26 +139,60 @@
   }
 
   function wait(ms, mine) {
-    return new Promise((resolve) => setTimeout(() => resolve(mine === token), ms));
-  }
-
-  function lane(attack) {
-    if (attack.refused) return "refused";
-    if (!attack.valid) return "none";
-    return attack.evaded ? "through" : "caught";
+    return new Promise((resolve) => setTimeout(() => resolve(mine === token), motionOn() ? ms : 0));
   }
 
   function words(count, one, many) {
     return `${count} ${count === 1 ? one : many}`;
   }
 
-  function tally(attacks) {
-    const counts = { caught: 0, through: 0, none: 0, refused: 0 };
-    for (const attack of attacks) counts[lane(attack)] += 1;
-    const parts = [`${counts.caught} caught`, `${counts.through} got past`];
-    if (counts.none) parts.push(`${counts.none} no effect`);
-    if (counts.refused) parts.push(`${counts.refused} refused`);
-    return `${words(attacks.length, "attack", "attacks")}: ${parts.join(", ")}.`;
+  function percent(value) {
+    return value == null ? "-" : `${(value * 100).toFixed(1)}%`;
+  }
+
+  function kindOf(attack) {
+    if (attack.refused) return "refused";
+    if (attack.held_back) return "held";
+    if (!attack.valid) return "none";
+    return attack.evaded ? "through" : "caught";
+  }
+
+  // The batch per technique: counts per outcome, worst outcome first, busiest techniques first.
+  function techniques(attacks) {
+    const byName = new Map();
+    for (const attack of attacks) {
+      const counts = byName.get(attack.technique) || Object.fromEntries(KINDS.map((kind) => [kind, 0]));
+      counts[kindOf(attack)] += 1;
+      byName.set(attack.technique, counts);
+    }
+    return [...byName]
+      .map(([name, counts]) => ({
+        name,
+        counts,
+        total: KINDS.reduce((sum, kind) => sum + counts[kind], 0),
+        worst: KINDS.find((kind) => counts[kind] > 0),
+      }))
+      .sort((x, y) => KINDS.indexOf(x.worst) - KINDS.indexOf(y.worst) || y.total - x.total || x.name.localeCompare(y.name));
+  }
+
+  // One mark per technique and outcome, at the technique's slice of the ring.
+  function placements(list) {
+    const shown = list.slice(0, MAX_SLICES).sort((x, y) => x.name.localeCompare(y.name));
+    const slice = 360 / Math.max(shown.length, 1);
+    const marks = [];
+    shown.forEach((technique, index) => {
+      const kinds = KINDS.filter((kind) => technique.counts[kind] > 0);
+      const step = Math.min(9, slice / (kinds.length + 1));
+      kinds.forEach((kind, j) => {
+        marks.push({
+          technique: technique.name,
+          kind,
+          count: technique.counts[kind],
+          angle: (index + 0.5) * slice + (j - (kinds.length - 1) / 2) * step,
+        });
+      });
+    });
+    return marks;
   }
 
   function patchText(patch) {
@@ -136,6 +205,7 @@
       const key = `${sign}${names[op.field] || "change"}`;
       groups.set(key, (groups.get(key) || 0) + 1);
     }
+    if (!groups.size) return "no change";
     return [...groups].map(([key, n]) => `${key[0]}${n} ${key.slice(1)}${n === 1 ? "" : "s"}`).join(", ");
   }
 
@@ -150,13 +220,9 @@
       : ["reject", `Rejected, ${reason}`, `The Judge rejected the patch: ${reason}.`];
   }
 
-  function percent(value) {
-    return value == null ? "-" : `${(value * 100).toFixed(1)}%`;
-  }
-
-  // Numbers on the scoreboard count up to their new value. The scoreboard is not a live region,
-  // so a screen reader hears only the caption, never the counting.
-  function countTo(element, value, format = String) {
+  // Numbers count up to their new value. The cards are not live regions, so a screen reader hears
+  // only the caption, never the counting.
+  function countTo(element, value, format) {
     const from = Number.parseFloat(element.textContent);
     if (!motionOn() || !Number.isFinite(from) || from === value) {
       element.textContent = format(value);
@@ -165,155 +231,257 @@
     const start = performance.now();
     const step = (now) => {
       const t = Math.min((now - start) / 600, 1);
-      const eased = 1 - (1 - t) ** 3;
-      element.textContent = format(from + (value - from) * eased);
+      element.textContent = format(from + (value - from) * (1 - (1 - t) ** 3));
       if (t < 1) requestAnimationFrame(step);
       else element.textContent = format(value);
     };
     requestAnimationFrame(step);
   }
 
-  function resetStage(cycle) {
-    cancelStarted();
-    dots.replaceChildren();
-    fx.replaceChildren();
-    stamp.setAttribute("hidden", "");
-    target.removeAttribute("data-hit");
-    patchLabel.textContent = "";
-    title.textContent = `Cycle ${cycle.cycle}`;
-    focusLine.textContent = cycle.focus ? `focus ${cycle.focus}` : "";
-    const live = cycle.backend === "live";
-    badge.hidden = !cycle.backend || cycle.backend === "none yet";
-    badge.textContent = live ? "Live" : "Simulated";
-    badge.dataset.kind = live ? "live" : "simulated";
+  // The radar sweep: three slices, brightest at the leading edge.
+  function buildSweep() {
+    const sweep = $("ring-sweep");
+    for (const [from, to, opacity] of [
+      [0, 48, 0.05],
+      [48, 76, 0.12],
+      [76, 96, 0.26],
+    ]) {
+      const [x1, y1] = polar(223, from);
+      const [x2, y2] = polar(223, to);
+      sweep.append(
+        node("path", {
+          class: "sweep",
+          d: `M${C} ${C} L${fixed(x1)} ${fixed(y1)} A223 223 0 0 1 ${fixed(x2)} ${fixed(y2)} Z`,
+          "fill-opacity": opacity,
+        }),
+      );
+    }
   }
 
-  // 1. The CEO sends the cycle's focus to the Attacker and the Defender.
-  async function ceoBeams() {
-    const flash = node("circle", { class: "beam", cx: CEO_X, cy: CEO_Y, r: 28 });
-    const toAttacker = node("path", { class: "beam", d: `M${CEO_X - 24} ${CEO_Y + 10} Q 300 70 ${START_X} 170` });
-    const toDefender = node("path", { class: "beam", d: `M${CEO_X + 24} ${CEO_Y + 10} Q 600 200 ${GATE_MID + 18} 340` });
-    fx.append(flash, toAttacker, toDefender);
-    const beam = [
-      { opacity: 0, strokeDashoffset: 44 },
-      { opacity: 1, strokeDashoffset: 22, offset: 0.4 },
-      { opacity: 0, strokeDashoffset: 0 },
-    ];
-    await Promise.all([
-      animate(flash, [{ opacity: 0.9, transform: "scale(0.8)" }, { opacity: 0, transform: "scale(1.5)" }], 900, {
-        easing: "ease-out",
-      }),
-      // No held end state here: it would freeze the CEO's breathing loop after the first replay.
-      animate(ceo, [{ fillOpacity: 1 }, { fillOpacity: 0.2 }], 900, { fill: "none" }),
-      animate(toAttacker, beam, 1100, { easing: "linear" }),
-      animate(toDefender, beam, 1100, { easing: "linear" }),
-    ]);
+  function buildSlots(cap) {
+    if (cap === slotCount) return;
+    slotCount = cap;
+    view.slots.replaceChildren();
+    const size = cap > 24 ? 13 : 18;
+    for (let i = 0; i < cap; i += 1) {
+      const angle = ((i + 0.5) * 360) / cap;
+      const [x, y] = polar(R_SHIELD, angle);
+      view.slots.append(
+        node("rect", {
+          class: "slot",
+          x: fixed(x - size / 2),
+          y: fixed(y - size / 2),
+          width: size,
+          height: size,
+          rx: 4,
+          transform: `rotate(${fixed(angle)} ${fixed(x)} ${fixed(y)})`,
+        }),
+      );
+    }
   }
 
-  function ring(className, x, y, to) {
-    const circle = node("circle", { class: className, cx: x, cy: y, r: 4 });
-    fx.append(circle);
+  function lightSlots(count) {
+    [...view.slots.children].forEach((slot, i) => slot.toggleAttribute("data-lit", i < count));
+  }
+
+  // New slots light one by one, as the kept patch's rules go in.
+  async function growSlots(from, to, mine) {
+    const slots = [...view.slots.children];
+    for (let i = from; i < to && i < slots.length; i += 1) {
+      if (!(await wait(140, mine))) return;
+      slots[i].setAttribute("data-lit", "");
+      animate(slots[i], [{ opacity: 0 }, { opacity: 1 }], 300);
+    }
+    lightSlots(to);
+  }
+
+  function orbitDots(marks) {
+    for (const orbit of Object.values(view.orbits)) orbit.replaceChildren();
+    for (const mark of marks) {
+      const radius = ORBIT[ORBIT_OF[mark.kind]];
+      const [cx, cy] = polar(radius, mark.angle);
+      const dot = node("circle", { class: "orbit-dot", "data-kind": mark.kind, cx: fixed(cx), cy: fixed(cy), r: mark.kind === "through" ? 9 : 7 });
+      dot.append(title(`${mark.technique}: ${mark.count} ${KIND_WORDS[mark.kind]}`));
+      view.orbits[ORBIT_OF[mark.kind]].append(dot);
+    }
+  }
+
+  function title(text) {
+    const element = node("title", {});
+    element.textContent = text;
+    return element;
+  }
+
+  // The end state of one mark on the ring.
+  function placeMark(mark) {
+    const [x, y] = polar(R_MARK, mark.angle);
+    const group = node("g", { "data-kind": mark.kind });
+    group.append(title(`${mark.technique}: ${mark.count} ${KIND_WORDS[mark.kind]}`));
+    if (mark.kind === "caught") {
+      const cross = node("text", { class: "mark-caught", x: fixed(x), y: fixed(y + 6), "text-anchor": "middle" });
+      cross.textContent = "✕";
+      group.append(cross);
+    } else if (mark.kind === "through") {
+      group.append(node("circle", { class: "mark-through pulse", cx: fixed(x), cy: fixed(y), r: 10 }));
+      const [x1, y1] = polar(R_SHIELD, mark.angle - 4);
+      const [x2, y2] = polar(R_SHIELD, mark.angle + 4);
+      view.notches.append(
+        node("path", {
+          class: "notch",
+          d: `M${fixed(x1)} ${fixed(y1)} A${R_SHIELD} ${R_SHIELD} 0 0 1 ${fixed(x2)} ${fixed(y2)}`,
+        }),
+      );
+    } else if (mark.kind === "held") {
+      group.append(node("circle", { class: "mark-held", cx: fixed(x), cy: fixed(y), r: 8.5 }));
+    } else if (mark.kind === "none") {
+      group.append(node("circle", { class: "mark-none", cx: fixed(x), cy: fixed(y), r: 8 }));
+    } else {
+      const [ax, ay] = polar(R_MARK, mark.angle - 1.6);
+      const [bx, by] = polar(R_MARK, mark.angle + 1.6);
+      group.append(node("line", { class: "mark-refused", x1: fixed(ax), y1: fixed(ay), x2: fixed(bx), y2: fixed(by) }));
+    }
+    if (mark.count > 1) {
+      const [cx, cy] = polar(R_MARK + 22, mark.angle);
+      const count = node("text", { class: "mark-count", x: fixed(cx), y: fixed(cy + 4), "text-anchor": "middle" });
+      count.textContent = String(mark.count);
+      group.append(count);
+    }
+    view.marks.append(group);
+    return group;
+  }
+
+  function ring(className, x, y, scale) {
+    const circle = node("circle", { class: className, cx: fixed(x), cy: fixed(y), r: 8 });
+    view.fx.append(circle);
     return animate(
       circle,
       [
-        { opacity: 1, r: "4px" },
-        { opacity: 0, r: `${to}px` },
+        { opacity: 1, transform: "scale(1)" },
+        { opacity: 0, transform: `scale(${scale})` },
       ],
-      650,
+      700,
       { easing: "ease-out" },
     );
   }
 
-  // 2 and 3. Each attack flies as a comet; the Detector's shield breaks the caught ones.
-  async function playAttacks(attacks, mine, speed) {
-    const rows = attacks.length;
-    const step = rows > 1 ? (BOTTOM_Y - TOP_Y) / (rows - 1) : 0;
-    const runs = attacks.map(async (attack, index) => {
-      const y = rows > 1 ? TOP_Y + step * index : (TOP_Y + BOTTOM_Y) / 2;
-      const kind = lane(attack);
-      dots.append(node("line", { class: "track", x1: START_X, y1: y, x2: TARGET_X, y2: y }));
-      const comet = node("g", { "data-lane": kind });
-      comet.style.transform = `translate(${START_X}px, ${y}px)`;
-      const tail = node("line", { class: "tail", x1: -30, y1: 0, x2: 0, y2: 0, "stroke-opacity": 0 });
-      const dot = node("circle", { class: "dot", cx: 0, cy: 0, r: 7, "data-lane": kind });
-      const label = node("title", {});
-      label.textContent = `${attack.technique}: ${kind === "through" ? "got past" : kind === "none" ? "no effect" : kind}`;
-      dot.append(label);
-      comet.append(tail, dot);
-      if (attack.held_back) comet.append(node("circle", { class: "ring", cx: 0, cy: 0, r: 11 }));
-      dots.append(comet);
-      if (!(await wait(motionOn() ? (index * 160) / speed : 0, mine))) return;
-      const fly = (toX, ms, fade) => {
-        const frames = [
-          { transform: `translate(${START_X}px, ${y}px)` },
-          { transform: `translate(${toX}px, ${y}px)` },
-        ];
-        if (fade !== undefined) {
-          frames[0].opacity = 1;
-          frames[1].opacity = fade;
-        }
-        animate(tail, [{ strokeOpacity: 0.5 }, { strokeOpacity: 0.35, offset: 0.8 }, { strokeOpacity: 0 }], ms / speed);
-        return animate(comet, frames, ms / speed);
-      };
-      if (kind === "refused") {
-        comet.style.opacity = "0.6";
+  // One comet per mark, staggered so the whole volley lands within VOLLEY_MS.
+  async function volley(marks, mine) {
+    const gap = marks.length > 1 ? Math.min(260, (VOLLEY_MS - 900) / (marks.length - 1)) : 0;
+    const flights = marks.map(async (mark, index) => {
+      if (!(await wait(index * gap, mine))) return;
+      if (mark.kind === "refused") {
+        animate(placeMark(mark), [{ opacity: 0 }, { opacity: 1 }], 400);
         return;
       }
-      if (kind === "none") {
-        await fly(FADE_X, 900, 0.15);
-        return;
+      const [mx, my] = polar(R_MARK + 8, mark.angle);
+      const [cx, cy] = polar(R_CORE + 8, mark.angle);
+      const start = `translate(${LAUNCH[0]}px, ${LAUNCH[1]}px)`;
+      const comet = node("circle", { class: "comet", cx: 0, cy: 0, r: 7 });
+      comet.style.transform = start;
+      view.fx.append(comet);
+      let frames;
+      if (mark.kind === "through") {
+        frames = [{ transform: start }, { transform: `translate(${mx}px, ${my}px)`, offset: 0.65 }, { transform: `translate(${cx}px, ${cy}px)` }];
+      } else if (mark.kind === "none") {
+        const [hx, hy] = [(LAUNCH[0] + mx) / 2, (LAUNCH[1] + my) / 2];
+        frames = [{ transform: start, opacity: 1 }, { transform: `translate(${hx}px, ${hy}px)`, opacity: 0 }];
+      } else {
+        frames = [{ transform: start }, { transform: `translate(${mx}px, ${my}px)` }];
       }
-      if (kind === "caught") {
-        await fly(GATE_X - 10, 1100);
-        if (mine !== token) return;
-        ring("ripple", GATE_MID, y, 26);
-        animate(dot, [{ opacity: 1 }, { opacity: 0.4 }], 300);
-        const cross = node("text", { class: "cross", x: GATE_X - 32, y: y + 5, "text-anchor": "middle" });
-        cross.textContent = "×";
-        dots.append(cross);
-        return;
-      }
-      await fly(TARGET_X - 10, 1700);
+      await animate(comet, frames, mark.kind === "through" ? 1300 : 900);
+      comet.remove();
       if (mine !== token) return;
-      target.setAttribute("data-hit", "");
-      ring("impact", TARGET_X, y, 32);
-      animate(
-        target,
-        [
-          { transform: "translateX(0)" },
-          { transform: "translateX(-5px)" },
-          { transform: "translateX(5px)" },
-          { transform: "translateX(-3px)" },
-          { transform: "translateX(0)" },
-        ],
-        360,
-        { easing: "linear" },
-      );
+      if (mark.kind === "caught") {
+        ring("ripple", ...polar(R_SHIELD + 10, mark.angle), 4);
+      } else if (mark.kind === "through") {
+        view.core.setAttribute("data-hit", "");
+        ring("impact", C, C, 12);
+      }
+      animate(placeMark(mark), [{ opacity: 0 }, { opacity: 1 }], 300);
     });
-    await Promise.all(runs);
+    await Promise.all(flights);
   }
 
-  // 4. The Defender's patch sweeps the Detector, which grows with each rule added.
-  async function patchSweep(patch) {
-    const scan = node("rect", { class: "scan", x: GATE_X - 8, y: 96, width: 32, height: 5, rx: 2 });
-    fx.append(scan);
-    await animate(
-      scan,
-      [
-        { transform: "translateY(0)", opacity: 0.9 },
-        { transform: "translateY(221px)", opacity: 0.2 },
-      ],
-      900,
-      { easing: "ease-in-out" },
-    );
-    scan.remove();
-    if (!patch || patch.refused) return;
-    const added = patch.ops.filter((op) => op.op === "add").length;
-    if (added) animate(gate, [{ transform: "scaleX(1)" }, { transform: `scaleX(${1 + Math.min(added, 4) * 0.25})` }], 500);
+  function renderRed(list, attacks) {
+    view.redList.replaceChildren();
+    if (!attacks.length) {
+      view.redTally.textContent = "-";
+      view.redNote.textContent = "No attacks this cycle.";
+      view.redNote.hidden = false;
+      view.redSub.textContent = "";
+      return;
+    }
+    // The Judge holds back only attacks that got past (arena/judge/attacks.py), so both count.
+    const through = attacks.filter((attack) => ["through", "held"].includes(kindOf(attack))).length;
+    view.redTally.textContent = `${through}/${attacks.length}`;
+    for (const technique of list.slice(0, MAX_ROWS)) {
+      const parts = KINDS.filter((kind) => technique.counts[kind]).map((kind) => `${technique.counts[kind]} ${KIND_WORDS[kind]}`);
+      const row = html("li", undefined, { "data-kind": technique.worst });
+      row.append(html("span", undefined, { class: "pip", "aria-hidden": "true" }), html("span", technique.name, { class: "technique" }), html("span", parts.join(", "), { class: "outcome" }));
+      view.redList.append(row);
+    }
+    const more = list.length - MAX_ROWS;
+    view.redNote.hidden = more <= 0;
+    view.redNote.textContent = more > 0 ? `and ${words(more, "more technique", "more techniques")}.` : "";
+    view.redSub.textContent = `${words(attacks.length, "attack", "attacks")} over ${words(list.length, "technique", "techniques")}`;
+  }
+
+  function setBlue(cycle, lit) {
+    const rules = cycle.rules || {};
+    const cap = rules.cap || slotCount;
+    view.blueTally.textContent = lit == null ? `0/${cap}` : `${lit}/${cap}`;
+    view.blueSub.textContent = lit == null ? "no detector yet" : `${lit} of ${cap} rule slots in use`;
+  }
+
+  function renderBlue(cycle) {
+    const rules = cycle.rules || {};
+    setBlue(cycle, rules.after);
+    view.blueNote.textContent =
+      rules.after == null
+        ? "No detector yet: every slot is empty."
+        : `${words(rules.after, "rule", "rules")} in the detector after this cycle. The Defender's patch: ${patchText(cycle.patch)}.`;
+    const judge = cycle.judge || {};
+    view.tprValue.textContent = percent(judge.tpr);
+    view.asrValue.textContent = percent(judge.asr);
+    view.tprFill.style.width = `${(judge.tpr || 0) * 100}%`;
+    view.asrFill.style.width = `${(judge.asr || 0) * 100}%`;
+  }
+
+  function renderPurple(cycle) {
+    const decision = verdict(cycle.judge)[0];
+    view.verdict.dataset.decision = decision;
+    view.verdictTitle.textContent = { keep: "Patch kept", reject: "Patch rejected" }[decision] || "No candidate";
+    const reason = decision === "reject" ? REASONS[cycle.judge.reason] || cycle.judge.reason.replaceAll("_", " ") : "";
+    view.verdictDetail.textContent = decision === "none" ? "Nothing to measure this cycle" : [patchText(cycle.patch), reason].filter(Boolean).join(", ");
+    const whole = (n) => String(Math.round(n));
+    view.purpleTally.textContent = `${whole(kept)}/${cycles.size}`;
+  }
+
+  function resetStage(cycle) {
+    cancelStarted();
+    view.marks.replaceChildren();
+    view.notches.replaceChildren();
+    view.fx.replaceChildren();
+    for (const orbit of Object.values(view.orbits)) orbit.replaceChildren();
+    view.core.removeAttribute("data-hit");
+    view.title.textContent = `Cycle ${cycle.cycle}`;
+    view.focus.textContent = cycle.focus ? `focus ${cycle.focus}` : "";
+    const live = cycle.backend === "live";
+    view.badge.hidden = !cycle.backend || cycle.backend === "none yet";
+    view.badge.textContent = live ? "Live" : "Simulated";
+    view.badge.dataset.kind = live ? "live" : "simulated";
+    view.redList.replaceChildren();
+    view.redTally.textContent = "-";
+    view.redNote.hidden = false;
+    view.redNote.textContent = "Attacks in flight.";
+    view.blueNote.textContent = "Waiting for the Defender's patch.";
+    view.verdict.dataset.decision = "none";
+    view.verdictTitle.textContent = "Waiting for the Judge";
+    view.verdictDetail.textContent = "";
   }
 
   function markStrip(cycle) {
-    let button = strip.querySelector(`[data-cycle="${cycle.cycle}"]`);
+    let button = view.strip.querySelector(`[data-cycle="${cycle.cycle}"]`);
     if (!button) {
       const item = document.createElement("li");
       button = document.createElement("button");
@@ -321,7 +489,7 @@
       button.dataset.cycle = String(cycle.cycle);
       button.addEventListener("click", () => replay(cycle.cycle));
       item.append(button);
-      strip.append(item);
+      view.strip.append(item);
     }
     const outcome = cycle.unreadable ? "unreadable" : cycle.state === "rolled_back" ? "rolled back" : verdict(cycle.judge)[1];
     button.dataset.outcome = cycle.judge ? cycle.judge.decision : "none";
@@ -329,67 +497,57 @@
     button.title = `Cycle ${cycle.cycle}: ${outcome}`;
   }
 
-  function scoreCycle(cycle) {
-    if (cycle.judge && cycle.judge.decision === "keep") totals.kept += 1;
-    if (cycle.judge && cycle.judge.decision === "reject") totals.rejected += 1;
-    const whole = (n) => String(Math.round(n));
-    countTo(score.cycles, cycles.size, whole);
-    countTo(score.kept, totals.kept, whole);
-    countTo(score.rejected, totals.rejected, whole);
-    if (cycle.rules && cycle.rules.after != null) countTo(score.rules, cycle.rules.after, whole);
-    if (cycle.judge && cycle.judge.asr != null) countTo(score.asr, cycle.judge.asr * 100, (n) => percent(n / 100));
-    if (cycle.judge && cycle.judge.tpr != null) countTo(score.tpr, cycle.judge.tpr * 100, (n) => percent(n / 100));
-  }
-
-  async function play(cycle, speed) {
+  async function play(cycle) {
     const mine = token;
-    for (const button of strip.querySelectorAll("[data-playing]")) button.removeAttribute("data-playing");
-    const current = strip.querySelector(`[data-cycle="${cycle.cycle}"]`);
+    for (const button of view.strip.querySelectorAll("[data-playing]")) button.removeAttribute("data-playing");
+    const current = view.strip.querySelector(`[data-cycle="${cycle.cycle}"]`);
     if (current) current.setAttribute("data-playing", "");
     resetStage(cycle);
-    if (cycle.unreadable) {
-      caption.textContent = `Cycle ${cycle.cycle} could not be read.`;
+    if (cycle.unreadable || cycle.state === "rolled_back") {
+      view.caption.textContent = cycle.unreadable
+        ? `Cycle ${cycle.cycle} could not be read.`
+        : `Cycle ${cycle.cycle} was rolled back, so nothing from it counts.`;
+      view.verdictTitle.textContent = cycle.unreadable ? "Unreadable" : "Rolled back";
       return;
     }
-    if (cycle.state === "rolled_back") {
-      caption.textContent = `Cycle ${cycle.cycle} was rolled back, so nothing from it counts.`;
-      return;
-    }
-    caption.textContent = cycle.focus ? `The CEO sends both agents after ${cycle.focus}.` : "A new cycle.";
-    await ceoBeams();
-    if (!(await wait(200 / speed, mine))) return;
-    if (cycle.attacks.length) {
-      caption.textContent = `The Attacker sends ${words(cycle.attacks.length, "attack", "attacks")} at the Detector.`;
-      await playAttacks(cycle.attacks, mine, speed);
+    const rules = cycle.rules || {};
+    buildSlots(rules.cap || slotCount);
+    const before = rules.before ?? rules.after;
+    lightSlots(before || 0);
+    setBlue(cycle, before);
+    const list = techniques(cycle.attacks);
+    const marks = placements(list);
+    orbitDots(marks);
+    view.caption.textContent = cycle.focus ? `The CEO sends the Attacker after ${cycle.focus}.` : "A new cycle.";
+    if (!(await wait(900, mine))) return;
+    if (marks.length) {
+      view.caption.textContent = `The Attacker sends ${words(cycle.attacks.length, "attack", "attacks")} at the detector.`;
+      await volley(marks, mine);
       if (mine !== token) return;
-      caption.textContent = tally(cycle.attacks);
     } else {
-      caption.textContent = "The Attacker sat this cycle out.";
+      view.caption.textContent = "The Attacker sat this cycle out.";
     }
-    if (!(await wait(1200 / speed, mine))) return;
-    patchLabel.textContent = patchText(cycle.patch);
-    caption.textContent = cycle.patch
-      ? `The Defender patches the Detector: ${patchText(cycle.patch)}.`
-      : "The Defender sat this cycle out.";
-    await patchSweep(cycle.patch);
-    if (!(await wait(700 / speed, mine))) return;
+    renderRed(list, cycle.attacks);
+    if (!(await wait(1200, mine))) return;
+    view.caption.textContent = cycle.patch ? `The Defender patches the detector: ${patchText(cycle.patch)}.` : "The Defender sat this cycle out.";
+    if (rules.after != null && before != null && rules.after > before) await growSlots(before, rules.after, mine);
+    else lightSlots(rules.after || 0);
+    if (mine !== token) return;
+    renderBlue(cycle);
+    if (!(await wait(800, mine))) return;
     const [decision, , sentence] = verdict(cycle.judge);
-    stamp.dataset.verdict = decision;
-    // The stamp carries the decision; the caption below carries the reason.
-    stampText.textContent = { keep: "KEPT", reject: "REJECTED" }[decision] || "NO CANDIDATE";
-    stamp.removeAttribute("hidden");
-    caption.textContent = sentence;
+    view.caption.textContent = sentence;
+    renderPurple(cycle);
+    if (decision !== "none") ring("verdict-ring", C, C, 14);
     await animate(
-      stamp,
+      view.verdict,
       [
-        { opacity: 0, transform: "scale(1.8) rotate(-10deg)" },
-        { opacity: 1, transform: "scale(0.94) rotate(-3deg)", offset: 0.75 },
-        { opacity: 1, transform: "scale(1) rotate(-3deg)" },
+        { opacity: 0, transform: "scale(1.06)" },
+        { opacity: 1, transform: "scale(1)" },
       ],
       420,
-      { easing: "cubic-bezier(0.2, 0.8, 0.3, 1.2)" },
     );
-    await wait(1800 / speed, mine);
+    await wait(1800, mine);
   }
 
   async function drain() {
@@ -399,7 +557,7 @@
     const mine = token;
     while (queue.length && mine === token) {
       if (queue.length > MAX_WAITING) queue.splice(0, queue.length - 1);
-      await play(queue.shift(), 1);
+      await play(queue.shift());
     }
     if (mine === token) playing = false;
   }
@@ -424,10 +582,11 @@
       for (const cycle of page.cycles) {
         if (cycles.has(cycle.cycle)) continue;
         cycles.set(cycle.cycle, cycle);
+        if (cycle.judge && cycle.judge.decision === "keep") kept += 1;
         markStrip(cycle);
-        scoreCycle(cycle);
         queue.push(cycle);
       }
+      countTo(view.purpleTally, kept, (n) => `${Math.round(n)}/${cycles.size}`);
       after = page.next_after;
       if (page.cycles.length >= 50) {
         setTimeout(poll, 0);
@@ -453,18 +612,24 @@
     queue.length = 0;
     after = 0;
     loaded = false;
-    totals = { kept: 0, rejected: 0 };
-    strip.replaceChildren();
-    dots.replaceChildren();
-    fx.replaceChildren();
-    stamp.setAttribute("hidden", "");
-    target.removeAttribute("data-hit");
-    for (const key of Object.keys(score)) score[key].textContent = key === "rules" || key === "asr" || key === "tpr" ? "-" : "0";
-    title.textContent = "Waiting for the first cycle";
-    focusLine.textContent = "";
-    caption.textContent = "Start a run and each finished cycle plays here.";
+    kept = 0;
+    view.strip.replaceChildren();
+    for (const group of [view.marks, view.notches, view.fx, ...Object.values(view.orbits), view.redList]) group.replaceChildren();
+    view.core.removeAttribute("data-hit");
+    lightSlots(0);
+    for (const element of [view.redTally, view.blueTally, view.purpleTally, view.tprValue, view.asrValue]) element.textContent = "-";
+    view.tprFill.style.width = "0";
+    view.asrFill.style.width = "0";
+    view.redNote.textContent = "No attacks yet.";
+    view.blueNote.textContent = "No detector yet.";
+    view.redNote.hidden = false;
+    view.title.textContent = "Waiting for the first cycle";
+    view.focus.textContent = "";
+    view.caption.textContent = "Start a run and each finished cycle plays here.";
   }
 
+  buildSweep();
+  buildSlots(DEFAULT_SLOTS);
   document.addEventListener("feed:event", poll);
   document.addEventListener("feed:status", (event) => {
     // A new run database replaced the old one: start the arena again from its first cycle.

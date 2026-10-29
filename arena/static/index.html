@@ -5,57 +5,45 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Prompt Gauntlet: dashboard</title>
 <style>
-  /* Threat console. Dark is the designed look; a machine set to light gets the same roles in
-     darker inks that keep AA contrast on a pale ground. Each role keeps one colour everywhere,
-     and never only a colour: every role also has a shape and a name. */
+  /* Siege arena. One dark look: red for the Attacker, blue for the Defender's detector, purple for
+     the target and the Judge, amber for attacks held back. Every colour also has a shape and a
+     name, so nothing is told by colour alone. IBM Plex is served from this server (SIL OFL). */
+  @font-face { font-family: "Plex Sans"; src: url("/fonts/IBMPlexSans-Regular-Latin1.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+  @font-face { font-family: "Plex Sans"; src: url("/fonts/IBMPlexSans-SemiBold-Latin1.woff2") format("woff2"); font-weight: 500 600; font-display: swap; }
+  @font-face { font-family: "Plex Sans"; src: url("/fonts/IBMPlexSans-Bold-Latin1.woff2") format("woff2"); font-weight: 700 800; font-display: swap; }
+  @font-face { font-family: "Plex Mono"; src: url("/fonts/IBMPlexMono-Regular-Latin1.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+  @font-face { font-family: "Plex Mono"; src: url("/fonts/IBMPlexMono-SemiBold-Latin1.woff2") format("woff2"); font-weight: 500 700; font-display: swap; }
   :root {
     color-scheme: dark;
-    --ground: #0a1020;
-    --surface: #111a2e;
-    --raised: #16213a;
-    --rule: #1c2842;
-    --control: #5b6d93;
-    --ink: #e6ecf7;
-    --muted: #93a3bf;
-    --attacker: #ff4d5e;
-    --defender: #4c9dff;
-    --ceo: #b07cff;
-    --judge: #f2c94c;
-    --steel: #9fb0c8;
-    --alert: #ff8c42;
-    --attacker-soft: rgb(255 77 94 / 0.16);
-    --defender-soft: rgb(76 157 255 / 0.16);
-    --ceo-soft: rgb(176 124 255 / 0.16);
-    --judge-soft: rgb(242 201 76 / 0.16);
-    --alert-soft: rgb(255 140 66 / 0.14);
-    --grid: rgb(76 157 255 / 0.07);
-    --focus: #f2c94c;
-    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
-  }
-  @media (prefers-color-scheme: light) {
-    :root {
-      color-scheme: light;
-      --ground: #eef2f8;
-      --surface: #ffffff;
-      --raised: #f5f7fb;
-      --rule: #d3dbe8;
-      --control: #7b8aa6;
-      --ink: #111827;
-      --muted: #4a5568;
-      --attacker: #c4162a;
-      --defender: #1557c0;
-      --ceo: #7a3fd1;
-      --judge: #8a5a00;
-      --steel: #4b5b74;
-      --alert: #a8440a;
-      --attacker-soft: rgb(196 22 42 / 0.1);
-      --defender-soft: rgb(21 87 192 / 0.1);
-      --ceo-soft: rgb(122 63 209 / 0.1);
-      --judge-soft: rgb(138 90 0 / 0.12);
-      --alert-soft: rgb(168 68 10 / 0.1);
-      --grid: rgb(21 87 192 / 0.06);
-      --focus: #7a3fd1;
-    }
+    --ground: #0c0916;
+    --surface: rgb(16 11 30 / 0.72);
+    --raised: #1a1230;
+    --rule: rgb(255 255 255 / 0.08);
+    --control: #5c4f7c;
+    --ink: #ece9f4;
+    --muted: #a49cb8;
+    --attacker: #ff7b72;
+    --attacker-dim: #c96158;
+    --attacker-ink: #ff9d96;
+    --defender: #5ba8ec;
+    --defender-ink: #7fb6e8;
+    --shield: #2a6299;
+    --judge: #c3abe8;
+    --judge-line: #8a63d2;
+    --ceo: #c3abe8;
+    --held: #e9c46a;
+    --quiet: #7a85a0;
+    --steel: #9a93ad;
+    --alert: #ffa26b;
+    --live: #3fbf8f;
+    --attacker-soft: rgb(255 123 114 / 0.08);
+    --defender-soft: rgb(61 139 212 / 0.09);
+    --ceo-soft: rgb(138 99 210 / 0.12);
+    --judge-soft: rgb(138 99 210 / 0.12);
+    --alert-soft: rgb(255 162 107 / 0.12);
+    --focus: #e9c46a;
+    --sans: "Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   }
   * { box-sizing: border-box; }
   html, body { min-height: 100%; }
@@ -63,17 +51,23 @@
     margin: 0;
     display: flex;
     flex-direction: column;
-    background: var(--ground);
+    gap: 1rem;
+    padding: 0 1.5rem 1.5rem;
+    background:
+      radial-gradient(900px 620px at 6% 94%, rgb(172 34 140 / 0.2), transparent 62%),
+      radial-gradient(1000px 720px at 20% 2%, rgb(96 44 176 / 0.28), transparent 60%),
+      radial-gradient(820px 600px at 98% 8%, rgb(44 32 118 / 0.22), transparent 58%),
+      linear-gradient(145deg, #170d26 0%, #0c0916 44%, #08070e 100%) fixed;
+    background-color: var(--ground);
     color: var(--ink);
-    font: 0.875rem/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font: 0.875rem/1.5 var(--sans);
   }
-  ::selection { background: var(--ceo-soft); color: var(--ink); }
+  ::selection { background: rgb(138 99 210 / 0.45); color: var(--ink); }
   :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   code { font-family: var(--mono); font-size: 0.8125rem; }
 
-  /* Role names in running text carry their colour too. */
   .role-attacker { color: var(--attacker); }
-  .role-defender { color: var(--defender); }
+  .role-defender { color: var(--defender-ink); }
   .role-ceo { color: var(--ceo); }
   .role-judge { color: var(--judge); }
 
@@ -82,32 +76,23 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.4rem 1.25rem;
-    padding: 0.7rem 1.25rem;
-    border-bottom: 1px solid var(--rule);
-    background: var(--surface);
+    padding: 1rem 0 0.25rem;
   }
-  .bar h1 { margin: 0; font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; }
+  .bar h1 { margin: 0; font-size: 1.1875rem; font-weight: 700; letter-spacing: -0.01em; }
   .bar h1 span { font-weight: 400; color: var(--muted); }
   .bar p { margin: 0; color: var(--muted); }
-  #status { display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 600; color: var(--ink); }
-  #status::before {
-    content: "";
-    width: 0.55rem;
-    height: 0.55rem;
-    border-radius: 50%;
-    background: var(--defender);
-  }
+  #status { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.75rem; color: var(--muted); }
+  #status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--quiet); }
+  #status[data-state="live"] { color: #7fd9b6; }
+  #status[data-state="live"]::before { background: var(--live); }
+  html[data-motion="on"] #status[data-state="live"]::before { animation: blip 1.6s ease-in-out infinite; }
   #status[data-state="waiting"], #status[data-state="reconnecting"] { color: var(--alert); }
   #status[data-state="waiting"]::before, #status[data-state="reconnecting"]::before { background: var(--alert); }
-  .bar .counts { margin-left: auto; font-variant-numeric: tabular-nums; }
-  .counts strong { color: var(--ink); font-weight: 600; font-family: var(--mono); }
+  .bar .counts { margin-left: auto; font: 0.75rem var(--mono); font-variant-numeric: tabular-nums; }
+  .counts strong { color: var(--ink); font-weight: 600; }
   .counts .anomalies[data-some] strong { color: var(--alert); }
   select, textarea, button { font: inherit; color: var(--ink); }
-  select, textarea {
-    background: var(--raised);
-    border: 1px solid var(--control);
-    border-radius: 6px;
-  }
+  select, textarea { background: var(--raised); border: 1px solid var(--control); border-radius: 8px; }
   select { padding: 0.25rem 0.4rem; }
   #motion-toggle {
     display: inline-flex;
@@ -126,19 +111,145 @@
     width: 1.6rem;
     height: 0.9rem;
     border-radius: 999px;
-    background: linear-gradient(var(--control), var(--control)) left / 0.9rem 0.9rem no-repeat, var(--rule);
+    background: linear-gradient(var(--control), var(--control)) left / 0.9rem 0.9rem no-repeat, rgb(255 255 255 / 0.08);
   }
   #motion-toggle[aria-pressed="true"]::before {
-    background: linear-gradient(var(--ceo), var(--ceo)) right / 0.9rem 0.9rem no-repeat, var(--ceo-soft);
+    background: linear-gradient(var(--judge), var(--judge)) right / 0.9rem 0.9rem no-repeat, rgb(138 99 210 / 0.4);
   }
 
+  /* The siege: the ring on the left, the three teams' cards on the right. */
+  .arena { display: grid; grid-template-columns: minmax(0, 56rem) minmax(18rem, 1fr); gap: 1.5rem 2rem; align-items: start; }
+  .siege { min-width: 0; }
+  #arena-svg { display: block; width: 100%; height: auto; overflow: visible; }
+  #arena-svg [hidden] { display: none; }
+  #arena-svg text { font-family: var(--sans); }
+  #arena-svg .team-label { font-size: 12px; font-weight: 600; letter-spacing: 0.14em; }
+  #arena-svg .team-sub { font: 11px var(--mono); }
+  #arena-svg .spin { transform-box: view-box; transform-origin: 450px 450px; }
+  #arena-svg .staging { fill: none; stroke: var(--attacker); stroke-dasharray: 5 6; }
+  #arena-svg .sweep { fill: rgb(61 139 212); }
+  #arena-svg .shield { fill: none; stroke: var(--shield); stroke-width: 14; filter: drop-shadow(0 0 14px rgb(61 139 212 / 0.4)); }
+  #arena-svg .shield-edge { fill: none; stroke: rgb(61 139 212 / 0.3); }
+  #arena-svg .slot { fill: #141c2a; stroke: #2e4766; stroke-width: 1; }
+  #arena-svg .slot[data-lit] { fill: var(--defender); stroke: none; filter: drop-shadow(0 0 5px rgb(91 168 236 / 0.85)); }
+  #arena-svg .notch { fill: none; stroke: var(--attacker); stroke-width: 16; filter: drop-shadow(0 0 8px rgb(255 123 114 / 0.7)); }
+  #arena-svg .core { fill: #19102b; stroke: var(--judge-line); stroke-width: 2; filter: drop-shadow(0 0 22px rgb(138 99 210 / 0.35)); }
+  #arena-svg .core[data-hit] { stroke: var(--attacker); fill: #2a1220; filter: drop-shadow(0 0 26px rgb(255 123 114 / 0.55)); }
+  #arena-svg .core-name { fill: var(--ink); font-size: 15px; font-weight: 600; }
+  #arena-svg .core-sub { fill: #9a8cbb; font-size: 11px; }
+  #arena-svg .icon { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
+  #arena-svg .badge-ring { fill: none; stroke-dasharray: 3 4; }
+  #arena-svg .orbit-dot[data-kind="through"] { fill: var(--attacker); filter: drop-shadow(0 0 6px rgb(255 123 114 / 0.75)); }
+  #arena-svg .orbit-dot[data-kind="caught"] { fill: var(--attacker-dim); }
+  #arena-svg .orbit-dot[data-kind="held"] { fill: var(--held); filter: drop-shadow(0 0 5px rgb(233 196 106 / 0.55)); }
+  #arena-svg .orbit-dot[data-kind="none"], #arena-svg .orbit-dot[data-kind="refused"] { fill: var(--quiet); }
+  #arena-svg .comet { fill: var(--attacker); filter: drop-shadow(0 0 7px rgb(255 123 114 / 0.8)); }
+  #arena-svg .mark-caught { fill: #8fc4f2; font: 600 17px var(--mono); }
+  #arena-svg .mark-through { fill: var(--attacker); }
+  #arena-svg .mark-held { fill: none; stroke: var(--held); stroke-width: 3; }
+  #arena-svg .mark-none { fill: none; stroke: var(--quiet); stroke-width: 2; }
+  #arena-svg .mark-refused { stroke: var(--quiet); stroke-width: 3; stroke-linecap: round; }
+  #arena-svg .mark-count { fill: var(--muted); font: 600 10px var(--mono); }
+  #arena-svg .ripple { fill: none; stroke: var(--defender); stroke-width: 2; }
+  #arena-svg .impact { fill: none; stroke: var(--attacker); stroke-width: 2; }
+  #arena-svg .verdict-ring { fill: none; stroke: var(--judge); stroke-width: 2; }
+  #arena-fx circle, #arena-marks circle, .pulse { transform-box: fill-box; transform-origin: center; }
+  #arena-caption { margin: 0.25rem auto 0; max-width: 60ch; min-height: 1.5em; text-align: center; color: var(--muted); }
+
+  /* Ambient loops, only while motion is on. */
+  html[data-motion="on"] #ring-staging-a { animation: turn 34s linear infinite; }
+  html[data-motion="on"] #ring-staging-b { animation: turn 46s linear infinite reverse; }
+  html[data-motion="on"] #ring-sweep { animation: turn 7.5s linear infinite; }
+  html[data-motion="on"] #orbit-a { animation: turn 15s linear infinite; }
+  html[data-motion="on"] #orbit-b { animation: turn 20s linear infinite; }
+  html[data-motion="on"] #orbit-c { animation: turn 26s linear infinite reverse; }
+  html[data-motion="on"] #arena-svg .shield { animation: shield 4.5s ease-in-out infinite; }
+  html[data-motion="on"] #arena-svg .slot[data-lit] { animation: hum 4.5s ease-in-out infinite; }
+  html[data-motion="on"] #arena-svg .mark-through { animation: breach 1.9s ease-out infinite; }
+  html[data-motion="on"] #arena-svg .mark-held { animation: hum 1.8s ease-in-out infinite; }
+  html[data-motion="on"] #launch-node { animation: launch 2.6s ease-out infinite; }
+  html[data-motion="off"] #ring-sweep { opacity: 0.35; }
+  @keyframes turn { to { transform: rotate(360deg); } }
+  @keyframes shield { 50% { filter: drop-shadow(0 0 26px rgb(61 139 212 / 0.6)); } }
+  @keyframes hum { 50% { opacity: 0.55; } }
+  @keyframes blip { 50% { opacity: 0.3; } }
+  @keyframes breach { 0%, 100% { filter: drop-shadow(0 0 3px rgb(255 123 114 / 0.9)); } 50% { filter: drop-shadow(0 0 12px rgb(255 123 114 / 0.2)); } }
+  @keyframes launch { 0%, 100% { filter: drop-shadow(0 0 4px rgb(255 123 114 / 0.4)); } 50% { filter: drop-shadow(0 0 14px rgb(255 123 114 / 0.75)); } }
+
+  /* Team cards. */
+  .teams { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+  .teams-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; }
+  .teams-head h2 { margin: 0; font-size: 1.1875rem; font-weight: 700; }
+  #arena-focus { color: var(--muted); font: 0.75rem var(--mono); }
+  .badge { padding: 0.05rem 0.55rem; border: 1px solid var(--control); border-radius: 999px; color: var(--muted); font-size: 0.75rem; font-weight: 600; }
+  .badge[data-kind="live"] { border-color: var(--live); color: #7fd9b6; }
+  .team { display: flex; flex-direction: column; gap: 0.8rem; padding: 1.1rem 1.25rem; border: 1px solid var(--team-line); border-radius: 14px; background: var(--team-ground); }
+  .team.red { --team-line: rgb(255 123 114 / 0.34); --team-ground: rgb(255 123 114 / 0.06); --team: var(--attacker); }
+  .team.blue { --team-line: rgb(61 139 212 / 0.4); --team-ground: rgb(61 139 212 / 0.07); --team: var(--defender-ink); }
+  .team.purple { --team-line: rgb(138 99 210 / 0.45); --team-ground: rgb(138 99 210 / 0.1); --team: var(--judge); }
+  .team-head { display: flex; align-items: center; gap: 0.7rem; }
+  .team-head svg { width: 20px; height: 20px; fill: none; stroke: var(--team); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .team-head h3 { margin: 0; color: var(--team); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+  .team-head .tally { margin-left: auto; color: var(--team); font: 600 1.25rem var(--mono); font-variant-numeric: tabular-nums; }
+  .team p { margin: 0; font-size: 0.78125rem; color: #b3abc8; }
+  .team.blue p { color: #9ab2cc; }
+  ul.vectors { display: flex; flex-direction: column; gap: 0.55rem; margin: 0; padding: 0; list-style: none; font-size: 0.78125rem; }
+  ul.vectors li { display: flex; align-items: center; gap: 0.6rem; }
+  ul.vectors .pip { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: var(--quiet); }
+  ul.vectors [data-kind="through"] .pip { background: var(--attacker); }
+  ul.vectors [data-kind="held"] .pip { background: var(--held); }
+  ul.vectors [data-kind="caught"] .pip { background: var(--attacker-dim); }
+  ul.vectors .technique { flex-grow: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); color: #dcc4c0; }
+  ul.vectors .outcome { text-align: right; color: var(--muted); }
+  ul.vectors [data-kind="through"] .outcome { color: var(--attacker); font-weight: 600; }
+  ul.vectors [data-kind="held"] .outcome { color: var(--held); }
+  ul.vectors [data-kind="caught"] .outcome { color: var(--defender-ink); }
+  .meter { display: flex; flex-direction: column; gap: 0.4rem; }
+  .meter-head { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.78125rem; color: #9ab2cc; }
+  .meter-head strong { font: 600 0.78125rem var(--mono); color: var(--meter); }
+  .meter-track { height: 7px; border-radius: 999px; background: rgb(20 32 48 / 0.6); overflow: hidden; }
+  .meter-fill { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--meter); transition: width 600ms cubic-bezier(0.3, 0, 0.2, 1); }
+  html[data-motion="off"] .meter-fill { transition: none; }
+  #meter-tpr { --meter: var(--defender); }
+  #meter-asr { --meter: var(--attacker); }
+  .verdict { padding: 0.75rem 0.9rem; border: 1px solid #3a2a58; border-radius: 10px; background: #160f26; }
+  .verdict strong { display: block; font-size: 0.8125rem; font-weight: 600; color: var(--muted); }
+  .verdict span { display: block; font: 0.71875rem var(--mono); color: var(--muted); }
+  .verdict[data-decision="keep"] { border-color: #5a4290; background: #1d1433; }
+  .verdict[data-decision="keep"] strong { color: var(--judge); }
+  .verdict[data-decision="reject"] { border-color: #52283a; background: #20121c; }
+  .verdict[data-decision="reject"] strong { color: #f08a9a; }
+  .verdict[data-decision="reject"] span { color: #c49aa8; }
+  .key { padding: 1rem 1.25rem; border: 1px solid var(--rule); border-radius: 14px; background: rgb(10 8 20 / 0.5); }
+  .key h3, .strip-head { margin: 0 0 0.6rem; color: var(--muted); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+  .key ul { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; font-size: 0.75rem; color: var(--muted); }
+  .key li { display: flex; align-items: center; gap: 0.7rem; }
+  .key svg { width: 20px; height: 14px; flex-shrink: 0; overflow: visible; }
+  .strip-head { margin-top: 1rem; }
+  #arena-strip { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+  #arena-strip button { width: 0.95rem; height: 0.95rem; padding: 0; border: 1px solid var(--control); border-radius: 3px; background: var(--raised); cursor: pointer; }
+  #arena-strip button[data-outcome="keep"] { background: var(--judge); border-color: var(--judge); }
+  #arena-strip button[data-outcome="reject"] { background: var(--steel); border-color: var(--steel); opacity: 0.6; }
+  #arena-strip button[data-playing] { outline: 2px solid var(--held); outline-offset: 1px; opacity: 1; }
+  .strip-hint { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.75rem; }
+
+  /* Panels: cards on the same ground, each topped with its owner's colour. */
+  .panel, details.log { min-width: 0; padding: 1.1rem 1.25rem; border: 1px solid var(--rule); border-radius: 14px; background: var(--surface); box-shadow: inset 0 2px 0 var(--panel-role, transparent); }
+  .panel.attacks { --panel-role: var(--attacker); }
+  .panel.scores { --panel-role: var(--judge-line); }
+  .panel.ops { --panel-role: var(--steel); }
+  .panel.memory-panel { --panel-role: var(--judge-line); }
+  .panel > h2, .panel-head h2 { margin: 0; font-size: 1rem; font-weight: 700; }
+  .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; margin-bottom: 0.75rem; }
+  .panel-head p { margin: 0; color: var(--muted); }
+  .panel h3 { margin: 0 0 0.4rem; font-size: 0.8125rem; font-weight: 600; }
+  .lower { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: 1rem; align-items: start; }
+  .empty-state { margin: 0; max-width: 60ch; color: var(--muted); }
+
+  details.log { padding: 0; overflow: hidden; }
+  details.log > summary { padding: 0.75rem 1.25rem; color: var(--muted); font-weight: 600; cursor: pointer; }
   main { position: relative; display: flex; flex-direction: column; }
-  #scroller {
-    height: 45vh;
-    overflow: auto;
-    scrollbar-color: var(--rule) transparent;
-    background: var(--surface);
-  }
+  #scroller { height: 45vh; overflow: auto; scrollbar-color: var(--control) transparent; }
   table { width: 100%; border-collapse: collapse; }
   #scroller table { min-width: 40rem; }
   thead th {
@@ -157,16 +268,14 @@
   td.num, th.num { font-variant-numeric: tabular-nums; white-space: nowrap; font-family: var(--mono); font-size: 0.8125rem; }
   th.num:nth-child(2), td.num:nth-child(2) { text-align: right; }
   td.quiet { color: var(--muted); }
-  /* A role bar on the first cell (a border on a collapsed row is unreliable), plus the role name. */
   #rows tr td:first-child { box-shadow: inset 3px 0 0 var(--row-role, transparent); }
   #rows tr[data-role="attacker"] { --row-role: var(--attacker); }
   #rows tr[data-role="defender"] { --row-role: var(--defender); }
-  #rows tr[data-role="ceo"] { --row-role: var(--ceo); }
-  #rows tr[data-role="judge"] { --row-role: var(--judge); }
+  #rows tr[data-role="ceo"] { --row-role: var(--judge-line); }
+  #rows tr[data-role="judge"] { --row-role: var(--judge-line); }
   #rows tr[data-role="attacker"] td:nth-child(3) { color: var(--attacker); }
-  #rows tr[data-role="defender"] td:nth-child(3) { color: var(--defender); }
-  #rows tr[data-role="ceo"] td:nth-child(3) { color: var(--ceo); }
-  #rows tr[data-role="judge"] td:nth-child(3) { color: var(--judge); }
+  #rows tr[data-role="defender"] td:nth-child(3) { color: var(--defender-ink); }
+  #rows tr[data-role="ceo"] td:nth-child(3), #rows tr[data-role="judge"] td:nth-child(3) { color: var(--judge); }
   tr.anomaly td { background: var(--alert-soft); color: var(--alert); }
   tr.anomaly .flag { font-weight: 700; }
   col.time { width: 6.5rem; }
@@ -175,172 +284,21 @@
   col.tool { width: 13rem; }
   html[data-motion="on"] tr.fresh { animation: arrive 260ms ease-out; }
   @keyframes arrive { from { opacity: 0; transform: translateX(-6px); } }
-
   #empty { margin: 0; padding: 2rem 1.25rem; color: var(--muted); max-width: 65ch; }
   #dropped { margin: 0; padding: 0.4rem 1.25rem; color: var(--muted); font-size: 0.8125rem; }
-  #jump {
-    position: absolute;
-    right: 1.25rem;
-    bottom: 1rem;
-    padding: 0.45rem 0.9rem;
-    border: 1px solid var(--control);
-    border-radius: 6px;
-    background: var(--ink);
-    color: var(--ground);
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  /* The arena. A slow grid drifts behind it while motion is on. */
-  .arena {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 15rem;
-    gap: 1rem 1.5rem;
-    padding: 1rem 1.25rem 0.9rem;
-    border-bottom: 1px solid var(--rule);
-  }
-  .arena::before {
-    content: "";
-    position: absolute;
-    inset: -40px;
-    z-index: -1;
-    background:
-      repeating-linear-gradient(0deg, var(--grid) 0 1px, transparent 1px 40px),
-      repeating-linear-gradient(90deg, var(--grid) 0 1px, transparent 1px 40px);
-  }
-  html[data-motion="on"] .arena::before { animation: drift 24s linear infinite; }
-  @keyframes drift { to { transform: translate(40px, 40px); } }
-  .stage { min-width: 0; }
-  .stage-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; margin: 0 0 0.5rem; }
-  .stage-head h2 { margin: 0; font: 700 1.5rem/1.1 var(--mono); letter-spacing: -0.02em; }
-  #arena-focus { color: var(--ceo); font-family: var(--mono); }
-  .badge {
-    padding: 0.05rem 0.55rem;
-    border: 1px solid var(--control);
-    border-radius: 999px;
-    color: var(--muted);
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-  .badge[data-kind="live"] { border-color: var(--defender); color: var(--defender); }
-  #arena-svg {
-    display: block;
-    width: 100%;
-    height: auto;
-    border: 1px solid var(--rule);
-    border-radius: 10px;
-    background: radial-gradient(ellipse at 50% 40%, var(--raised), var(--surface) 70%);
-  }
-  /* SVG elements ignore the hidden attribute without this. */
-  #arena-svg [hidden] { display: none; }
-  #arena-svg text { fill: var(--muted); font: 600 13px system-ui, sans-serif; }
-  #arena-svg .station { fill: var(--surface); stroke-width: 2; }
-  #arena-svg .station.attacker { stroke: var(--attacker); }
-  #arena-svg .station.target { stroke: var(--steel); }
-  #arena-svg .station.target[data-hit] { fill: var(--attacker-soft); stroke: var(--attacker); }
-  #arena-svg .name { fill: var(--ink); font-size: 14px; }
-  #arena-svg .name.attacker { fill: var(--attacker); }
-  #arena-svg .name.defender { fill: var(--defender); }
-  #arena-svg .name.ceo { fill: var(--ceo); }
-  #arena-svg .glyph.attacker { fill: var(--attacker); }
-  #arena-svg .glyph.defender { fill: var(--defender-soft); stroke: var(--defender); stroke-width: 2; }
-  #arena-svg .glyph.ceo { fill: var(--ceo-soft); stroke: var(--ceo); stroke-width: 2; }
-  #arena-svg .glyph.target { fill: none; stroke: var(--steel); stroke-width: 2; }
-  html[data-motion="on"] #arena-svg .glyph.ceo { animation: breathe 3.2s ease-in-out infinite; }
-  @keyframes breathe { 50% { fill: var(--ceo); fill-opacity: 0.35; } }
-  #arena-svg .gate { fill: var(--defender); transform-box: fill-box; transform-origin: center; }
-  #arena-svg .gate-label { fill: var(--defender); }
-  #arena-svg .patch-label { fill: var(--ink); font-family: var(--mono); }
-  #arena-svg .track { stroke: var(--control); stroke-opacity: 0.45; stroke-dasharray: 2 6; }
-  #arena-svg .dot { fill: var(--steel); }
-  #arena-svg .dot[data-lane="through"] { fill: var(--attacker); }
-  #arena-svg .dot[data-lane="caught"] { fill: var(--attacker); }
-  #arena-svg .dot[data-lane="refused"] { fill: none; stroke: var(--muted); stroke-dasharray: 2 2; }
-  #arena-svg .tail { stroke: var(--attacker); stroke-width: 4; stroke-linecap: round; }
-  #arena-fx circle { transform-box: fill-box; transform-origin: center; }
-  #arena-svg .ring { fill: none; stroke: var(--judge); stroke-width: 1.5; }
-  #arena-svg .cross { fill: var(--defender); font-size: 16px; }
-  #arena-svg .ripple { fill: none; stroke: var(--defender); stroke-width: 2; }
-  #arena-svg .impact { fill: none; stroke: var(--attacker); stroke-width: 2; }
-  #arena-svg .beam { stroke: var(--ceo); stroke-width: 2; stroke-dasharray: 6 5; fill: none; }
-  #arena-svg .scan { fill: var(--defender); }
-  #arena-svg .shake { transform-box: fill-box; transform-origin: center; }
-  #arena-svg .stamp-box { fill: var(--surface); stroke: var(--steel); stroke-width: 2.5; }
-  #arena-svg .stamp-text { fill: var(--steel); font: 800 16px var(--mono); letter-spacing: 0.04em; }
-  #arena-svg [data-verdict="keep"] .stamp-box { stroke: var(--judge); fill: var(--judge-soft); }
-  #arena-svg [data-verdict="keep"] .stamp-text { fill: var(--judge); }
-  #arena-stamp { transform-box: fill-box; transform-origin: center; }
-  #arena-caption { margin: 0.6rem 0 0; min-height: 1.45em; max-width: 72ch; }
-  .legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem 1.1rem;
-    margin: 0.45rem 0 0;
-    padding: 0;
-    list-style: none;
-    color: var(--muted);
-    font-size: 0.75rem;
-  }
-  .legend svg { width: 0.85rem; height: 0.85rem; vertical-align: -0.15rem; margin-right: 0.3rem; overflow: visible; }
-  .legend .attacker { fill: var(--attacker); }
-  .legend .steel { fill: var(--steel); opacity: 0.6; }
-  .legend .ring { fill: none; stroke: var(--judge); stroke-width: 1.5; }
-  .legend-cross { margin: 0 0.35rem 0 -0.1rem; color: var(--defender); font-weight: 700; }
-
-  .score { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
-  .score dl { display: grid; grid-template-columns: 1fr auto; gap: 0.35rem 1rem; margin: 0; }
-  .score dt { color: var(--muted); }
-  .score dd { margin: 0; text-align: right; font: 700 0.9375rem var(--mono); font-variant-numeric: tabular-nums; }
-  #score-kept { color: var(--judge); }
-  #score-asr { color: var(--attacker); }
-  #score-tpr { color: var(--defender); }
-  .score .note { margin: 0; color: var(--muted); font-size: 0.75rem; }
-  .strip-head { margin: 0; color: var(--muted); font-size: 0.75rem; }
-  #arena-strip { display: flex; flex-wrap: wrap; gap: 3px; margin: 0; padding: 0; list-style: none; }
-  #arena-strip button {
-    width: 0.9rem;
-    height: 0.9rem;
-    padding: 0;
-    border: 1px solid var(--control);
-    border-radius: 2px;
-    background: var(--raised);
-    cursor: pointer;
-  }
-  #arena-strip button[data-outcome="keep"] { background: var(--judge); border-color: var(--judge); }
-  #arena-strip button[data-outcome="reject"] { background: var(--steel); border-color: var(--steel); opacity: 0.7; }
-  #arena-strip button[data-playing] { outline: 2px solid var(--ceo); outline-offset: 1px; opacity: 1; }
-
-  details.log { border-top: 1px solid var(--rule); }
-  details.log > summary { padding: 0.5rem 1.25rem; color: var(--muted); font-weight: 600; cursor: pointer; }
-
-  /* Panels: a heading row, then content. The thin top line names the role that owns the panel. */
-  .panel { padding: 1rem 1.25rem; border-bottom: 1px solid var(--rule); border-top: 2px solid var(--panel-role, transparent); }
-  .panel.attacks { --panel-role: var(--attacker); }
-  .panel.scores { --panel-role: var(--judge); }
-  .panel.ops { --panel-role: var(--steel); }
-  .panel.memory-panel { --panel-role: var(--ceo); }
-  .panel > h2, .panel-head h2 { margin: 0; font-size: 1rem; font-weight: 700; }
-  .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; margin-bottom: 0.75rem; }
-  .panel-head p { margin: 0; color: var(--muted); }
-  .panel h3 { margin: 0 0 0.4rem; font-size: 0.8125rem; font-weight: 700; }
-  .lower { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; }
-  .lower > .panel + .panel { border-left: 1px solid var(--rule); }
-  .empty-state { margin: 0; max-width: 60ch; color: var(--muted); }
+  #jump { position: absolute; right: 1.25rem; bottom: 1rem; padding: 0.45rem 0.9rem; border: 0; border-radius: 8px; background: var(--ink); color: var(--ground); font-weight: 600; cursor: pointer; }
 
   .filters { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: end; margin: 0 0 0.75rem; }
   .filters label { display: grid; gap: 0.15rem; color: var(--muted); font-size: 0.75rem; font-weight: 600; }
   #tally-wrap { overflow-x: auto; }
   table.tally { width: auto; }
   table.tally th, table.tally td { padding: 0.3rem 0.85rem; }
-  table.tally thead th { position: static; }
+  table.tally thead th { position: static; background: transparent; }
   table.tally thead th[data-outcome="through"] { color: var(--attacker); }
-  table.tally thead th[data-outcome="caught"] { color: var(--defender); }
+  table.tally thead th[data-outcome="caught"] { color: var(--defender-ink); }
   table.tally td { text-align: right; font: 0.8125rem var(--mono); font-variant-numeric: tabular-nums; }
-  table.tally td[data-outcome="through"]:not([data-zero]) { color: var(--attacker); font-weight: 700; }
-  table.tally td[data-outcome="caught"]:not([data-zero]) { color: var(--defender); font-weight: 700; }
+  table.tally td[data-outcome="through"]:not([data-zero]) { color: var(--attacker); font-weight: 600; }
+  table.tally td[data-outcome="caught"]:not([data-zero]) { color: var(--defender-ink); font-weight: 600; }
   table.tally td[data-zero] { color: var(--muted); }
   table.tally th[scope="row"] { font-weight: 400; text-align: left; font-family: var(--mono); font-size: 0.8125rem; }
   tr.filtered-out { display: none; }
@@ -348,19 +306,19 @@
   .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1rem 1.5rem; }
   figure.chart { margin: 0; min-width: 0; }
   figure.chart figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 0.5rem; margin-bottom: 0.25rem; }
-  figure.chart figcaption strong { font-weight: 700; font-size: 0.8125rem; }
+  figure.chart figcaption strong { font-weight: 600; font-size: 0.8125rem; }
   figure.chart figcaption span { color: var(--muted); font-family: var(--mono); font-size: 0.8125rem; }
-  svg.plot { display: block; width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
-  svg.plot text { fill: var(--muted); font: 500 11px system-ui, sans-serif; }
+  svg.plot { display: block; width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 10px; background: rgb(10 8 20 / 0.55); }
+  svg.plot text { fill: var(--muted); font: 500 11px var(--sans); }
   svg.plot .grid { stroke: var(--rule); }
   svg.plot .band { fill: var(--series-soft, var(--defender-soft)); }
   svg.plot .line { fill: none; stroke: var(--series, var(--ink)); stroke-width: 2; }
   svg.plot .point { fill: var(--series, var(--ink)); }
-  svg.plot .point.kept { fill: var(--judge); stroke: var(--surface); stroke-width: 1; }
-  #plot-asr { --series: var(--attacker); --series-soft: var(--attacker-soft); }
-  #plot-utility { --series: var(--steel); --series-soft: rgb(159 176 200 / 0.16); }
-  #plot-tpr { --series: var(--defender); --series-soft: var(--defender-soft); }
-  #plot-calibration { --series: var(--ceo); }
+  svg.plot .point.kept { fill: var(--judge); stroke: var(--ground); stroke-width: 1; }
+  #plot-asr { --series: var(--attacker); --series-soft: rgb(255 123 114 / 0.16); }
+  #plot-utility { --series: var(--steel); --series-soft: rgb(154 147 173 / 0.16); }
+  #plot-tpr { --series: var(--defender); --series-soft: rgb(91 168 236 / 0.16); }
+  #plot-calibration { --series: var(--judge); }
   svg.plot .cap { stroke: var(--alert); stroke-dasharray: 4 3; }
   svg.plot .fpr-bar { fill: var(--defender); }
   svg.plot .fpr-bar[data-over] { fill: var(--alert); }
@@ -371,7 +329,7 @@
   .plan dl { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 0.75rem; margin: 0 0 0.75rem; }
   .plan dt { color: var(--muted); }
   .plan dd { margin: 0; overflow-wrap: anywhere; }
-  #plan-focus { color: var(--ceo); font-family: var(--mono); }
+  #plan-focus { color: var(--judge); font-family: var(--mono); }
   .agent-text { white-space: pre-wrap; overflow-wrap: anywhere; }
   pre.briefing {
     margin: 0;
@@ -379,9 +337,9 @@
     overflow: auto;
     padding: 0.75rem;
     border: 1px solid var(--rule);
-    border-left: 3px solid var(--ceo);
-    border-radius: 8px;
-    background: var(--surface);
+    border-left: 3px solid var(--judge-line);
+    border-radius: 10px;
+    background: rgb(10 8 20 / 0.55);
     font: 0.8125rem/1.5 var(--mono);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -399,41 +357,36 @@
   #control-state { margin: 0 0 0.5rem; font-weight: 600; }
   #control-state[data-state="paused"], #control-state[data-state="stopped"] { color: var(--alert); }
   .controls { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-  .controls button, #note-add {
-    padding: 0.35rem 0.85rem;
-    border: 1px solid var(--control);
-    border-radius: 6px;
-    background: var(--raised);
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .controls button:hover:not(:disabled), #note-add:hover:not(:disabled) { border-color: var(--ink); }
+  .controls button, #note-add { padding: 0.35rem 0.85rem; border: 1px solid var(--control); border-radius: 8px; background: var(--raised); font-weight: 600; cursor: pointer; }
+  .controls button:hover:not(:disabled), #note-add:hover:not(:disabled) { border-color: var(--judge); }
   .controls button:disabled, #note-add:disabled { opacity: 0.45; cursor: default; }
   .hint { margin: 0.4rem 0 0; color: var(--muted); font-size: 0.75rem; }
   .write-error { margin: 0.4rem 0 0; color: var(--alert); font-size: 0.8125rem; }
   textarea { width: 100%; min-height: 4.5rem; padding: 0.4rem 0.5rem; resize: vertical; }
   #note-add { margin-top: 0.4rem; }
   table.usage { display: block; overflow-x: auto; }
-  table.usage thead th { position: static; }
+  table.usage thead th { position: static; background: transparent; }
   table.usage th, table.usage td { padding-inline: 0.45rem; }
   table.usage td:not(:first-child), table.usage th:not(:first-child) { text-align: right; font-family: var(--mono); font-size: 0.8125rem; }
   dl.later { display: grid; gap: 0.5rem; margin: 0; }
   dl.later dt { font-weight: 600; }
   dl.later dd { margin: 0; color: var(--muted); }
 
+  @media (max-width: 72rem) {
+    .arena { grid-template-columns: minmax(0, 1fr); }
+    .siege { max-width: 46rem; width: 100%; margin-inline: auto; }
+    .teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+    .teams-head, .key { grid-column: 1 / -1; }
+  }
   @media (max-width: 60rem) {
     .lower, .memory { grid-template-columns: minmax(0, 1fr); }
-    .lower > .panel + .panel { border-left: 0; }
-  }
-  @media (max-width: 52rem) {
-    .arena { grid-template-columns: minmax(0, 1fr); padding-inline: 1rem; }
-    .score dl { grid-template-columns: repeat(2, minmax(0, 1fr) auto); }
   }
   @media (max-width: 40rem) {
-    .bar { padding: 0.6rem 1rem; }
+    body { padding-inline: 1rem; }
     .bar .counts { margin-left: 0; }
     .panel { padding-inline: 1rem; }
-    /* In the event list the role and outcome matter most on a phone: drop the tool column. */
+    /* On a phone the ring is about 0.4 of its size: the cards carry every word, the ring only shapes. */
+    #arena-svg .team-label, #arena-svg .team-sub, #arena-svg .core-sub, #arena-svg .mark-count { display: none; }
     #scroller table { min-width: 0; table-layout: fixed; }
     #scroller th:nth-child(4), #scroller td:nth-child(4), col.tool { display: none; }
     col.time { width: 4.75rem; }
@@ -441,74 +394,109 @@
     col.agent { width: 6rem; }
     #scroller td, #scroller th { padding-inline: 0.5rem; overflow-wrap: anywhere; }
     table.tally th, table.tally td { padding-inline: 0.45rem; }
-    /* The diagram scales down to about 0.4 on a phone; larger type keeps its labels near 9px. */
-    #arena-svg text, #arena-svg .name { font-size: 24px; }
-    #arena-svg .stamp-text { font-size: 22px; }
   }
 </style>
 </head>
 <body>
 <header class="bar">
-  <h1>Prompt Gauntlet <span>threat console</span></h1>
+  <h1>Prompt Gauntlet <span>siege arena</span></h1>
   <p id="status" role="status" data-state="connecting">Connecting</p>
   <p><label>Run <select id="run-pick" aria-label="Run shown"><option value="">newest</option></select></label></p>
   <button type="button" id="motion-toggle" aria-pressed="false" title="Animations follow this computer's setting until you choose here">Motion</button>
   <p class="counts"><span class="events"><strong id="event-count">0</strong> <span id="event-word">events</span></span>, <span class="anomalies" id="anomaly-wrap"><strong id="anomaly-count">0</strong> <span id="anomaly-word">anomalies</span></span> in all runs</p>
 </header>
 <section class="arena" aria-label="Arena">
-  <div class="stage">
-    <div class="stage-head">
-      <h2 id="arena-title">Waiting for the first cycle</h2>
-      <span id="arena-focus"></span>
-      <span class="badge" id="arena-badge" hidden></span>
-    </div>
-    <svg id="arena-svg" viewBox="0 0 960 410" role="img" aria-labelledby="arena-title arena-caption">
-      <!-- CEO: a hexagon above the field, sending the cycle's focus to both agents. -->
-      <polygon class="glyph ceo" id="arena-ceo" points="480,14 504,28 504,56 480,70 456,56 456,28"/>
-      <text class="name ceo" x="516" y="47">CEO</text>
-      <!-- Attacker: a diamond inside its station. -->
-      <rect class="station attacker" x="20" y="165" width="120" height="84" rx="10"/>
-      <polygon class="glyph attacker" points="80,180 94,196 80,212 66,196"/>
-      <text class="name attacker" x="80" y="236" text-anchor="middle">Attacker</text>
-      <!-- The Detector, which the Defender patches. -->
-      <rect class="gate" id="arena-gate" x="472" y="96" width="16" height="226" rx="3"/>
-      <text class="gate-label" x="500" y="108">Detector</text>
-      <!-- Defender: a shield below the gate. -->
-      <path class="glyph defender" d="M480 334 l16 6 v12 c0 10 -7 17 -16 21 c-9 -4 -16 -11 -16 -21 v-12 z"/>
-      <text class="name defender" x="506" y="358">Defender</text>
-      <text class="patch-label" id="arena-patch" x="506" y="378"></text>
-      <!-- Target: the toy app the attacks try to steer. -->
-      <rect class="station target shake" id="arena-target" x="820" y="165" width="120" height="84" rx="10"/>
-      <rect class="glyph target" x="868" y="182" width="24" height="18" rx="2"/>
-      <text class="name" x="880" y="236" text-anchor="middle">Target</text>
-      <g id="arena-dots"></g>
+  <div class="siege">
+    <svg id="arena-svg" viewBox="0 0 900 800" role="img" aria-labelledby="arena-title arena-caption">
+      <circle class="staging spin" id="ring-staging-b" cx="450" cy="450" r="380" stroke-opacity="0.11"/>
+      <circle class="staging spin" id="ring-staging-a" cx="450" cy="450" r="350" stroke-opacity="0.26"/>
+      <g class="spin" id="ring-sweep"></g>
+      <circle class="shield" cx="450" cy="450" r="230"/>
+      <circle class="shield-edge" cx="450" cy="450" r="251"/>
+      <g id="ring-notches"></g>
+      <g id="ring-slots"></g>
+      <circle class="core" id="arena-core" cx="450" cy="450" r="90"/>
+      <g transform="translate(435 392) scale(1.25)" stroke="#c3abe8" class="icon" aria-hidden="true"><rect x="2.8" y="5.5" width="18.4" height="13" rx="2.6"/><path d="M3.6 7.2 L12 13.2 L20.4 7.2"/></g>
+      <text class="core-name" x="450" y="448" text-anchor="middle">Target inbox</text>
+      <text class="core-sub" x="450" y="467" text-anchor="middle">holds the canary</text>
+      <text class="team-label" x="450" y="567" text-anchor="middle" fill="#a892cf">PURPLE TEAM · TARGET AND JUDGE</text>
+      <g class="spin" id="orbit-a"></g>
+      <g class="spin" id="orbit-b"></g>
+      <g class="spin" id="orbit-c"></g>
+      <g id="arena-marks"></g>
+      <!-- Blue team: the shield badge, on the ring. -->
+      <circle class="badge-ring" cx="450" cy="680" r="36" stroke="rgb(91 168 236 / 0.45)"/>
+      <circle cx="450" cy="680" r="28" fill="#0c1522" stroke="#3d8bd4" stroke-width="2"/>
+      <g transform="translate(434 664) scale(1.333)" stroke="#8fc4f2" class="icon" aria-hidden="true"><path d="M12 2.8 L19.6 5.9 v6.2 c0 4.2-3.3 7.3-7.6 9.1 -4.3-1.8-7.6-4.9-7.6-9.1 V5.9 Z"/><path d="M8.8 12.1 l2.3 2.3 l4.1-4.5"/></g>
+      <text class="team-label" x="450" y="738" text-anchor="middle" fill="#7fb6e8">BLUE TEAM · THE DETECTOR</text>
+      <text class="team-sub" id="ring-blue-sub" x="450" y="756" text-anchor="middle" fill="#8ea2bb"></text>
+      <!-- Red team: the launch node, on the staging orbit. -->
+      <circle class="badge-ring" cx="202" cy="697" r="36" stroke="rgb(255 123 114 / 0.45)"/>
+      <circle id="launch-node" cx="202" cy="697" r="28" fill="#1e0f12" stroke="#ff7b72" stroke-width="2"/>
+      <g transform="translate(186 681) scale(1.333)" stroke="#ff9d96" class="icon" aria-hidden="true"><circle cx="12" cy="12" r="6.6"/><path d="M12 1.9 v3.1 M12 19 v3.1 M1.9 12 h3.1 M19 12 h3.1"/><path d="M9.4 14.6 L14.9 9.1"/><path d="M11.4 9.1 h3.5 v3.5"/></g>
+      <text class="team-label" x="20" y="758" fill="#ff7b72">RED TEAM · ATTACKER</text>
+      <text class="team-sub" id="ring-red-sub" x="20" y="776" fill="#b8908c"></text>
       <g id="arena-fx"></g>
-      <g id="arena-stamp" hidden>
-        <rect class="stamp-box" x="680" y="342" width="190" height="42" rx="6"/>
-        <text class="stamp-text" id="arena-stamp-text" x="775" y="369" text-anchor="middle"></text>
-      </g>
     </svg>
     <p id="arena-caption" aria-live="polite">Start a run and each finished cycle plays here.</p>
-    <ul class="legend">
-      <li><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" class="attacker"/></svg><span class="legend-cross" aria-hidden="true">×</span>caught by the <span class="role-defender">Detector</span></li>
-      <li><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" class="attacker"/></svg>got past; works on the undefended target</li>
-      <li><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" class="steel"/></svg>no effect, even undefended</li>
-      <li><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.5" class="ring"/></svg>held back to test the patch</li>
-    </ul>
   </div>
-  <aside class="score" aria-label="Scoreboard">
-    <dl>
-      <dt>Cycles</dt><dd id="score-cycles">0</dd>
-      <dt>Kept</dt><dd id="score-kept">0</dd>
-      <dt>Rejected</dt><dd id="score-rejected">0</dd>
-      <dt>Detector rules</dt><dd id="score-rules">-</dd>
-      <dt>Judge ASR (dev)</dt><dd id="score-asr">-</dd>
-      <dt>Judge TPR (dev)</dt><dd id="score-tpr">-</dd>
-    </dl>
-    <p class="note">This cycle's attacks against the Detector before its patch. The Judge's ASR and TPR are measured on dev.</p>
-    <p class="strip-head" id="strip-head">Past cycles</p>
-    <ol id="arena-strip" aria-labelledby="strip-head"></ol>
-  </aside>
+  <div class="teams">
+    <div class="teams-head">
+      <h2 id="arena-title">Waiting for the first cycle</h2>
+      <span class="badge" id="arena-badge" hidden></span>
+      <span id="arena-focus"></span>
+    </div>
+    <section class="team red" aria-labelledby="red-title">
+      <div class="team-head">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.6"/><path d="M12 1.9 v3.1 M12 19 v3.1 M1.9 12 h3.1 M19 12 h3.1"/><path d="M9.4 14.6 L14.9 9.1"/><path d="M11.4 9.1 h3.5 v3.5"/></svg>
+        <h3 id="red-title">Red team</h3>
+        <span class="tally" id="red-tally" title="Attacks that got past the detector, of all attacks this cycle">-</span>
+      </div>
+      <ul class="vectors" id="red-list"></ul>
+      <p id="red-note">No attacks yet.</p>
+    </section>
+    <section class="team blue" aria-labelledby="blue-title">
+      <div class="team-head">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8 L19.6 5.9 v6.2 c0 4.2-3.3 7.3-7.6 9.1 -4.3-1.8-7.6-4.9-7.6-9.1 V5.9 Z"/><path d="M8.8 12.1 l2.3 2.3 l4.1-4.5"/></svg>
+        <h3 id="blue-title">Blue team</h3>
+        <span class="tally" id="blue-tally" title="Detector rules in use, of the rule cap">-</span>
+      </div>
+      <p id="blue-note">No detector yet.</p>
+      <div class="meter" id="meter-tpr">
+        <div class="meter-head">True positive rate at the target false-alarm rate, dev<strong id="tpr-value">-</strong></div>
+        <div class="meter-track"><span class="meter-fill" id="tpr-fill"></span></div>
+      </div>
+      <div class="meter" id="meter-asr">
+        <div class="meter-head">Attack success on dev<strong id="asr-value">-</strong></div>
+        <div class="meter-track"><span class="meter-fill" id="asr-fill"></span></div>
+      </div>
+    </section>
+    <section class="team purple" aria-labelledby="purple-title">
+      <div class="team-head">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.8" y="5.5" width="18.4" height="13" rx="2.6"/><path d="M3.6 7.2 L12 13.2 L20.4 7.2"/></svg>
+        <h3 id="purple-title">Purple team</h3>
+        <span class="tally" id="purple-tally" title="Cycles whose patch the Judge kept, of cycles shown">-</span>
+      </div>
+      <p id="purple-note">The target holds the dummy canary. The Judge measures each patch on dev and keeps or rejects it.</p>
+      <div class="verdict" id="verdict" data-decision="none"><strong id="verdict-title">No verdict yet</strong><span id="verdict-detail"></span></div>
+    </section>
+    <section class="key" aria-labelledby="key-title">
+      <h3 id="key-title">Reading the ring</h3>
+      <ul>
+        <li><svg viewBox="0 0 20 14" aria-hidden="true"><rect x="4" y="1" width="12" height="12" rx="3" fill="#5ba8ec"/></svg>a detector rule in use; dark slots are unused</li>
+        <li><svg viewBox="0 0 20 14" aria-hidden="true"><path d="M2 7 A 14 14 0 0 1 18 7" fill="none" stroke="#ff7b72" stroke-width="5"/></svg>where an attack got through</li>
+        <li><svg viewBox="0 0 20 14" aria-hidden="true"><text x="10" y="12" text-anchor="middle" fill="#8fc4f2" font-size="14" font-weight="600">✕</text></svg>attack stopped by the detector</li>
+        <li><svg viewBox="0 0 20 14" aria-hidden="true"><circle cx="10" cy="7" r="6" fill="#ff7b72"/></svg>got past; works on the undefended target</li>
+        <li><svg viewBox="0 0 20 14" aria-hidden="true"><circle cx="10" cy="7" r="5" fill="none" stroke="#e9c46a" stroke-width="3"/></svg>held back to test the patch</li>
+        <li><svg viewBox="0 0 20 14" aria-hidden="true"><circle cx="10" cy="7" r="5" fill="none" stroke="#7a85a0" stroke-width="2"/></svg>no effect, even undefended</li>
+        <li><svg viewBox="0 0 20 14" aria-hidden="true"><path d="M4 7 h12" stroke="#7a85a0" stroke-width="3" stroke-linecap="round"/></svg>refused by the model</li>
+      </ul>
+      <p class="hint">The ring is cut into one slice per technique, so a mark's position names its technique.</p>
+      <p class="strip-head" id="strip-head">Past cycles</p>
+      <ol id="arena-strip" aria-labelledby="strip-head"></ol>
+      <p class="strip-hint">Purple squares are kept patches. Click a square to replay its cycle.</p>
+    </section>
+  </div>
 </section>
 <section class="panel attacks" aria-labelledby="feed-title">
   <div class="panel-head">
@@ -567,7 +555,7 @@
       <figure class="chart"><figcaption><strong class="role-defender">TPR at the target FPR</strong><span id="tpr-now"></span></figcaption><svg class="plot" id="plot-tpr" viewBox="0 0 320 150" role="img" aria-label="True positive rate by cycle"></svg></figure>
       <figure class="chart"><figcaption><strong>False alarms by category</strong><span id="fpr-now"></span></figcaption><svg class="plot" id="plot-fpr" viewBox="0 0 320 150" role="img" aria-label="False positive rate per benign category, latest cycle"></svg></figure>
     </div>
-    <p class="chart-note" id="scores-note">Amber squares are cycles whose candidate the Judge kept. A kept change stays provisional until you review it; the review queue comes with step 13b. Cross-play scores come in Phase 4.</p>
+    <p class="chart-note" id="scores-note">Purple squares are cycles whose candidate the Judge kept. A kept change stays provisional until you review it; the review queue comes with step 13b. Cross-play scores come in Phase 4.</p>
   </section>
   <section class="panel ops" aria-labelledby="ops-title">
     <div class="panel-head"><h2 id="ops-title">Controls and alerts</h2></div>
