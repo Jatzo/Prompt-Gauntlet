@@ -48,3 +48,13 @@ default). A run with live agents and the simulated Judge shows real attacks and 
 validity labels, scores and keep decisions come from simulated target and detector models. Each
 manifest records the Judge's backend, and the evidence pack marks any such cycle as simulated. A
 placebo result vouches only for keeps made under the same Judge and sizes.
+
+## The control arm on synthetic data
+
+The hill-climb control (arm C) makes one change a cycle: one normaliser or one rule from a fixed
+bank. On the synthetic folders it keeps nothing. Even on the large folder (`data build --synthetic
+--large`), where three techniques sit on both dev folds, at that folder's build seed the regex
+baseline already catches every fold-one attack family but one, and no bank rule catches that one.
+The keep rule tests the gain on fold one, so no single move can pass. Fitting a frame or a rule to
+the other would only flatter the control, so neither was done. Arm C is a flat line in mock runs,
+and the comparison between arms needs the real data.

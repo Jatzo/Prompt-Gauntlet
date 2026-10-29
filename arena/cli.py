@@ -9,6 +9,7 @@ python -m arena.cli run --cycles N --backend mock|sim|replay|live [--judge simul
 python -m arena.cli abandon-cycle --reason TEXT
 python -m arena.cli baseline --backend mock|replay|live [--profile clean|low_asr]
 python -m arena.cli data build --synthetic|--real --judge-dir PATH [--pilot N | --plan-only]
+python -m arena.cli data build --synthetic --large --judge-dir PATH
 python -m arena.cli data fetch [--only SOURCE ...]
 python -m arena.cli data check --judge-dir PATH --backend mock|replay|live [--trials N]
 python -m arena.cli live-check [--calls N]
@@ -33,6 +34,7 @@ from pathlib import Path
 from arena import baselines, cycle, db, evidence, llm, usage
 from arena.config import DEFAULTS, OPEN_WEIGHTS_ROLES, REPO_ROOT, agent_db_path, private_data_dir
 from arena.control import placebo
+from arena.data import large_synthetic
 from arena.data.build import build_dataset, plan_dataset
 from arena.data.fetch import ChangedSource, fetch_all
 from arena.data.labelling import ContestedCapExceeded, LabelCache, label_rows
@@ -198,14 +200,15 @@ def cmd_data_build(args) -> int:
     """Build the Judge directory from the real sources, or from the synthetic corpus, which is never
     a valid benchmark and so must be asked for by name."""
     private_dir = args.private_dir or private_data_dir()
-    samples = synthetic_corpus()
+    samples = large_synthetic.corpus() if args.large else synthetic_corpus()
+    sizes = large_synthetic.SIZES if args.large else DEFAULTS
     label = None
     if args.real:
         samples = _real_samples(args)
         if samples is None:
             return ExitCode.FAILED
     if args.plan_only:
-        exact, near, feasibility = plan_dataset(samples)
+        exact, near, feasibility = plan_dataset(samples, sizes)
         for partition, labels in sorted(feasibility.counts.items()):
             print(f"{partition}: " + ", ".join(f"{n} {lab}" for lab, n in sorted(labels.items())))
         print(f"Removed: {exact} exact and {near} near duplicates.")
@@ -225,9 +228,12 @@ def cmd_data_build(args) -> int:
             label_rows, claude=claude, open_weights=open_weights, cache=cache, seed=DEFAULTS.seed
         )
     try:
-        summary = build_dataset(
-            samples, judge_dir=args.judge_dir, private_dir=private_dir, label=label
-        )
+        if args.large:
+            summary = large_synthetic.build(args.judge_dir, private_dir)
+        else:
+            summary = build_dataset(
+                samples, judge_dir=args.judge_dir, private_dir=private_dir, label=label
+            )
     except ContestedCapExceeded as capped:
         print(capped, file=sys.stderr)
         return ExitCode.NEEDS_OPERATOR
@@ -594,6 +600,8 @@ def main(argv: list[str] | None = None) -> int:
     corpus.add_argument("--synthetic", action="store_true")
     corpus.add_argument("--real", action="store_true")
     build.add_argument("--judge-dir", type=Path, required=True)
+    # The larger synthetic folder for mock control and sim runs (arena/data/large_synthetic.py).
+    build.add_argument("--large", action="store_true")
     build.add_argument("--private-dir", type=Path, default=None)
     build.add_argument("--raw-dir", type=Path, default=raw_dir)
     build.add_argument(
@@ -615,6 +623,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "run" and args.cycles < 1:
         parser.error("--cycles must be at least 1")
+    if args.command == "data" and getattr(args, "large", False) and not args.synthetic:
+        parser.error("--large builds the synthetic corpus only; use it with --synthetic")
+    if args.command == "data" and getattr(args, "pilot", 0) and not args.real:
+        parser.error("--pilot labels real items only; use it with --real")
     if args.command == "placebo":
         fewest = placebo.minimum_cycles()
         if args.cycles < fewest or args.cycles % 2:

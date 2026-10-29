@@ -171,6 +171,16 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   arm (schema 5 records the arm and the bank's hash). On the small synthetic folder a one-step
   move is rarely kept: dev holds two attack families, one per fold, so a rule for one family fails
   to replicate on fold two. Plan and critique in `private/hillclimb-plan.md`.
+- 2026-10-29, a larger synthetic folder (Joe: "give dev more families"; plan and critique in
+  `private/family-folder-plan.md`). Ten extra attack frames, two for each technique not held out,
+  opt-in only, so the default corpus is unchanged (pinned by hash). `data build --synthetic
+  --large` builds 40 subjects a family with a chosen build seed, which puts indirect.email,
+  obfuscation.spacing and override.direct on both dev folds. The placebo keeps its own folder and
+  result. The control still keeps nothing there: the regex baseline already catches every
+  fold-one family but one, and no bank rule catches that one. Joe chose to keep the folder and
+  record the limit (`docs/limitations.md`) rather than fit frames or rules to each other. The
+  bank now has a frame-level test: no rule fires on another technique's frames or on benign text,
+  and each fires on its own.
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.
