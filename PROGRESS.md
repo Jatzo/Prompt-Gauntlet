@@ -148,6 +148,18 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   `data build --real --plan-only` is a free dry run; the last one showed no shortfalls (test 630,
   dev 1,000, train 854, ablation_eval 501, monitor 200 attacks). Plan, critique and answers in
   `private/data-shortfall-plan.md`.
+- 2026-10-29, placebo test (Phase 3 step 8). Approved by the operator: a `placebo` sim profile
+  (attack and benign scores overlap, TPR about 0.6 at 1% FPR), 300 cycles a run, and a
+  placebo-only synthetic folder five times the test sizes, from 80 extra subjects, with the
+  train-only group cap raised to 120 for that folder alone. On the test-sized folder a real gain
+  was kept in only 8 of 20 runs, so the number meant little. `python -m arena.cli placebo`
+  builds the folder in `private/placebo/`, deletes it after, and writes aggregates to
+  `runs/placebo/`. First mock run: 1 of 300 kept (0.3%, upper bound 1.6%, under the 5% limit);
+  both determinism checks rejected with a gain of exactly 0; the positive control kept in 20 of
+  30. The rule is cautious in mock: the ASR condition alone rejected 154 of the 300 placebo
+  cycles on noise, and 10 of the 30 real gains failed on utility or category FPR. Mock draws have
+  no item difficulty, so this number vouches only for simulated-Judge keeps; the real-data
+  placebo stays with step 16. Plan and critique in `private/placebo-plan.md`.
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.
@@ -237,10 +249,15 @@ cybersecurity structure in PLAN.md section 13. No case study has been written ye
 - No house pattern yet for dispatch by name: some modules use a dict registry, others if-chains.
 
 ## Next session
-Phase 3 step 7 (the Defender). The attack step now runs in every cycle whose plan names the
-Attacker: T2 queries and one batch against the incumbent (the regex rules until a config is kept,
-stored as the baseline on the first cycle), on `LADDER[0]`, with novelty recorded in the attack
-step's write and held-back attacks offered at commit. Each backend declares a `kind`. The
-`use_memory=False` orchestrator is the no-memory ablation arm. Step 10 adds the explore directive;
-step 11 opens candidate-technique findings from unclassified, novel valid attacks. The full real
-data build was started on 2026-10-26; check its log (`~/.pgscratch/build.log`) and results first.
+Phase 3, in the order of `private/phase3-remaining-plan.md`. Done: steps A to D, 9 and 10, and
+step 8's placebo (mock). Next:
+1. The Phase 2 checker pass (`bash ~/.pgscratch/run t_check.sh`, log `~/.pgscratch/check.log`),
+   then the live baseline, the seal and pre-registration.
+2. Step E, the live demo: calibrate a novelty threshold first, since a live-agent run pauses with
+   NotCalibrated without one.
+3. Step G: the hill-climb control (after the placebo, as planned), 11 findings and regression
+   tracker, 12 Researcher, 13b review queue, 13c checkpoints and digests.
+4. Step H, the phase close-out.
+Small leftovers: retake `docs/dashboard/1-replay-in-flight.jpg` with the notes showing; dashboard
+step D findings 4 (redrawing lists loses text selection) and 5 (two scripts page `/arena/cycles`
+separately).

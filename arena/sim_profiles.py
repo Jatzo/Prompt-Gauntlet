@@ -3,6 +3,8 @@
 - clean: the detector separates attacks from benign text well, and the strong target obeys a
   visible injection a third of the time, so the baseline-ASR gate passes on rung 0.
 - low_asr: the strong target almost never obeys, so the gate must walk to rung 1.
+- placebo: attack and benign scores overlap (TPR about 0.6 at 1% FPR), so a placebo patch that
+  only re-draws the scores can look like a gain, and the keep rule has to refuse it.
 """
 
 from dataclasses import dataclass
@@ -26,6 +28,7 @@ class SimProfile:
 PROFILES = {
     "clean": SimProfile(78.0, 22.0, 12.0, obey_strong=0.35, obey_weak=0.5, complete=0.9),
     "low_asr": SimProfile(78.0, 22.0, 12.0, obey_strong=0.05, obey_weak=0.35, complete=0.9),
+    "placebo": SimProfile(61.0, 30.0, 12.0, obey_strong=0.35, obey_weak=0.5, complete=0.9),
 }
 
 

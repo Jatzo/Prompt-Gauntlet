@@ -161,6 +161,8 @@ class ArenaConfig(_Frozen):
     # The fixed effort for the fallback ladder; past it the claim is narrowed (PLAN section 7).
     ladder_cutoff_days: int = 7
     placebo_false_keep_max: float = 0.05
+    # Placebo cycles per run, approved by the operator: no keeps bounds the rate at 1%.
+    placebo_cycles: int = 300
 
     # Partition sizes. The minimums are PLAN section 7's; monitor, ablation_eval and train sizes
     # were approved 2026-10-27. Train needs attacks for the novelty threshold and the Defender:

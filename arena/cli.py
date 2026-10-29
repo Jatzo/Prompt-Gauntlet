@@ -11,6 +11,7 @@ python -m arena.cli data fetch [--only SOURCE ...]
 python -m arena.cli data check --judge-dir PATH --backend mock|replay|live [--trials N]
 python -m arena.cli live-check [--calls N]
 python -m arena.cli evidence RUN_ID [--out DIR]
+python -m arena.cli placebo [--cycles N] [--positive-runs N] [--out DIR]
 
 Exit codes are listed in arena/exit_codes.py.
 """
@@ -20,6 +21,7 @@ import json
 import os
 import random
 import sys
+import tempfile
 from collections import Counter
 from dataclasses import asdict
 from datetime import UTC, date, datetime
@@ -28,6 +30,7 @@ from pathlib import Path
 
 from arena import baselines, cycle, db, evidence, llm, usage
 from arena.config import DEFAULTS, OPEN_WEIGHTS_ROLES, REPO_ROOT, agent_db_path, private_data_dir
+from arena.control import placebo
 from arena.data.build import build_dataset, plan_dataset
 from arena.data.fetch import ChangedSource, fetch_all
 from arena.data.labelling import ContestedCapExceeded, LabelCache, label_rows
@@ -35,7 +38,7 @@ from arena.data.splits import SplitRow
 from arena.data.templates import synthetic_corpus
 from arena.exit_codes import ExitCode
 from arena.judge_client import JudgeClient, JudgeError
-from arena.orchestrator import Orchestrator, phase1_mock_script
+from arena.orchestrator import REFERENCE_TARGET, Orchestrator, phase1_mock_script
 from arena.report_tables import render
 from arena.schemas import LabelCheckRequest
 from arena.sim_agents import SimAgentsBackend
@@ -446,6 +449,68 @@ def cmd_baseline(args) -> int:
     return verdict.exit_code
 
 
+def cmd_placebo(args) -> int:
+    """The placebo test in mock mode (PLAN section 8): the keep rule's false-keep rate on patches
+    that change nothing, on a scratch synthetic folder that is deleted afterwards.
+
+    The real-data placebo is the operator's (Phase 3 step 16). A failed bar needs the operator,
+    since the keep rule must be tightened before any result is trusted.
+    """
+    out = args.out or REPO_ROOT / "runs" / "placebo"
+    out.mkdir(parents=True, exist_ok=True)
+    scratch_root = REPO_ROOT / "private" / "placebo"
+    scratch_root.mkdir(parents=True, exist_ok=True)
+    base = baselines.request(
+        backend="mock",
+        targets=[REFERENCE_TARGET],
+        reference=REFERENCE_TARGET,
+        trials=DEFAULTS.trials_per_pair,
+        seed=DEFAULTS.seed,
+        profile="placebo",
+    )
+
+    def progress(decision: placebo.Decision) -> None:
+        if decision.cycle_id % 10 == 0:
+            print(f"Placebo: {decision.cycle_id} decisions made", file=sys.stderr, flush=True)
+
+    with tempfile.TemporaryDirectory(dir=scratch_root) as scratch:
+        judge_dir = Path(scratch) / "judge"
+        placebo.build_folder(judge_dir, Path(scratch) / "build")
+        try:
+            with JudgeClient(judge_dir=judge_dir) as judge:
+                result = placebo.run(
+                    judge,
+                    cycles=args.cycles,
+                    base=base,
+                    positive_runs=args.positive_runs,
+                    progress=progress,
+                )
+        except JudgeError as error:
+            print(f"Placebo not finished. {error}", file=sys.stderr)
+            return ExitCode.FAILED
+
+    verdict = "under" if result.passed else "not under"
+    print(
+        f"Placebo: {result.keeps} of {result.cycles} kept ({result.rate:.1%}), upper bound "
+        f"{result.bound:.1%}, {verdict} the {result.limit:.0%} limit."
+    )
+    print(f"Kept by leading fold: {result.keeps_by_fold}.")
+    print(f"Condition (f) applied in {result.fresh_evasions_applied} cycles.")
+    for name, rate in result.condition_pass_rate.items():
+        print(f"  {name}: passed in {rate:.0%} of the cycles it applied to")
+    checks = "rejected" if result.determinism_rejected else "NOT all rejected"
+    print(f"Determinism checks: {checks}.")
+    print(
+        f"Positive control: {result.positive_keeps} of {result.positive_runs} kept"
+        f" ({'passed' if result.positive_passed else 'failed'})."
+    )
+    print(f"Took {result.seconds / 60:.0f} minutes.")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    (out / f"{stamp}.json").write_text(json.dumps(result.summary(), indent=2))
+    trusted = result.passed and result.determinism_rejected and result.positive_passed
+    return ExitCode.OK if trusted else ExitCode.NEEDS_OPERATOR
+
+
 def cmd_evidence(args) -> int:
     """Read the run back into a private and a public evidence pack. Opens the database read-only."""
     try:
@@ -509,6 +574,10 @@ def main(argv: list[str] | None = None) -> int:
     evidence_parser.add_argument(
         "--out", type=Path, default=None, help="default runs/RUN_ID/evidence"
     )
+    placebo_parser = commands.add_parser("placebo")
+    placebo_parser.add_argument("--cycles", type=int, default=DEFAULTS.placebo_cycles)
+    placebo_parser.add_argument("--positive-runs", type=int, default=None)
+    placebo_parser.add_argument("--out", type=Path, default=None, help="default runs/placebo")
     data = commands.add_parser("data").add_subparsers(dest="data_command", required=True)
     raw_dir = REPO_ROOT / "private" / "data" / "raw"
     build = data.add_parser("build")
@@ -537,6 +606,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "run" and args.cycles < 1:
         parser.error("--cycles must be at least 1")
+    if args.command == "placebo":
+        fewest = placebo.minimum_cycles()
+        if args.cycles < fewest or args.cycles % 2:
+            parser.error(f"--cycles must be even and at least {fewest}, so zero keeps can pass")
+        return cmd_placebo(args)
 
     if args.command == "baseline":
         return cmd_baseline(args)

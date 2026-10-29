@@ -143,17 +143,37 @@ SUBJECTS = (
 )
 
 
+# More subjects for the placebo folder only (arena/control/placebo.py): the same frames, five
+# times the samples, so the keep rule has enough items to tell noise from a gain. Each starts
+# with a word no other subject starts with, since the cluster id takes the first word.
+PLACEBO_SUBJECTS = tuple(
+    """
+    agenda appraisal backlog badge benchmark briefing bulletin calendar catalogue charity checklist
+    cleaning cloakroom contract courier dashboard deadline delivery deposit directory donation drill
+    expenses feedback filing fleet forecast fundraiser garden glossary grant guestbook helpdesk
+    holiday induction insurance inventory itinerary keynote kitchen laptop lease ledger library
+    licence lighting locker logbook lottery mailroom maintenance meeting mentoring minutes
+    noticeboard onboarding overtime payroll pension pilot planner podcast poster procurement quiz
+    reception recycling refund register relocation renewal retreat schedule seminar shuttle signage
+    spreadsheet stationery storage subscription
+    """.split()
+)
+
+
 def _id(*parts: object) -> str:
     return "syn-" + hashlib.sha256(":".join(map(str, parts)).encode()).hexdigest()[:12]
 
 
-def synthetic_corpus(subjects_per_frame: int = len(SUBJECTS)) -> list[Sample]:
+def synthetic_corpus(
+    subjects_per_frame: int | None = None, subjects: tuple[str, ...] = SUBJECTS
+) -> list[Sample]:
     """Every frame filled with each subject. Samples start in `train`; the split assigns them."""
+    chosen = subjects[:subjects_per_frame]
     samples = []
     for technique, impact, channel, frames in ATTACK_FAMILIES:
         for frame_index, frame in enumerate(frames):
             family = f"tf-{technique}-{frame_index}"
-            for subject in SUBJECTS[:subjects_per_frame]:
+            for subject in chosen:
                 samples.append(
                     Sample(
                         id=_id("attack", family, subject),
@@ -173,7 +193,7 @@ def synthetic_corpus(subjects_per_frame: int = len(SUBJECTS)) -> list[Sample]:
     for category, channel, frames in BENIGN_FAMILIES:
         for frame_index, frame in enumerate(frames):
             family = f"tf-benign-{category}-{frame_index}"
-            for subject in SUBJECTS[:subjects_per_frame]:
+            for subject in chosen:
                 samples.append(
                     Sample(
                         id=_id("benign", family, subject),

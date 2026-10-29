@@ -596,7 +596,7 @@ class MeasureRequest(Strict):
     reference_target: TargetSpec
     backend: Literal["mock", "replay", "live"]
     # The simulated-model profile, for the mock backend only.
-    profile: Literal["clean", "low_asr"] = "clean"
+    profile: Literal["clean", "low_asr", "placebo"] = "clean"
     cassette: Annotated[str, Field(max_length=500)] | None = None
     trials: Annotated[int, Field(ge=1, le=20)]
     seed: int
