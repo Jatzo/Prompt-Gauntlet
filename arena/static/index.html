@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en-GB" data-motion="off">
+<html lang="en-GB" data-motion="off" data-explain="on">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -94,7 +94,7 @@
   select, textarea, button { font: inherit; color: var(--ink); }
   select, textarea { background: var(--raised); border: 1px solid var(--control); border-radius: 8px; }
   select { padding: 0.25rem 0.4rem; }
-  #motion-toggle {
+  #motion-toggle, #explain-toggle {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
@@ -106,14 +106,14 @@
     font-weight: 600;
     cursor: pointer;
   }
-  #motion-toggle::before {
+  #motion-toggle::before, #explain-toggle::before {
     content: "";
     width: 1.6rem;
     height: 0.9rem;
     border-radius: 999px;
     background: linear-gradient(var(--control), var(--control)) left / 0.9rem 0.9rem no-repeat, rgb(255 255 255 / 0.08);
   }
-  #motion-toggle[aria-pressed="true"]::before {
+  #motion-toggle[aria-pressed="true"]::before, #explain-toggle[aria-pressed="true"]::before {
     background: linear-gradient(var(--judge), var(--judge)) right / 0.9rem 0.9rem no-repeat, rgb(138 99 210 / 0.4);
   }
 
@@ -373,6 +373,14 @@
   dl.later dt { font-weight: 600; }
   dl.later dd { margin: 0; color: var(--muted); }
 
+  /* Plain-English notes: one or two sentences beside the technical wording, hidden by the
+     Explain switch once the operator knows the page. */
+  p.plain { margin: 0 0 0.6rem; padding-left: 0.65rem; border-left: 2px solid var(--judge-line); color: #cfc7e2; font-size: 0.8125rem; line-height: 1.5; max-width: 72ch; }
+  p.plain.intro { margin: 0; max-width: 92ch; font-size: 0.875rem; }
+  .team p.plain { margin: 0; color: #cfc7e2; }
+  details.log > p.plain { margin: 0 1.25rem 0.75rem; }
+  html[data-explain="off"] p.plain { display: none; }
+
   @media (max-width: 72rem) {
     .arena { grid-template-columns: minmax(0, 1fr); }
     .siege { max-width: 46rem; width: 100%; margin-inline: auto; }
@@ -404,8 +412,10 @@
   <p id="status" role="status" data-state="connecting">Connecting</p>
   <p><label>Run <select id="run-pick" aria-label="Run shown"><option value="">newest</option></select></label></p>
   <button type="button" id="motion-toggle" aria-pressed="false" title="Animations follow this computer's setting until you choose here">Motion</button>
+  <button type="button" id="explain-toggle" aria-pressed="true">Explain</button>
   <p class="counts"><span class="events"><strong id="event-count">0</strong> <span id="event-word">events</span></span>, <span class="anomalies" id="anomaly-wrap"><strong id="anomaly-count">0</strong> <span id="anomaly-word">anomalies</span></span> in all runs</p>
 </header>
+<p class="plain intro">An AI Attacker keeps trying to trick a test email assistant, the target inbox, into leaking a fake secret, messaging the attacker or using a tool it should not. A Defender writes rules for a detector that screens incoming text, and a Judge decides whether each change really helps. Each round is a cycle. This page replays the latest one.</p>
 <section class="arena" aria-label="Arena">
   <div class="siege">
     <svg id="arena-svg" viewBox="0 0 900 800" role="img" aria-labelledby="arena-title arena-caption">
@@ -453,6 +463,7 @@
         <h3 id="red-title">Red team</h3>
         <span class="tally" id="red-tally" title="Attacks that got past the detector, of all attacks this cycle">-</span>
       </div>
+      <p class="plain">How many of this cycle's attacks got past the detector, and which tricks they used. Held-back attacks also got past: the Judge hides them from the Defender to check whether the patch being judged catches attacks it was not written for.</p>
       <ul class="vectors" id="red-list"></ul>
       <p id="red-note">No attacks yet.</p>
     </section>
@@ -462,6 +473,7 @@
         <h3 id="blue-title">Blue team</h3>
         <span class="tally" id="blue-tally" title="Detector rules in use, of the rule cap">-</span>
       </div>
+      <p class="plain">The detector's scores on dev, the development data the Judge tunes against (not the final test). The first bar is the share of working attacks it flags, with its false-alarm rate aimed at about 1 normal message in 100. The second is how often an attack still made the target misbehave. Higher is better for the first, lower for the second.</p>
       <p id="blue-note">No detector yet.</p>
       <div class="meter" id="meter-tpr">
         <div class="meter-head">True positive rate at the target false-alarm rate, dev<strong id="tpr-value">-</strong></div>
@@ -478,11 +490,12 @@
         <h3 id="purple-title">Purple team</h3>
         <span class="tally" id="purple-tally" title="Cycles whose patch the Judge kept, of cycles shown">-</span>
       </div>
-      <p id="purple-note">The target holds the dummy canary. The Judge measures each patch on dev and keeps or rejects it.</p>
+      <p class="plain">The Judge tries each patch on dev and keeps it only if attack success does not rise, normal work does not suffer, the gain repeats on a second slice of dev, and it catches the held-back attacks. A kept patch is provisional until you review it.</p>
       <div class="verdict" id="verdict" data-decision="none"><strong id="verdict-title">No verdict yet</strong><span id="verdict-detail"></span></div>
     </section>
     <section class="key" aria-labelledby="key-title">
       <h3 id="key-title">Reading the ring</h3>
+      <p class="plain">The blue ring is the detector and red dots are this cycle's attacks. A cross means the detector stopped one; a red dot inside means one got through. Amber, grey and dash marks are explained below.</p>
       <ul>
         <li><svg viewBox="0 0 20 14" aria-hidden="true"><rect x="4" y="1" width="12" height="12" rx="3" fill="#5ba8ec"/></svg>a detector rule in use; dark slots are unused</li>
         <li><svg viewBox="0 0 20 14" aria-hidden="true"><path d="M2 7 A 14 14 0 0 1 18 7" fill="none" stroke="#ff7b72" stroke-width="5"/></svg>where an attack got through</li>
@@ -504,6 +517,7 @@
     <h2 id="feed-title">Attacks this run</h2>
     <p>Counts by technique and outcome over every finished cycle shown above.</p>
   </div>
+  <p class="plain">Every attack in this run, grouped by trick. "Got past" means the detector missed it and it worked on the target with no defence. "No effect" means it would not have worked anyway.</p>
   <div class="filters">
     <label>Technique <select id="filter-technique"><option value="">all</option></select></label>
     <label>Outcome <select id="filter-outcome">
@@ -526,6 +540,7 @@
 </section>
 <details class="log">
 <summary>Event list, all runs</summary>
+<p class="plain">The step-by-step log for all runs in this database, oldest first. Very old rows may be trimmed from view.</p>
 <main>
   <p id="dropped" hidden></p>
   <div id="scroller" tabindex="0" aria-label="Events, oldest first">
@@ -550,12 +565,13 @@
       <p>The <span class="role-judge">Judge</span> on dev, one point per committed cycle. Shaded bands are confidence intervals.</p>
       <span class="badge" id="scores-badge" hidden></span>
     </div>
+    <p class="plain">How the defence is doing over time, measured by the Judge on dev, not the final test. The shaded band is the margin of error.</p>
     <p class="empty-state" id="scores-empty">No Judge measurement yet. Scores appear after the first committed cycle.</p>
     <div class="charts" id="charts" hidden>
-      <figure class="chart"><figcaption><strong class="role-attacker">End-to-end ASR</strong><span id="asr-now"></span></figcaption><svg class="plot" id="plot-asr" viewBox="0 0 320 150" role="img" aria-label="Attack success rate by cycle"></svg></figure>
-      <figure class="chart"><figcaption><strong>Utility</strong><span id="utility-now"></span></figcaption><svg class="plot" id="plot-utility" viewBox="0 0 320 150" role="img" aria-label="Utility by cycle"></svg></figure>
-      <figure class="chart"><figcaption><strong class="role-defender">TPR at the target FPR</strong><span id="tpr-now"></span></figcaption><svg class="plot" id="plot-tpr" viewBox="0 0 320 150" role="img" aria-label="True positive rate by cycle"></svg></figure>
-      <figure class="chart"><figcaption><strong>False alarms by category</strong><span id="fpr-now"></span></figcaption><svg class="plot" id="plot-fpr" viewBox="0 0 320 150" role="img" aria-label="False positive rate per benign category, latest cycle"></svg></figure>
+      <figure class="chart"><figcaption><strong class="role-attacker">End-to-end ASR</strong><span id="asr-now"></span></figcaption><p class="plain">How often an attack made the target do something harmful. Lower is better.</p><svg class="plot" id="plot-asr" viewBox="0 0 320 150" role="img" aria-label="Attack success rate by cycle"></svg></figure>
+      <figure class="chart"><figcaption><strong>Utility</strong><span id="utility-now"></span></figcaption><p class="plain">The share of normal tasks the target still finishes with the defence on. Higher is better.</p><svg class="plot" id="plot-utility" viewBox="0 0 320 150" role="img" aria-label="Utility by cycle"></svg></figure>
+      <figure class="chart"><figcaption><strong class="role-defender">TPR at the target FPR</strong><span id="tpr-now"></span></figcaption><p class="plain">The share of working attacks the detector flags, at the chosen false-alarm rate. Higher is better.</p><svg class="plot" id="plot-tpr" viewBox="0 0 320 150" role="img" aria-label="True positive rate by cycle"></svg></figure>
+      <figure class="chart"><figcaption><strong>False alarms by category</strong><span id="fpr-now"></span></figcaption><p class="plain">How often normal messages of each kind are wrongly flagged. Each bar must stay under the dashed line.</p><svg class="plot" id="plot-fpr" viewBox="0 0 320 150" role="img" aria-label="False positive rate per benign category, latest cycle"></svg></figure>
     </div>
     <p class="chart-note" id="scores-note">Purple squares are cycles whose candidate the Judge kept. A kept change stays provisional until you review it; the review queue comes with step 13b. Cross-play scores come in Phase 4.</p>
   </section>
@@ -564,6 +580,7 @@
       <h2 id="memory-title">Memory and briefing</h2>
       <p>What the <span class="role-ceo">CEO</span> knew and planned. Agent text is shown as written and may quote an attack. It is never run as markup.</p>
     </div>
+    <p class="plain">The CEO is the agent that plans each cycle. This shows what it was told and what it chose.</p>
     <p class="empty-state" id="memory-empty">No plan yet. The CEO's plan and the briefing it was sent appear after the first plan step.</p>
     <div class="memory" id="memory" hidden>
       <div>
@@ -576,19 +593,23 @@
             <dt>Cites</dt><dd id="plan-cites"></dd>
             <dt>Hypothesis</dt><dd class="agent-text" id="plan-hypothesis"></dd>
           </dl>
+          <p class="plain">Focus is the kind of attack to work on next. Prediction is the change in attack success it expected, and how sure it was. Cites lists the lessons it named. Hypothesis is its stated reason, which the cycle then tests.</p>
         </section>
         <h3 id="briefing-title">Briefing the CEO was sent</h3>
+        <p class="plain">The summary the CEO read before planning.</p>
         <pre class="briefing" id="briefing" tabindex="0" aria-labelledby="briefing-title"></pre>
       </div>
       <div>
         <h3>Lessons</h3>
+        <p class="plain">What the system has learned so far, each backed by evidence.</p>
         <ul class="items" id="lesson-list"></ul>
         <p class="empty-state" id="lesson-empty">No lessons yet.</p>
         <h3>Open backlog</h3>
+        <p class="plain">Ideas waiting to be tested.</p>
         <ul class="items" id="backlog-list"></ul>
         <p class="empty-state" id="backlog-empty">Nothing open.</p>
         <figure class="chart">
-          <figcaption><strong class="role-ceo">Predicted against actual ASR change</strong><span id="calibration-count"></span></figcaption>
+          <figcaption><strong class="role-ceo">Predicted against actual ASR change</strong><span id="calibration-count"></span></figcaption><p class="plain">Each dot is a cycle: the CEO's guess against what happened. Dots near the dashed line are good guesses. It means little before about 50 dots.</p>
           <svg class="plot" id="plot-calibration" viewBox="0 0 320 200" role="img" aria-label="Calibration: predicted against actual change in ASR"></svg>
         </figure>
       </div>
@@ -599,6 +620,7 @@
     <div class="panel-head"><h2 id="ops-title">Controls and alerts</h2></div>
     <section aria-labelledby="control-title">
       <h3 id="control-title">Run control</h3>
+      <p class="plain">Pause or stop the run between cycles. Nothing here starts a run on its own.</p>
       <p id="control-state" data-state="">Reading the control flag</p>
       <div class="controls">
         <button type="button" data-action="start">Start</button>
@@ -611,11 +633,13 @@
     </section>
     <section aria-labelledby="anomaly-title">
       <h3 id="anomaly-title">Anomalies</h3>
+      <p class="plain">Anything unexpected, such as an agent asking for a tool it is not allowed.</p>
       <ul class="items" id="anomaly-list"></ul>
       <p class="empty-state" id="anomaly-empty">None in this run.</p>
     </section>
     <section aria-labelledby="notes-title">
       <h3 id="notes-title">Operator notes</h3>
+      <p class="plain">Your instructions to the CEO. Every future briefing includes them.</p>
       <label for="note-text" class="hint">Every briefing in this database shows every note, in all runs, and a note is never edited or cut.</label>
       <textarea id="note-text" maxlength="1000"></textarea>
       <button type="button" id="note-add">Add note</button>
@@ -624,6 +648,7 @@
     </section>
     <section aria-labelledby="usage-title">
       <h3 id="usage-title">Usage this run</h3>
+      <p class="plain">How much model use each agent took. Headroom is the share of the plan's rate limit that was left at the last call.</p>
       <table class="usage" id="usage-table" hidden>
         <thead><tr><th scope="col">Role</th><th scope="col">Calls</th><th scope="col">Tokens in</th><th scope="col">Tokens out</th><th scope="col" title="Share of the plan's rate limit left at the last call">Headroom</th></tr></thead>
         <tbody id="usage-rows"></tbody>

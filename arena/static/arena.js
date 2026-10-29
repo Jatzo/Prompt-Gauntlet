@@ -469,6 +469,7 @@
     const live = cycle.backend === "live";
     view.badge.hidden = !cycle.backend || cycle.backend === "none yet";
     view.badge.textContent = live ? "Live" : "Simulated";
+    view.badge.title = live ? "" : "Stand-in models ran this cycle to test the machinery cheaply. Its numbers are not real results.";
     view.badge.dataset.kind = live ? "live" : "simulated";
     view.redList.replaceChildren();
     view.redTally.textContent = "-";

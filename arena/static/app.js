@@ -38,6 +38,34 @@
   apply();
 })();
 
+// Explain: the plain-English notes beside each section. On until the operator turns it off; the
+// choice is stored, and blocked storage makes it last for this page only.
+(() => {
+  const KEY = "arena-explain";
+  const toggle = document.getElementById("explain-toggle");
+  let on = true;
+  try {
+    on = localStorage.getItem(KEY) !== "off";
+  } catch {
+    // Blocked storage: the notes show.
+  }
+  function apply() {
+    document.documentElement.dataset.explain = on ? "on" : "off";
+    toggle.setAttribute("aria-pressed", String(on));
+    toggle.title = on ? "Plain-English notes are showing. Click to hide them." : "Click to show plain-English notes beside each section.";
+  }
+  toggle.addEventListener("click", () => {
+    on = !on;
+    try {
+      localStorage.setItem(KEY, on ? "on" : "off");
+    } catch {
+      // Blocked storage: the choice holds until the page reloads.
+    }
+    apply();
+  });
+  apply();
+})();
+
 const MAX_ROWS = 2000;
 const rows = document.getElementById("rows");
 const scroller = document.getElementById("scroller");

@@ -280,6 +280,7 @@
     const simulated = points.some((point) => point.backend === "simulated");
     badge.hidden = !points.length;
     badge.textContent = simulated ? "simulated Judge" : "live Judge";
+    badge.title = simulated ? "Stand-in models ran this cycle to test the machinery cheaply. Its numbers are not real results." : "";
     badge.dataset.kind = simulated ? "simulated" : "live";
     // Redraw only when a cycle was added, so the lines draw in once per cycle, not every poll.
     if (!points.length || points.length === drawnPoints) return;
