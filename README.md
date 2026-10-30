@@ -4,12 +4,16 @@ A self-improving prompt-injection defence. A CEO agent, an attacker, a defender 
 other while a live dashboard shows the arms race, and the system writes up every weakness it finds
 and fixes.
 
-I am building this to become a expert at prompt injection, attack and defence both, by building
-the thing that studies it. Most writing on the subject scores a detector on a fixed list of attack
-strings. That says little about security: Nasr, Carlini et al. ("The Attacker Moves Second", 2025)
-show that an attacker who adapts defeats most published injection defences. So this project measures the thing that
-matters, whether the harmful action actually happened, against an attacker that adapts, and it
-reports what it finds honestly, null results included.
+I am building this to become an expert in prompt injection, both attacking and defending.
+
+Most prompt-injection defences are tested by running a detector against a fixed list of attack
+strings and counting how many it catches. That number says little about real security, because an
+attacker who adapts to the defence usually gets past it. Nasr, Carlini et al. show this for most
+published injection defences ("The Attacker Moves Second", 2025).
+
+In Prompt Gauntlet the attacker adapts to the defence, and an attack only counts if the toy assistant
+actually does the harmful thing: leaks the secret, messages the attacker or calls a tool its task did
+not need. I report the results as they come out, including the null ones.
 
 Everything runs against my own toy assistant with a dummy secret. No real systems, credentials or
 third-party targets are attacked.
