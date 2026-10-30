@@ -4,7 +4,7 @@ A self-improving prompt-injection defence. A CEO agent, an attacker, a defender 
 other while a live dashboard shows the arms race, and the system writes up every weakness it finds
 and fixes.
 
-I am building this to become properly good at prompt injection, attack and defence both, by building
+I am building this to become a expert at prompt injection, attack and defence both, by building
 the thing that studies it. Most writing on the subject scores a detector on a fixed list of attack
 strings. That says little about security: Nasr, Carlini et al. ("The Attacker Moves Second", 2025)
 show that an attacker who adapts defeats most published injection defences. So this project measures the thing that
