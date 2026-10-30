@@ -14,6 +14,7 @@ repos:
         pass_filenames: false
       - id: ruff
         name: ruff
-        entry: ruff check
+        # pre-commit names each file, and ruff skips its own exclude list for named files without this.
+        entry: ruff check --force-exclude
         language: system
         types: [python]
