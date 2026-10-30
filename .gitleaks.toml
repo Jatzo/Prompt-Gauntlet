@@ -12,7 +12,9 @@ paths = [
     '''(^|/)\.pytest_cache/''',
     '''(^|/)\.ruff_cache/''',
     '''(^|/)__pycache__/''',
-    # Fetched third-party datasets: attack submissions and public code carry sample keys. The
-    # folder is gitignored and the tracked-files guard refuses any private/ path.
-    '''(^|/)private/data/raw/''',
+    # Private data and run output: fetched datasets carry sample keys, and novelty archives hold
+    # hashes that read as keys. Both folders are gitignored, the tracked-files guard refuses any
+    # path in them, and the commit-history scan still covers everything that reaches git.
+    '''^private/''',
+    '''^runs/''',
 ]
