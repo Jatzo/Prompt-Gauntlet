@@ -75,3 +75,13 @@ batch from another model still stops it as a fault. Three effects follow.
 
 Each run prints how many episodes a refusal ended. Compare `unscorable_episodes` across arms before
 trusting a cycle's end-to-end numbers.
+
+## Labels made while the target saw extra tools
+
+Every call in the checker pass (41,548) and the labelling build was made while the session also
+offered the operator's account connectors (see `docs/debug-log.md`). None of them ran, but their
+definitions were in the model's context, which may have changed how it behaved. The labels were kept
+rather than paid for twice: rerunning the checker would cost about 41,500 calls and 19 hours of
+calls. Calls made from now on come from sessions that offer only the answer tool, and the cache
+does not tell the two apart, so the live baseline's no-defence trials 0 and 1, which it reuses from
+the checker pass, come from the old sessions and its later trials from the new ones.

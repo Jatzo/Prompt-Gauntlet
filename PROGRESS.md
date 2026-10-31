@@ -270,10 +270,27 @@ cybersecurity structure in PLAN.md section 13. No case study has been written ye
 - No house pattern yet for dispatch by name: some modules use a dict registry, others if-chains.
 
 ## Next session
+The project now runs as three parts: the static test of public attacks, the arena, and a recorded
+walk-through of one injection. Direction, order and open decisions: `private/research-direction-plan.md`.
+The checker pass fired 0 of 2,331 public attacks on rungs 0 and 1 (`target_strong`, `target_weak`,
+strict tools); rung 2 started 2026-10-31. Why so few could fire, and the options:
+`private/attack-actionability-plan.md` (option E chosen: no data changes, rung 2 on every pair).
+The checker pass finished on 2026-10-31 at 17:45 UTC: rung 2 fired 649 of 2,331, so 0 confirmed,
+649 on another rung only and 1,682 invalid. Every measured figure is in `docs/run-record.md`.
+
+2026-10-31, live isolation (plan, opus critique and Joe's answer in
+`private/live-tool-exposure-plan.md`): live sessions offered the operator's account connectors, and
+the target tried them 113 times (all refused for want of a grant). Now `--strict-mcp-config`,
+`dontAsk`, the account-connector env lock, and an init-message guard (`ToolExposure`). The Judge ends
+with the CLI (`PR_SET_PDEATHSIG`). Joe chose to keep the cached checker and labelling calls rather
+than pay for them again; recorded in `docs/limitations.md`.
+
 Phase 3, in the order of `private/phase3-remaining-plan.md`. Done: steps A to D, 9 and 10, and
 step 8 (the placebo in mock, and the hill-climb control). Next:
-1. The Phase 2 checker pass (`bash ~/.pgscratch/run t_check.sh`, log `~/.pgscratch/check.log`),
-   then the live baseline, the seal and pre-registration.
+1. With Joe's yes, one `python -m arena.cli live-check` to confirm a live session's init lists only
+   `StructuredOutput` with no MCP server. Then the live baseline (about 120,000 calls at 5 trials;
+   no-defence arm first), the seal and pre-registration. Stop a run with
+   `pkill -f "arena.cli data check"`; the Judge now goes with it.
 2. Step E, the live demo: calibrate a novelty threshold first, since a live-agent run pauses with
    NotCalibrated without one.
 3. Step G: 11 findings and regression tracker, 12 Researcher, 13b review queue (with the
