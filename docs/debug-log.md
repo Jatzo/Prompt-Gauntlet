@@ -85,3 +85,29 @@ died before the call took effect.
 **Regression test.** `tests/test_judge.py::test_a_killed_cli_takes_its_judge_with_it` stands in a
 Judge that ignores stdin, as a busy one does, kills the CLI and checks the Judge goes too. It fails
 with the signal removed.
+
+## A smoke test overwrote the real train split
+
+**Phase 3, README.**
+
+**What broke.** Every `data build` writes `train.jsonl` to its private folder, and a synthetic build
+also writes `novelty.json`; the folder defaults to the real `private/data/` unless `--private-dir`
+is passed. Smoke-testing the README quick start on 30 October, `data build --synthetic --large
+--judge-dir /tmp/pg-judge` sent the Judge files to `/tmp` but replaced the real train split with
+240 synthetic items and left a synthetic novelty threshold, which a live run would have trusted.
+
+**How it was found.** Filling in `DATASETS.md` the next day: counting items by source, the train file
+held only synthetic ids, and its timestamp matched the smoke test to the minute.
+
+**The fix.** Recovered first: the real build was rerun into a scratch folder from the cached labels,
+with stand-in labellers that refuse any model call, and all 14 Judge files it wrote matched the
+real ones byte for byte, so its train split (854 attacks, 5,515 benign) is the original and went
+back in place. Then a synthetic build now refuses, before writing anything, if its private folder is
+the real `private/data/` or its Judge folder is inside `private/`. The README quick start sets both
+scratch folders.
+
+**Regression tests.**
+- `tests/test_cli.py::test_a_synthetic_build_refuses_to_write_over_real_data` (the private folder and
+  the Judge folder), with the repo's private folder redirected so a broken guard could only touch a
+  temporary folder. Both cases fail with the guard removed.
+- `tests/test_cli.py::test_a_synthetic_build_with_scratch_folders_writes_only_there`.

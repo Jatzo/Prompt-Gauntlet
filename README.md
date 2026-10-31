@@ -135,11 +135,15 @@ models; nothing calls a live model unless you set `ARENA_ALLOW_LIVE=1` and pass 
 python -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
 make test-phase2      # lint, tracked-files guard, the test suite, secret scan
 
+# Scratch folders, so nothing touches the real data in private/
+export ARENA_JUDGE_DIR=/tmp/pg-judge ARENA_PRIVATE_DATA=/tmp/pg-private
+
 # A synthetic dataset, the baseline table on it, then a seeded battle between simulated agents
-python -m arena.cli data build --synthetic --large --judge-dir /tmp/pg-judge
-python -m arena.cli baseline --backend mock --judge-dir /tmp/pg-judge
+python -m arena.cli data build --synthetic --large \
+  --judge-dir "$ARENA_JUDGE_DIR" --private-dir "$ARENA_PRIVATE_DATA"
+python -m arena.cli baseline --backend mock --judge-dir "$ARENA_JUDGE_DIR"
 python -m arena.cli control start
-ARENA_JUDGE_DIR=/tmp/pg-judge python -m arena.cli run --backend sim --cycles 8
+python -m arena.cli run --backend sim --cycles 8
 make dashboard        # the dashboard on localhost, replaying those cycles
 ```
 

@@ -117,6 +117,36 @@ def test_data_build_writes_the_synthetic_dataset_and_reports_its_shortfalls(tmp_
     assert "Short: dev has" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("target", ["private-dir", "judge-dir"])
+def test_a_synthetic_build_refuses_to_write_over_real_data(tmp_path, capsys, monkeypatch, target):
+    # The repo's private folder is redirected, so a broken guard could only touch tmp_path.
+    real = tmp_path / "repo-private"
+    (real / "data").mkdir(parents=True)
+    monkeypatch.setattr(cli, "_repo_private", lambda: real)
+    judge_dir = real / "judge" if target == "judge-dir" else tmp_path / "judge"
+    private_dir = real / "data" if target == "private-dir" else tmp_path / "private"
+    code = cli.main(
+        ["data", "build", "--synthetic", "--large", "--judge-dir", str(judge_dir)]
+        + ["--private-dir", str(private_dir)]
+    )
+    assert code == 1
+    assert "synthetic build" in capsys.readouterr().err
+    # Nothing was written anywhere: not the real folder, not the Judge folder, not train.
+    assert not any((real / "data").iterdir())
+    assert not judge_dir.exists()
+    assert not (private_dir / "train.jsonl").exists()
+
+
+def test_a_synthetic_build_with_scratch_folders_writes_only_there(tmp_path, monkeypatch):
+    real = tmp_path / "repo-private"
+    monkeypatch.setattr(cli, "_repo_private", lambda: real)
+    judge_dir, private_dir = tmp_path / "judge", tmp_path / "scratch-private"
+    args = ["data", "build", "--synthetic", "--large", "--judge-dir", str(judge_dir)]
+    cli.main([*args, "--private-dir", str(private_dir)])
+    assert (private_dir / "train.jsonl").exists() and (judge_dir / "partitions").exists()
+    assert not real.exists()
+
+
 def test_run_commits_one_cycle_after_another(db_path, capsys, monkeypatch):
     monkeypatch.setattr(cli, "phase1_mock_script", defender_only_script)
     cli.main(["--db", db_path, "control", "start"])

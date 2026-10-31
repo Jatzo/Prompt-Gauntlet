@@ -196,6 +196,32 @@ def cmd_data_check(args) -> int:
     return ExitCode.OK
 
 
+def _repo_private() -> Path:
+    """The repo's own private folder, where the real build's data lives."""
+    return REPO_ROOT / "private"
+
+
+def _synthetic_onto_real_data(judge_dir: Path, private_dir: Path) -> str | None:
+    """Why a synthetic build may not write where it is pointed, or None.
+
+    A synthetic build writes train.jsonl and novelty.json to its private folder, which defaults to
+    the real one; a smoke test once overwrote the real train split that way.
+    """
+    real = _repo_private()
+    if private_dir.resolve() == (real / "data").resolve():
+        return (
+            "A synthetic build would overwrite the real train split in private/data. Pass "
+            "--private-dir with a scratch folder, and set ARENA_PRIVATE_DATA to it for later "
+            "commands."
+        )
+    if judge_dir.resolve().is_relative_to(real.resolve()):
+        return (
+            "A synthetic build may not write a Judge folder inside private/, where real data "
+            "lives. Pass a --judge-dir outside it, such as /tmp/pg-judge."
+        )
+    return None
+
+
 def cmd_data_build(args) -> int:
     """Build the Judge directory from the real sources, or from the synthetic corpus, which is never
     a valid benchmark and so must be asked for by name."""
@@ -215,6 +241,11 @@ def cmd_data_build(args) -> int:
         _print_feasibility(feasibility)
         print("Plan only: nothing was labelled or written. Contested items are not known yet.")
         return ExitCode.OK if feasibility.ok else ExitCode.NEEDS_OPERATOR
+    if args.synthetic:
+        refused = _synthetic_onto_real_data(args.judge_dir, private_dir)
+        if refused:
+            print(refused, file=sys.stderr)
+            return ExitCode.FAILED
     if args.real:
         try:
             claude, open_weights = _labellers()
