@@ -9,17 +9,27 @@ from dataclasses import dataclass, field
 import pytest
 
 from arena import llm
-from arena.anomaly import UsageLimitReached
+from arena.anomaly import ToolExposure, UsageLimitReached
 from arena.config import REPO_ROOT
 from arena.schemas import DetectorResult
 
 TOOL = {"name": "report_score", "input_schema": DetectorResult.model_json_schema()}
 REQUEST = llm.LLMRequest(tool="report_score", tools=(TOOL,), system="score it", user="text")
 VALID = {"score": 10.0, "label": "benign", "reasons": ["plain text"]}
+# What a locked-down session reports about itself before the model answers.
+CLEAN_INIT = {
+    "tools": ["StructuredOutput"],
+    "mcp_servers": [],
+    "plugins": [],
+    "permissionMode": "dontAsk",
+    "agents": ["general-purpose"],
+    "skills": ["review"],
+}
 
 
-def fake_sdk(script):
-    """A stand-in claude_agent_sdk whose query() yields the scripted messages."""
+def fake_sdk(script, init=CLEAN_INIT):
+    """A stand-in claude_agent_sdk whose query() yields an init message (unless `init` is None),
+    then the scripted messages."""
 
     @dataclass
     class RateLimitInfo:
@@ -56,10 +66,16 @@ def fake_sdk(script):
         is_error: bool = False
         api_error_status: int | None = None
 
+    @dataclass
+    class SystemMessage:
+        subtype: str
+        data: dict
+
     class ResultError(Exception):
         pass
 
     sdk = types.ModuleType("claude_agent_sdk")
+    sdk.SystemMessage = SystemMessage
     sdk.RateLimitInfo, sdk.RateLimitEvent = RateLimitInfo, RateLimitEvent
     sdk.ToolUseBlock, sdk.TextBlock = ToolUseBlock, TextBlock
     sdk.AssistantMessage, sdk.ResultMessage, sdk.ResultError = (
@@ -74,6 +90,8 @@ def fake_sdk(script):
         return kwargs
 
     async def query(*, prompt, options):
+        if init is not None:
+            yield SystemMessage("init", init)
         for message in script(sdk):
             if isinstance(message, Exception):
                 raise message
@@ -88,8 +106,8 @@ def live(monkeypatch):
     """A LiveBackend over the fake SDK. The pytest refusal is lifted for this object only, and the
     fake module is what `import claude_agent_sdk` finds, so no real call can happen."""
 
-    def build(script):
-        sdk = fake_sdk(script)
+    def build(script, init=CLEAN_INIT):
+        sdk = fake_sdk(script, init)
         monkeypatch.setitem(sys.modules, "claude_agent_sdk", sdk)
         monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
         monkeypatch.setenv("ARENA_ALLOW_LIVE", "1")
@@ -152,8 +170,73 @@ def test_a_reply_is_mapped_with_the_reported_model_and_every_input_token(live):
     )
     [options] = sdk.options
     assert options["tools"] == [] and options["setting_sources"] == []
+    assert options["strict_mcp_config"] is True and options["permission_mode"] == "dontAsk"
+    assert options["env"]["ENABLE_CLAUDEAI_MCP_SERVERS"] == "false"
     assert options["max_turns"] == 1 and options["system_prompt"] == "score it"
     assert "additionalProperties" not in json.dumps(options["output_format"]["schema"])
+
+
+def answer(sdk):
+    return [
+        sdk.AssistantMessage(model="claude-haiku-5-5"),
+        sdk.ResultMessage(structured_output=VALID),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("change", "named"),
+    [
+        ({"tools": ["StructuredOutput", "mcp__drive__search_files"]}, "mcp__drive__search_files"),
+        ({"mcp_servers": [{"name": "drive", "status": "connected"}]}, "drive"),
+        ({"plugins": [{"name": "helper", "path": "/x"}]}, "helper"),
+        ({"permissionMode": "default"}, "default"),
+    ],
+    ids=["connector-tool", "mcp-server", "plugin", "permission-mode"],
+)
+def test_a_session_offering_more_than_its_answer_tool_stops_before_the_reply(live, change, named):
+    backend, _ = live(answer, init=CLEAN_INIT | change)
+    with pytest.raises(ToolExposure, match=named):
+        complete(backend)
+
+
+def test_a_session_that_sends_no_init_stops_rather_than_trusting_its_tools(live):
+    backend, _ = live(answer, init=None)
+    with pytest.raises(ToolExposure, match="no init"):
+        complete(backend)
+
+
+def test_a_rate_limit_event_before_the_init_is_not_a_missing_init(live):
+    def script(sdk):
+        early = sdk.RateLimitEvent(sdk.RateLimitInfo(status="allowed"))
+        return [early, sdk.SystemMessage("init", CLEAN_INIT), *answer(sdk)]
+
+    backend, _ = live(script, init=None)
+    assert json.loads(complete(backend).raw_output) == VALID
+
+
+def test_a_clean_session_answers_whatever_agents_and_skills_it_lists(live):
+    backend, _ = live(answer)
+    assert json.loads(complete(backend).raw_output) == VALID
+
+
+def test_the_cli_command_carries_every_lock(monkeypatch):
+    """The real SDK turns the options into CLI flags; build its command without starting it."""
+    transport = pytest.importorskip("claude_agent_sdk._internal.transport.subprocess_cli")
+    import claude_agent_sdk
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ARENA_ALLOW_LIVE", "1")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    options = llm.LiveBackend()._options("claude-haiku-5-5", REQUEST)
+    assert isinstance(options, claude_agent_sdk.ClaudeAgentOptions)
+    cli = transport.SubprocessCLITransport(prompt="text", options=options)
+    # connect() would find the CLI and start it; the command needs only a path.
+    cli._cli_path = "claude"
+    command = cli._build_command()
+    assert "--strict-mcp-config" in command
+    assert command[command.index("--permission-mode") + 1] == "dontAsk"
+    assert command[command.index("--tools") + 1] == ""
+    assert options.env["ENABLE_CLAUDEAI_MCP_SERVERS"] == "false"
 
 
 def test_an_unknown_field_reaches_validation_and_is_a_hijack(live):

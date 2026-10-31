@@ -1,7 +1,12 @@
 import json
 import re
 import shutil
+import signal
 import sqlite3
+import subprocess
+import sys
+import time
+from pathlib import Path
 
 import pydantic
 import pytest
@@ -210,3 +215,43 @@ def test_a_replayed_cycle_with_the_attacker_commits(which, conn, built_judge, tm
     assert outcome.status == "committed", outcome.detail
     kinds = [row[0] for row in conn.execute("SELECT kind FROM memory_episodic ORDER BY id")]
     assert "attack_batch" in kinds
+
+
+def running(pid: int) -> bool:
+    """True while the process exists and is not a zombie waiting to be reaped."""
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().split()[2] != "Z"
+    except FileNotFoundError:
+        return False
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="prctl is Linux only")
+def test_a_killed_cli_takes_its_judge_with_it(tmp_path):
+    """A killed CLI never runs close(), and a Judge busy measuring never reads the closed stdin
+    that would end it, so it went on making live calls. The stand-in Judge is busy the same way: it
+    ignores stdin and keeps running."""
+    busy = tmp_path / "busy-judge"
+    busy.write_text("#!/bin/sh\nexec sleep 60\n")
+    busy.chmod(0o755)
+    parent_code = (
+        "import sys, time\n"
+        "sys.executable = sys.argv[1]\n"
+        "from arena.judge_client import JudgeClient\n"
+        "judge = JudgeClient()\n"
+        "print(judge._process.pid, flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    parent = subprocess.Popen(
+        [sys.executable, "-c", parent_code, str(busy)],
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    judge = int(parent.stdout.readline())
+    assert running(judge)
+    parent.send_signal(signal.SIGTERM)
+    parent.wait(timeout=10)
+    deadline = time.monotonic() + 10
+    while running(judge) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not running(judge)

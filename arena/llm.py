@@ -45,6 +45,7 @@ from arena.anomaly import (
     HijackDetected,
     ModelIdMismatch,
     SchemaFailureSpike,
+    ToolExposure,
     UsageCapReached,
     UsageLimitReached,
 )
@@ -676,6 +677,12 @@ class LiveBackend:
     the tool the request asked for; a call to any other tool keeps that tool's name, so the
     tool-name check still catches it. The SDK cannot set a temperature, so
     `LLMRequest.temperature` has no effect here.
+
+    Attack text reaches these models, so the session must offer nothing outside the toy app: no MCP
+    server from any source (the operator's account connectors included), no plugin, and a permission
+    mode that denies any tool use not approved in advance. The session's own init message is
+    checked before anything else is read, and a session that lists more than the answer tool, or
+    sends no init at all, stops the run with `ToolExposure`.
     """
 
     name = "live"
@@ -719,13 +726,33 @@ class LiveBackend:
             model=model_id,
             tools=[],
             setting_sources=[],
+            # No MCP server but those passed here, and none are.
+            strict_mcp_config=True,
+            permission_mode="dontAsk",
             max_turns=1,
             output_format={"type": "json_schema", "schema": _open_schema(tool["input_schema"])},
             env={
                 "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
                 "CLAUDE_CODE_MAX_RETRIES": self._CLI_RETRIES,
+                # The account's own connectors, which the strict flag's documentation does not name.
+                "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
             },
         )
+
+    def _check_isolation(self, init: dict) -> None:
+        """The init message must offer the answer tool and nothing else."""
+        extra = sorted(set(init.get("tools") or []) - {self._SDK_TOOL})
+        servers, plugins = _names(init.get("mcp_servers")), _names(init.get("plugins"))
+        mode = init.get("permissionMode")
+        if extra or servers or plugins or mode != "dontAsk":
+            raise ToolExposure(
+                f"The live session offered more than its answer tool: tools {extra}, MCP servers "
+                f"{servers}, plugins {plugins}, permission mode {mode}. The reply was not used.",
+                tools=extra,
+                mcp_servers=servers,
+                plugins=plugins,
+                permission_mode=mode,
+            )
 
     def _limit(self, detail: str, **extra) -> UsageLimitReached:
         return UsageLimitReached(f"The plan refused the call: {detail}", **extra)
@@ -735,10 +762,24 @@ class LiveBackend:
         reported, headroom, tool = model_id, None, request.tool
         attempt, raw = "", ""
         usage: dict = {}
+        initialised = False
         try:
             async for message in sdk.query(
                 prompt=request.user, options=self._options(model_id, request)
             ):
+                if isinstance(message, sdk.SystemMessage):
+                    if message.subtype == "init":
+                        # Raising here leaves the query, which closes the CLI before it acts.
+                        self._check_isolation(message.data or {})
+                        initialised = True
+                    continue
+                if not initialised and isinstance(
+                    message, (sdk.AssistantMessage, sdk.ResultMessage)
+                ):
+                    raise ToolExposure(
+                        "The live session sent no init message first, so the tools it offered are "
+                        "unknown. The reply was not used."
+                    )
                 if isinstance(message, sdk.RateLimitEvent):
                     info = message.rate_limit_info
                     if info.status == "rejected":
@@ -828,6 +869,13 @@ class LiveBackend:
         removed."""
         if self._REFUSAL.search(text):
             raise ContentRefused(text[:200])
+
+
+def _names(items: list | None) -> list[str]:
+    """Names from an init message's list of servers or plugins, entries as dicts or plain names."""
+    return sorted(
+        str(item.get("name", item)) if isinstance(item, dict) else str(item) for item in items or []
+    )
 
 
 def _open_schema(schema: dict) -> dict:

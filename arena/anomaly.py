@@ -27,6 +27,12 @@ class ModelIdMismatch(Anomaly):
     kind = "model_id_mismatch"
 
 
+class ToolExposure(Anomaly):
+    """A live session offered the model a tool, MCP server or plugin outside the toy app."""
+
+    kind = "tool_exposure"
+
+
 class SchemaFailureSpike(Anomaly):
     kind = "schema_failure_spike"
 

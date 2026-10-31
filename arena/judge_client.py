@@ -5,12 +5,15 @@ validated against a schema that forbids extra fields, so a per-sample field coul
 even if the Judge sent one.
 """
 
+import ctypes
 import json
 import os
 import queue
+import signal
 import subprocess
 import sys
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
@@ -30,6 +33,29 @@ from arena.schemas import (
     QueryRequest,
     ValidateBatchRequest,
 )
+
+# Linux's prctl option that sends the child a signal when the thread that started it ends.
+_PR_SET_PDEATHSIG = 1
+
+
+def _dies_with_parent() -> Callable[[], None] | None:
+    """A start hook that ends the Judge when this process ends, however it ends.
+
+    A killed CLI never runs `close()`, and a Judge left behind keeps making live calls. prctl is
+    looked up here, in the parent, so the child only calls it. If the parent died before the call
+    took effect, the child exits at once.
+    """
+    if not sys.platform.startswith("linux"):
+        return None
+    prctl = ctypes.CDLL(None, use_errno=True).prctl
+    parent = os.getpid()
+
+    def hook() -> None:
+        prctl(_PR_SET_PDEATHSIG, signal.SIGTERM)
+        if os.getppid() != parent:
+            os._exit(1)
+
+    return hook
 
 
 class JudgeError(Anomaly):
@@ -59,6 +85,8 @@ class JudgeClient:
         env = dict(os.environ)
         if judge_dir is not None:
             env["ARENA_JUDGE_DIR"] = str(judge_dir)
+        # Build a JudgeClient on the main thread: the Judge is signalled when the thread that
+        # started it ends, so one started from a worker thread would die with that thread.
         self._process = subprocess.Popen(
             [sys.executable, "-m", "arena.judge", "--root", str(root)],
             stdin=subprocess.PIPE,
@@ -66,6 +94,7 @@ class JudgeClient:
             cwd=REPO_ROOT,
             env=env,
             text=True,
+            preexec_fn=_dies_with_parent(),
         )
         self._timeout = timeout_seconds
         self._next_id = 0
