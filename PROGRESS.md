@@ -285,6 +285,13 @@ the target tried them 113 times (all refused for want of a grant). Now `--strict
 with the CLI (`PR_SET_PDEATHSIG`). Joe chose to keep the cached checker and labelling calls rather
 than pay for them again; recorded in `docs/limitations.md`.
 
+2026-10-31, resources (Joe: "anything that helps this project, add it"; plan and critique in
+`private/resources-plan.md`): ten checked entries in `docs/references.md` (15 to 24),
+`docs/resources.md` for tools, data, designs and practice ranges (not used, not citable), and
+`DATASETS.md` filled in from the real build. A synthetic build now refuses to write into
+`private/data/` or a Judge folder inside `private/`, after a README smoke test overwrote the real
+train split; it was recovered byte for byte from cached labels (`docs/debug-log.md`).
+
 Phase 3, in the order of `private/phase3-remaining-plan.md`. Done: steps A to D, 9 and 10, and
 step 8 (the placebo in mock, and the hill-climb control). Next:
 1. With Joe's yes, one `python -m arena.cli live-check` to confirm a live session's init lists only
