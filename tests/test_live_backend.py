@@ -20,7 +20,8 @@ VALID = {"score": 10.0, "label": "benign", "reasons": ["plain text"]}
 CLEAN_INIT = {
     "tools": ["StructuredOutput"],
     "mcp_servers": [],
-    "plugins": [],
+    # As a real session reports them: shipped with the CLI, and adding no tool.
+    "plugins": [{"name": "cc-plugin-telemetry", "path": "builtin"}],
     "permissionMode": "dontAsk",
     "agents": ["general-purpose"],
     "skills": ["review"],
@@ -189,9 +190,10 @@ def answer(sdk):
         ({"tools": ["StructuredOutput", "mcp__drive__search_files"]}, "mcp__drive__search_files"),
         ({"mcp_servers": [{"name": "drive", "status": "connected"}]}, "drive"),
         ({"plugins": [{"name": "helper", "path": "/x"}]}, "helper"),
+        ({"plugins": [{"name": "cc-plugin-telemetry", "path": "builtin"}, "helper"]}, "helper"),
         ({"permissionMode": "default"}, "default"),
     ],
-    ids=["connector-tool", "mcp-server", "plugin", "permission-mode"],
+    ids=["connector-tool", "mcp-server", "plugin", "plugin-beside-a-built-in", "permission-mode"],
 )
 def test_a_session_offering_more_than_its_answer_tool_stops_before_the_reply(live, change, named):
     backend, _ = live(answer, init=CLEAN_INIT | change)
@@ -214,7 +216,7 @@ def test_a_rate_limit_event_before_the_init_is_not_a_missing_init(live):
     assert json.loads(complete(backend).raw_output) == VALID
 
 
-def test_a_clean_session_answers_whatever_agents_and_skills_it_lists(live):
+def test_a_clean_session_answers_whatever_built_ins_agents_and_skills_it_lists(live):
     backend, _ = live(answer)
     assert json.loads(complete(backend).raw_output) == VALID
 

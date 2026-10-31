@@ -52,8 +52,11 @@ moved either way, and the harness had rejected each of those outputs as a hijack
 **The fix.** The session now loads no MCP server from any source (`--strict-mcp-config`, plus the
 setting that turns off account connectors) and runs in `dontAsk` mode, which denies any tool use not
 approved in advance. The SDK's init message, which lists the session's tools, MCP servers, plugins
-and permission mode, is checked before anything else is read: anything beyond the answer tool, or no
-init at all, raises `ToolExposure` and stops the run.
+and permission mode, is checked before anything else is read: anything beyond the answer tool, a
+plugin not built into the CLI, or no init at all, raises `ToolExposure` and stops the run. One live
+call after the fix showed the answer tool alone, no MCP server, `dontAsk`, and three plugins that
+ship with the CLI and add no tool; those built-in plugins are let through, since the CLI cannot turn
+them off.
 
 **Regression tests.**
 - `tests/test_live_backend.py::test_a_session_offering_more_than_its_answer_tool_stops_before_the_reply`

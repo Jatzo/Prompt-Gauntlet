@@ -679,10 +679,10 @@ class LiveBackend:
     `LLMRequest.temperature` has no effect here.
 
     Attack text reaches these models, so the session must offer nothing outside the toy app: no MCP
-    server from any source (the operator's account connectors included), no plugin, and a permission
-    mode that denies any tool use not approved in advance. The session's own init message is
-    checked before anything else is read, and a session that lists more than the answer tool, or
-    sends no init at all, stops the run with `ToolExposure`.
+    server from any source (the operator's account connectors included), no plugin but those built
+    into the CLI, and a permission mode that denies any tool use not approved in advance. The
+    session's own init message is checked before anything else is read, and a session that lists
+    more than the answer tool, or sends no init at all, stops the run with `ToolExposure`.
     """
 
     name = "live"
@@ -740,9 +740,18 @@ class LiveBackend:
         )
 
     def _check_isolation(self, init: dict) -> None:
-        """The init message must offer the answer tool and nothing else."""
+        """The init message must offer the answer tool and nothing else.
+
+        Plugins built into the CLI load in every session and cannot be turned off; they add no tool
+        here, which the tools list shows. Any other plugin is refused.
+        """
         extra = sorted(set(init.get("tools") or []) - {self._SDK_TOOL})
-        servers, plugins = _names(init.get("mcp_servers")), _names(init.get("plugins"))
+        added = [
+            plugin
+            for plugin in init.get("plugins") or []
+            if not (isinstance(plugin, dict) and plugin.get("path") == "builtin")
+        ]
+        servers, plugins = _names(init.get("mcp_servers")), _names(added)
         mode = init.get("permissionMode")
         if extra or servers or plugins or mode != "dontAsk":
             raise ToolExposure(
