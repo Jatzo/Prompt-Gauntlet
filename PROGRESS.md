@@ -294,10 +294,19 @@ train split; it was recovered byte for byte from cached labels (`docs/debug-log.
 
 Phase 3, in the order of `private/phase3-remaining-plan.md`. Done: steps A to D, 9 and 10, and
 step 8 (the placebo in mock, and the hill-climb control). Next:
-1. With Joe's yes, one `python -m arena.cli live-check` to confirm a live session's init lists only
-   `StructuredOutput` with no MCP server. Then the live baseline (about 120,000 calls at 5 trials;
-   no-defence arm first), the seal and pre-registration. Stop a run with
-   `pkill -f "arena.cli data check"`; the Judge now goes with it.
+1. The live baseline is running (started 2026-11-01 11:00 UTC, `--trials 5`, about 120,000 calls,
+   40 to 65 hours), with a watcher that resumes it after a network drop. Log
+   `~/.pgscratch/baseline.log`, watcher status `~/.pgscratch/watch_baseline.log`. Stop both with
+   `pkill -f watch_baseline; pkill -f "arena.cli baseline"`; the Judge goes with the CLI. After it:
+   the seal and pre-registration. The first start stopped at 13:59 UTC (exit 1): the safeguards
+   refused one detector call, and the detector, unlike the target, took that as a fault. A refused
+   detector text is now one unscorable item (`private/detector-refusal-plan.md`), and the baseline
+   was restarted from the cache.
+
+2026-11-01, Joe's answers before the baseline: every paired attack stays in the injection suite
+(option C declined), ASR is over all pairs, and the goal-less share and the strict-rung cap are in
+`docs/limitations.md`. Dev's floor of 1,000 attacks counts labelled attacks. One `live-check`
+passed first: 20 sessions over 10 roles, every model matched, the init guard raised nothing.
 2. Step E, the live demo: calibrate a novelty threshold first, since a live-agent run pauses with
    NotCalibrated without one.
 3. Step G: 11 findings and regression tracker, 12 Researcher, 13b review queue (with the

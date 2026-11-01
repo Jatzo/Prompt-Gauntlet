@@ -103,6 +103,9 @@ class Scorer:
             self.cache,
             backend=self.backend,
             config=self.settings,
+            # A text the provider's safeguards refuse is one unscorable item, which counts against
+            # the defence, rather than a fault that stops a whole measurement.
+            refusals_are_items=True,
         )
         for index, output in zip(pending, outputs, strict=True):
             if isinstance(output, llm.Unscorable):
