@@ -83,7 +83,7 @@ trusting a cycle's end-to-end numbers.
 ## Attacks the toy app cannot show
 
 Every paired attack stays in the injection suite, and ASR is reported over all pairs. Two things
-hold that figure down, and neither is the defence.
+outside the defence hold that figure down.
 
 - About a third of the attacks ask for something the toy app has no way to show: code, an answer in
   another language, or an action with no tool behind it. Of 1,701 pairs in dev, ablation_eval and

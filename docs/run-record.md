@@ -122,9 +122,10 @@ played replayed in seconds.
 
 ## Tests and CI
 
-- The suite has 1,192 tests and runs in about 2 minutes (112 to 132 seconds locally). None make a
-  live call.
-- 11 CI runs from 26 to 30 October, all green, each between 1 and 7 minutes.
+- The suite has 1,206 tests (`make ci` on 3 November) and runs in about 2 to 3 minutes locally (115
+  to 170 seconds). None make a live call.
+- 11 CI runs from 26 to 30 October, all green, each between 1 and 7 minutes. The last push,
+  eb80069, passed CI (run 41241741310).
 
 ## Estimates (not measured)
 

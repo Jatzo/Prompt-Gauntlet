@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 240" width="960" height="240" role="img" aria-label="Plan of action: now, more accurate, fix findings, then">
+<title>Plan of action: now, more accurate, fix findings, then</title>
+<defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5c5672"/></marker></defs>
+<rect width="960" height="240" rx="12" fill="#ffffff"/>
+<text x="32" y="44" fill="#1d1730" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" text-anchor="start" opacity="1.0">Plan of action</text>
+<text x="32" y="66" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="13" font-weight="400" text-anchor="start" opacity="1.0">In order. Nothing in the later columns is reported before the pre-registration is committed.</text>
+<rect x="32" y="92" width="210" height="128" rx="8" fill="#f5f3fa" stroke="#1f7a58" stroke-width="1.5"/>
+<rect x="32" y="92" width="4" height="128" rx="2" fill="#1f7a58"/>
+<text x="48" y="116" fill="#1d1730" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Now</text>
+<circle cx="52" cy="136" r="3" fill="#1f7a58"/>
+<text x="62" y="140" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Live baseline, 5 trials</text>
+<circle cx="52" cy="158" r="3" fill="#1f7a58"/>
+<text x="62" y="162" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Seal the test set</text>
+<circle cx="52" cy="180" r="3" fill="#1f7a58"/>
+<text x="62" y="184" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Commit the pre-registration</text>
+<line x1="242" y1="112" x2="262" y2="112" stroke="#5c5672" stroke-width="1.5" marker-end="url(#head)"/>
+<rect x="262" y="92" width="210" height="128" rx="8" fill="#f5f3fa" stroke="#1d6bb3" stroke-width="1.5"/>
+<rect x="262" y="92" width="4" height="128" rx="2" fill="#1d6bb3"/>
+<text x="278" y="116" fill="#1d1730" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">More accurate</text>
+<circle cx="282" cy="136" r="3" fill="#1d6bb3"/>
+<text x="292" y="140" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Local weak target (rung 3)</text>
+<circle cx="282" cy="158" r="3" fill="#1d6bb3"/>
+<text x="292" y="162" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Shortcut probe on real data</text>
+<circle cx="282" cy="180" r="3" fill="#1d6bb3"/>
+<text x="292" y="184" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">More trials where CIs are wide</text>
+<circle cx="282" cy="202" r="3" fill="#1d6bb3"/>
+<text x="292" y="206" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Caveat kind/impact labels</text>
+<line x1="472" y1="112" x2="492" y2="112" stroke="#5c5672" stroke-width="1.5" marker-end="url(#head)"/>
+<rect x="492" y="92" width="210" height="128" rx="8" fill="#f5f3fa" stroke="#8a5d00" stroke-width="1.5"/>
+<rect x="492" y="92" width="4" height="128" rx="2" fill="#8a5d00"/>
+<text x="508" y="116" fill="#1d1730" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Fix findings</text>
+<circle cx="512" cy="136" r="3" fill="#8a5d00"/>
+<text x="522" y="140" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Runner lock, abandon-cycle</text>
+<circle cx="512" cy="158" r="3" fill="#8a5d00"/>
+<text x="522" y="162" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Unscorable-attack rule</text>
+<circle cx="512" cy="180" r="3" fill="#8a5d00"/>
+<text x="522" y="184" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Pair refusals across arms</text>
+<circle cx="512" cy="202" r="3" fill="#8a5d00"/>
+<text x="522" y="206" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Calibrate novelty threshold</text>
+<line x1="702" y1="112" x2="722" y2="112" stroke="#5c5672" stroke-width="1.5" marker-end="url(#head)"/>
+<rect x="722" y="92" width="210" height="128" rx="8" fill="#f5f3fa" stroke="#c2362f" stroke-width="1.5"/>
+<rect x="722" y="92" width="4" height="128" rx="2" fill="#c2362f"/>
+<text x="738" y="116" fill="#1d1730" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Then</text>
+<circle cx="742" cy="136" r="3" fill="#c2362f"/>
+<text x="752" y="140" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Live arena runs</text>
+<circle cx="742" cy="158" r="3" fill="#c2362f"/>
+<text x="752" y="162" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Adaptive attacker, T2 and T3</text>
+<circle cx="742" cy="180" r="3" fill="#c2362f"/>
+<text x="752" y="184" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Memory ablation</text>
+<circle cx="742" cy="202" r="3" fill="#c2362f"/>
+<text x="752" y="206" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Case studies</text>
+</svg>

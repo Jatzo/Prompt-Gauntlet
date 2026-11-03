@@ -301,12 +301,24 @@ step 8 (the placebo in mock, and the hill-climb control). Next:
    the seal and pre-registration. The first start stopped at 13:59 UTC (exit 1): the safeguards
    refused one detector call, and the detector, unlike the target, took that as a fault. A refused
    detector text is now one unscorable item (`private/detector-refusal-plan.md`), and the baseline
-   was restarted from the cache.
+   was restarted from the cache. The whole baseline is one Judge `measure` call, and the CLI waits
+   at most `measure_timeout_seconds` (12 hours) for it, so each start stops itself after 12 hours
+   with exit 1. Joe chose to keep the limit: start it each morning with
+   `bash ~/.pgscratch/start_baseline.sh`, and it stops by itself about 12 hours later. By
+   2026-11-02 23:36 it had stored about 43,800 new calls of an estimated 120,000.
 
 2026-11-01, Joe's answers before the baseline: every paired attack stays in the injection suite
 (option C declined), ASR is over all pairs, and the goal-less share and the strict-rung cap are in
 `docs/limitations.md`. Dev's floor of 1,000 attacks counts labelled attacks. One `live-check`
 passed first: 20 sessions over 10 roles, every model matched, the init guard raised nothing.
+
+2026-11-03, README as a research write-up (plan, opus critique and Joe's answers in
+`private/readme-plan.md`): abstract, threat model, architecture, retrieval, measurement, sourced
+results, findings, trade-offs and a plan of action, with figures in `docs/figures/` (light and dark
+SVGs, and a GIF of the arena replaying a seeded sim run, labelled simulated). Joe chose to name the
+target models. The figures come from `~/.pgscratch/make_figures.py`; the GIF from a Playwright
+recording on the Windows side, since WSL's Chromium lacks system libraries. Refill the results
+section when the baseline finishes.
 2. Step E, the live demo: calibrate a novelty threshold first, since a live-agent run pauses with
    NotCalibrated without one.
 3. Step G: 11 findings and regression tracker, 12 Researcher, 13b review queue (with the

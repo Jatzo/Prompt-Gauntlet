@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="960" height="560" role="img" aria-label="Prompt Gauntlet architecture: agents, memory and the separate Judge process">
+<title>Prompt Gauntlet architecture: agents, memory and the separate Judge process</title>
+<defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#a49cb8"/></marker></defs>
+<rect width="960" height="560" rx="12" fill="#0c0916"/>
+<text x="32" y="44" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" text-anchor="start" opacity="1.0">Architecture</text>
+<text x="32" y="66" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="13" font-weight="400" text-anchor="start" opacity="1.0">Agents propose. A separate Judge process measures. Only aggregates cross back.</text>
+<rect x="32" y="96" width="260" height="120" rx="8" fill="#1a1230" stroke="#c3abe8" stroke-width="1.5"/>
+<rect x="32" y="96" width="4" height="120" rx="2" fill="#c3abe8"/>
+<text x="48" y="120" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">CEO agent</text>
+<text x="48" y="140" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">reads a code-built briefing</text>
+<text x="48" y="157" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">picks a focus from a shortlist</text>
+<text x="48" y="174" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">writes hypothesis + prediction</text>
+<text x="280" y="118" fill="#c3abe8" font-family="'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace" font-size="11" font-weight="600" text-anchor="end" opacity="1.0">OPUS 5.5</text>
+<rect x="32" y="232" width="260" height="92" rx="8" fill="#1a1230" stroke="#ff7b72" stroke-width="1.5"/>
+<rect x="32" y="232" width="4" height="92" rx="2" fill="#ff7b72"/>
+<text x="48" y="256" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Attacker</text>
+<text x="48" y="276" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">writes a batch of injections</text>
+<text x="48" y="293" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">for the toy assistant</text>
+<text x="280" y="254" fill="#ff7b72" font-family="'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace" font-size="11" font-weight="600" text-anchor="end" opacity="1.0">SONNET 5.5</text>
+<rect x="32" y="340" width="260" height="92" rx="8" fill="#1a1230" stroke="#5ba8ec" stroke-width="1.5"/>
+<rect x="32" y="340" width="4" height="92" rx="2" fill="#5ba8ec"/>
+<text x="48" y="364" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Defender</text>
+<text x="48" y="384" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">proposes one DetectorConfig</text>
+<text x="48" y="401" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">patch: data only, no code</text>
+<text x="280" y="362" fill="#5ba8ec" font-family="'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace" font-size="11" font-weight="600" text-anchor="end" opacity="1.0">SONNET 5.5</text>
+<rect x="32" y="448" width="260" height="76" rx="8" fill="#1a1230" stroke="#7a85a0" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="32" y="448" width="4" height="76" rx="2" fill="#7a85a0"/>
+<text x="48" y="472" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Researcher</text>
+<text x="48" y="492" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">curated sources only</text>
+<text x="280" y="470" fill="#7a85a0" font-family="'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace" font-size="11" font-weight="600" text-anchor="end" opacity="1.0">PLANNED</text>
+<rect x="336" y="96" width="240" height="112" rx="8" fill="#1a1230" stroke="#7a85a0" stroke-width="1.5"/>
+<rect x="336" y="96" width="4" height="112" rx="2" fill="#7a85a0"/>
+<text x="352" y="120" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Dispatcher + llm.py</text>
+<text x="352" y="140" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">role tool allowlists</text>
+<text x="352" y="157" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">forced-JSON, schema-checked</text>
+<text x="352" y="174" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">raw output stored by (cycle, step)</text>
+<rect x="336" y="232" width="240" height="112" rx="8" fill="#1a1230" stroke="#c3abe8" stroke-width="1.5"/>
+<rect x="336" y="232" width="4" height="112" rx="2" fill="#c3abe8"/>
+<text x="352" y="256" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Memory (SQLite)</text>
+<text x="352" y="276" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">all writes through memory.py</text>
+<text x="352" y="293" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">lessons, backlog, predictions</text>
+<text x="352" y="310" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">agent text datamarked on read</text>
+<rect x="336" y="368" width="240" height="76" rx="8" fill="#1a1230" stroke="#7a85a0" stroke-width="1.5"/>
+<rect x="336" y="368" width="4" height="76" rx="2" fill="#7a85a0"/>
+<text x="352" y="392" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Dashboard</text>
+<text x="352" y="412" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">read-only feed: codes and counts</text>
+<line x1="618" y1="88" x2="618" y2="540" stroke="#e9c46a" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="626" y="104" fill="#e9c46a" font-family="'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace" font-size="11" font-weight="600" text-anchor="start" opacity="1.0">TRUST BOUNDARY</text>
+<text x="626" y="120" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11" font-weight="400" text-anchor="start" opacity="1.0">JSON lines over stdin/stdout</text>
+<rect x="660" y="136" width="268" height="132" rx="8" fill="#1a1230" stroke="#c3abe8" stroke-width="1.5"/>
+<rect x="660" y="136" width="4" height="132" rx="2" fill="#c3abe8"/>
+<text x="676" y="160" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Judge process</text>
+<text x="676" y="180" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">owns the data partitions</text>
+<text x="676" y="197" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">eval cache, statistics, keep rule</text>
+<text x="676" y="214" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">hash-pinned; agents cannot reach it</text>
+<text x="676" y="231" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">returns aggregates only</text>
+<rect x="660" y="288" width="268" height="96" rx="8" fill="#1a1230" stroke="#5ba8ec" stroke-width="1.5"/>
+<rect x="660" y="288" width="4" height="96" rx="2" fill="#5ba8ec"/>
+<text x="676" y="312" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Detector</text>
+<text x="676" y="332" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">normalisers, capped regex rules,</text>
+<text x="676" y="349" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">LLM classifier (Haiku 5.5)</text>
+<rect x="660" y="404" width="268" height="120" rx="8" fill="#1a1230" stroke="#c3abe8" stroke-width="1.5"/>
+<rect x="660" y="404" width="4" height="120" rx="2" fill="#c3abe8"/>
+<text x="676" y="428" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Toy assistant + checker</text>
+<text x="676" y="448" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">mock email, docs, web, send tools</text>
+<text x="676" y="465" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">dummy canary, example.invalid</text>
+<text x="676" y="482" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Sonnet 5.5 strong / Haiku 5.5 weak</text>
+<line x1="292" y1="156" x2="336" y2="156" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+<line x1="292" y1="278" x2="336" y2="180" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+<line x1="292" y1="386" x2="336" y2="196" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+<line x1="456" y1="208" x2="456" y2="232" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+<line x1="456" y1="344" x2="456" y2="368" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+<line x1="576" y1="170" x2="660" y2="170" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+<line x1="660" y1="240" x2="576" y2="290" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+<rect x="578.0" y="146" width="80" height="17" rx="4" fill="#0c0916"/><text x="618" y="158" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11" font-weight="400" text-anchor="middle" opacity="1.0">candidates</text>
+<rect x="578.0" y="271" width="80" height="17" rx="4" fill="#0c0916"/><text x="618" y="283" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11" font-weight="400" text-anchor="middle" opacity="1.0">aggregates</text>
+<line x1="794" y1="268" x2="794" y2="288" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+<line x1="794" y1="384" x2="794" y2="404" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+</svg>

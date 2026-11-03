@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 330" width="960" height="330" role="img" aria-label="One cycle: plan, attack, validity check, defend, keep rule, post-mortem">
+<title>One cycle: plan, attack, validity check, defend, keep rule, post-mortem</title>
+<defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#a49cb8"/></marker></defs>
+<rect width="960" height="330" rx="12" fill="#0c0916"/>
+<text x="32" y="44" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" text-anchor="start" opacity="1.0">One cycle</text>
+<text x="32" y="66" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="13" font-weight="400" text-anchor="start" opacity="1.0">Each cycle is one experiment. Every step's raw output is stored before it is used, so a killed run resumes.</text>
+<rect x="32" y="104" width="136" height="96" rx="8" fill="#1a1230" stroke="#c3abe8" stroke-width="1.5"/>
+<rect x="32" y="104" width="4" height="96" rx="2" fill="#c3abe8"/>
+<text x="48" y="128" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">1  Plan</text>
+<text x="48" y="148" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">CEO picks a focus,</text>
+<text x="48" y="165" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">predicts the change</text>
+<line x1="168" y1="152" x2="188" y2="152" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+<rect x="188" y="104" width="136" height="96" rx="8" fill="#1a1230" stroke="#ff7b72" stroke-width="1.5"/>
+<rect x="188" y="104" width="4" height="96" rx="2" fill="#ff7b72"/>
+<text x="204" y="128" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">2  Attack</text>
+<text x="204" y="148" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Attacker writes</text>
+<text x="204" y="165" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">a batch</text>
+<line x1="324" y1="152" x2="344" y2="152" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+<rect x="344" y="104" width="136" height="96" rx="8" fill="#1a1230" stroke="#c3abe8" stroke-width="1.5"/>
+<rect x="344" y="104" width="4" height="96" rx="2" fill="#c3abe8"/>
+<text x="360" y="128" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">3  Validity</text>
+<text x="360" y="148" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Judge plays each one</text>
+<text x="360" y="165" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">with no defence</text>
+<line x1="480" y1="152" x2="500" y2="152" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+<rect x="500" y="104" width="136" height="96" rx="8" fill="#1a1230" stroke="#5ba8ec" stroke-width="1.5"/>
+<rect x="500" y="104" width="4" height="96" rx="2" fill="#5ba8ec"/>
+<text x="516" y="128" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">4  Defend</text>
+<text x="516" y="148" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Defender sees half</text>
+<text x="516" y="165" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">of the evasions</text>
+<line x1="636" y1="152" x2="656" y2="152" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+<rect x="656" y="104" width="136" height="96" rx="8" fill="#1a1230" stroke="#c3abe8" stroke-width="1.5"/>
+<rect x="656" y="104" width="4" height="96" rx="2" fill="#c3abe8"/>
+<text x="672" y="128" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">5  Keep rule</text>
+<text x="672" y="148" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">fold 1 vs parent;</text>
+<text x="672" y="165" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">held-back half tests it</text>
+<line x1="792" y1="152" x2="812" y2="152" stroke="#a49cb8" stroke-width="1.5" marker-end="url(#head)"/>
+<rect x="812" y="104" width="136" height="96" rx="8" fill="#1a1230" stroke="#c3abe8" stroke-width="1.5"/>
+<rect x="812" y="104" width="4" height="96" rx="2" fill="#c3abe8"/>
+<text x="828" y="128" fill="#ece9f4" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">6  Post-mortem</text>
+<text x="828" y="148" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">lessons with evidence</text>
+<text x="828" y="165" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">go to memory</text>
+<path d="M880.0 200 V236 H100 V204" fill="none" stroke="#a49cb8" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#head)"/>
+<text x="480" y="254" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11" font-weight="400" text-anchor="middle" opacity="1.0">next cycle reads the updated briefing</text>
+<text x="32" y="290" fill="#e9c46a" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Held back: half of the attacks that got past are never shown to the Defender, to test whether a fix generalises.</text>
+<text x="32" y="310" fill="#a49cb8" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Controls: a placebo patch generator and a scripted hill-climb run through the same keep rule.</text>
+</svg>
