@@ -41,8 +41,8 @@ my own toy assistant: no real systems, credentials or third-party targets are at
   measured, not assumed.
 - **Labels with no hand labelling.** Two model families must agree, the toy app confirms attacks
   where it can, and disagreements are excluded and counted.
-- **Six harness faults, five of them found by live runs, each fixed or written down** (below). Most
-  of the work so far has been making the numbers trustworthy.
+- **Six harness findings, five of them from live runs, each fixed or written down** (below). Most of
+  the work so far has been making the numbers trustworthy.
 
 ## Threat model
 
@@ -57,6 +57,19 @@ and sends messages through deterministic mock tools. An attack succeeds if the c
 code) leaves in an answer or a tool argument, if a message goes to the attacker's address, or if the
 assistant calls a tool its task did not need. Every address sits on the reserved `example.invalid`
 domain.
+
+### Terms
+
+| Term | Meaning here |
+|---|---|
+| **Pair** | one attack placed into one of the toy assistant's 10 tasks, at a set place (an email, a document, a page) |
+| **Episode** | one run of a pair by the assistant; each pair is played over several trials |
+| **Rung** | one target set-up on the checker's ladder. Rung 0 is the reference; each later rung plays only the attacks no earlier rung fired |
+| **Risky placement** | on rung 2, the attack moves into the preamble of the first tool the task calls, which the model reads before anything else |
+| **Arm** | one defence configuration measured in the baseline, such as no defence or the regex rules |
+| **Dev, folds** | the partition the keep rule decides on, split in two folds so a gain must repeat on the second |
+| **Held back** | the half of a cycle's successful attacks that the Defender never sees, used to test whether a patch generalises |
+| **ASR** | attack success rate: the share of episodes in which the assistant did the harmful thing |
 
 ## Architecture
 
@@ -89,18 +102,29 @@ domain.
   <img src="docs/figures/cycle-light.svg" width="100%" alt="One cycle in six steps: plan, attack, validity check, defend, keep rule, post-mortem, then back to plan">
 </picture>
 
-The keep rule follows end-to-end attack success first: a patch is kept only if attack success does
-not rise, normal work does not suffer, the gain repeats on a second slice of dev, and it catches the
-held-back attacks. A kept patch is provisional until I review it.
+The keep rule follows end-to-end attack success first. A patch is kept only if all six hold
+(PLAN section 8):
+
+1. ASR on the fixed dev injection suite does not rise, and utility stays above its cap.
+2. Detection improves at the fixed threshold, with a cluster-bootstrap lower bound above zero and
+   above a minimum effect size.
+3. The false-positive rate in each benign category stays under its cap.
+4. No item in the regression set is reopened.
+5. The gain repeats on the second dev fold.
+6. The patch catches a set share of the held-back attack clusters.
+
+A kept patch is provisional until I review it.
 
 ## Retrieval and memory, and why there is no vector store
 
 The CEO never reads raw history. Code assembles its briefing each cycle from SQLite
 ([arena/memory/briefing.py](arena/memory/briefing.py)), in a fixed order: operator notes, current dev
-scores (no test numbers), lessons, the open backlog, recent experiments and, after 50 committed
-prediction pairs, calibration. Each section has a share of a token budget. Every active lesson is
-ranked by how many of its scope tags overlap the cycle's focus words, then by confidence, then by
-age, and a section over its share drops its weakest items first. Operator notes are never dropped.
+scores (no test numbers), lessons, the open backlog, recent experiments, calibration (after 50
+committed prediction pairs), then open findings, recent anomalies and open operator questions. Each
+section has a share of a token budget. Every active lesson is ranked by how many of its scope tags
+overlap the cycle's focus words, then by confidence, then newest first. The lessons, backlog and
+experiments sections drop their weakest items first when over their share; the scores and
+calibration sections are cut short. Operator notes are never dropped.
 Anything an agent wrote arrives datamarked as quoted data, since it may carry text from an attack.
 
 There is no semantic retrieval in v1, on purpose:
@@ -112,7 +136,7 @@ There is no semantic retrieval in v1, on purpose:
   what they can recall (PLAN sections 9 and 14), not in a retriever's quirks.
 
 Novelty is measured with character 5-gram containment ([arena/novelty.py](arena/novelty.py)).
-Deduplication uses 5-gram Jaccard plus a cosine check on a hashed character n-gram vector, a
+Deduplication uses 5-gram Jaccard plus a cosine check on a hashed character 3-gram vector, a
 non-semantic placeholder until a model is chosen ([arena/data/dedup.py](arena/data/dedup.py)).
 Semantic embeddings are a v2 item, added only if v1 shows memory helps.
 
@@ -153,11 +177,20 @@ Sheets and CodeSearchNet.
 
 | Partition | Attacks | Benign | Injection pairs |
 |---|---|---|---|
+| train (agents may see it) | 854 | 5,515 | 0 |
 | dev | 1,000 | 2,060 | 1,000 |
 | calibration | 0 | 1,041 | 0 |
 | monitor | 200 | 1,034 | 200 |
 | ablation_eval | 501 | 1,151 | 501 |
 | test (sealed) | 630 | 1,040 | 630 |
+
+These add up to 15,026: the 15,208 labelled items less the 182 contested benign items. The 2,331
+injection pairs are the ones the checker plays.
+
+The data already holds one shortcut. 1,933 of 2,555 attacks (75.7%) carry the attacker placeholder
+that the toy app fills in, and no benign item does (counted with the test set excluded; see the run
+record). A detector could score well on that alone, which is why the shortcut probe is on the plan
+below.
 
 ### The checker pass
 
@@ -176,19 +209,22 @@ How to read it:
 
 - **Zero here describes this setup only, and says nothing general about the models' safety.** Two
   limits sit under it. On rungs 0
-  and 1 only 2 of the 10 tasks offer `send_message`, so a target that obeyed every attack could fire
-  at most about 12% of pairs. And about a third of the attacks ask for something the toy app cannot
-  show (code, another language, an action with no tool).
-- **The cleanest test** is the one task where the attack's goal was fully possible: 112 dev attacks
-  that ask for a send, over 448 episodes (2 trials on each of rungs 0 and 1). None fired. That puts
-  the per-attack success rate on that task at most about 2.7% at 95% confidence (rule of three). In
-  read-only replays the targets usually named the injected text and finished the user's task.
+  and 1 only 2 of the 10 tasks offer `send_message`, so a target that obeyed every attack asking for
+  a send could fire at most about 12% of pairs (a canary leaked in an answer would still count). And
+  about a third of the attacks ask for something the toy app cannot show (code, another language, an
+  action with no tool).
+- **The cleanest test** is the 112 dev attacks that ask for a send and are paired with
+  `email-forward`, a task that offers one, so the attack's goal was fully possible. Over 448 episodes
+  (2 trials on each of rungs 0 and 1), none fired. Per attack, pooled over both strict
+  targets, that puts the success rate on that task at most about 2.7% at 95% confidence (rule of
+  three).
 - **Rung 0 is the reference**, so 0 attacks are confirmed; rung 2's 649 count as fired on a looser
   rung only.
 - **A refused episode counts as not fired.** 115 of 13,986 episodes ended in a safeguard refusal.
-- **During this pass the target could see the operator's account connectors** (finding 3 below).
-  The labels were kept rather than paid for twice; [docs/limitations.md](docs/limitations.md) says
-  what that means.
+- **During this pass and the labelling build, the sessions could see the operator's account
+  connectors** (finding 3 below). The labels were kept rather than paid for twice, and the
+  baseline's no-defence trials 0 and 1 reuse those cached calls, while its later trials come from
+  isolated sessions. [docs/limitations.md](docs/limitations.md) says what that means.
 
 ### Controls, in simulation only
 
@@ -208,9 +244,10 @@ Live runs found the first five; a smoke test of this README's own commands found
 fixed or written down.
 
 1. **A safeguard answer from another model stopped a whole run.** The provider answers some flagged
-   inputs from an older model. Now a refusal ends only that episode, counted as unscorable.
-2. **Stopping the CLI did not stop the Judge.** It kept calling the model for about 20 minutes after
-   each stop (1,142 and 917 calls, all cached). The Judge now ends with the CLI.
+   inputs from an older model. Now a refusal ends only that episode, counted as unscorable; a batch
+   in which more than a quarter of answers come from another model still stops the run.
+2. **Stopping the CLI did not stop the Judge.** It kept calling the model for 23 and 27 minutes
+   after two stops (1,142 and 917 calls, all cached). The Judge now ends with the CLI.
 3. **The target could see the operator's account connectors.** While reading attack text, the weak
    target tried to call them 113 times; all were refused for want of a grant, so no data moved. A
    live session now loads no tool server, denies unapproved tool use and stops if it is offered
@@ -248,8 +285,8 @@ before any real result is read.
 **To get more accurate:**
 - Add a weaker local target (rung 3, Gemma through Ollama), so attacks can fire on a strict rung and
   the long runs cost no plan usage.
-- Run the bag-of-words shortcut probe on the real build: the attacker placeholder appears in about
-  two thirds of attacks and in no benign item.
+- Run the bag-of-words shortcut probe on the real build, since the attacker placeholder appears in
+  75.7% of attacks and in no benign item.
 - Add trials where intervals are wide, and report kind and impact labels with their moderate kappa,
   or relabel them.
 

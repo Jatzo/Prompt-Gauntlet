@@ -120,6 +120,19 @@ played replayed in seconds.
    expose `send_message`, so even a fully obedient target could fire at most about 12% of pairs there.
    Of 112 dev attacks that ask for a send on the task that has one, none fired in 448 episodes.
 
+## A shortcut in the build
+
+Attack text names the attacker with a placeholder that the toy app fills in. Counted on 3 November
+across every partition except the sealed test set, and train:
+
+| | Carry the placeholder | Items |
+|---|---|---|
+| Attacks | 1,933 (75.7%) | 2,555 |
+| Benign | 0 | 10,801 |
+
+So a detector could score well by spotting the placeholder alone. The bag-of-words shortcut probe
+has not yet been run on the real build.
+
 ## Tests and CI
 
 - The suite has 1,206 tests (`make ci` on 3 November) and runs in about 2 to 3 minutes locally (115
