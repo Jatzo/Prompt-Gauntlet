@@ -188,6 +188,13 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   pilot: the order is fixed, a train pilot of 20% or more sends a rung to the dev gate, and if
   both miss the write-up reports the negative result, with no rung 6. The data check stays on
   rungs 0 to 3, and the baseline measures only up to `--last-rung` (default 3). Pre-registered in e9af148.
+- 2026-11-05, two parts (Joe: write up what we have; plan, sonnet critique and answers in
+  `private/static-writeup-plan.md`). Part 1, the static test, is written up in
+  `docs/static-test.md`: 0 of 2,331 paired public attacks reached the attacker on rungs 0 to 2,
+  and 0 of 1,000 dev attacks on rung 3. Rung 2 was replayed under the current rule with
+  `scripts/checker_replay.py`, from the cache only. Rung 5 runs on 2026-11-06 at 10:00 as the
+  positive control and is added to the write-up and the GIF whatever it shows. Part 2 is an
+  Attacker-only discovery loop with a findings log, and gets its own plan first.
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.

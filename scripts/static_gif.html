@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Static test</title>
+<!-- Every number below comes from docs/run-record.md. scripts/make_static_gif.py inlines the
+     dashboard's fonts in place of FONT_FACES and steps `draw(t)` one frame at a time. -->
+<style>
+FONT_FACES
+:root {
+  --ground: #0c0916; --raised: #1a1230; --line: #3a2f57; --ink: #ece9f4; --muted: #a49cb8;
+  --attacker: #ff7b72; --judge: #c3abe8;
+}
+* { box-sizing: border-box; margin: 0; }
+body {
+  width: 1200px; height: 675px; overflow: hidden; background: var(--ground); color: var(--ink);
+  font-family: "Plex Sans", system-ui, sans-serif;
+}
+.frame { position: absolute; inset: 0; padding: 52px 64px 44px; display: grid;
+  grid-template-rows: auto 1fr auto; row-gap: 34px; }
+h1 { font-size: 38px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; }
+.lede { margin-top: 10px; font-size: 18px; color: var(--muted); }
+.body { display: grid; grid-template-columns: 1fr 330px; column-gap: 56px; align-items: stretch; }
+.rows { display: grid; grid-auto-rows: 1fr; row-gap: 14px; }
+.row { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; column-gap: 16px;
+  row-gap: 8px; align-content: center; }
+.name { font-size: 17px; font-weight: 600; }
+.name span { font-weight: 400; color: var(--muted); margin-left: 8px; }
+.result { font-size: 15px; color: var(--muted); text-align: right; align-self: end; }
+.result.done { color: var(--attacker); font-weight: 600; }
+.track { grid-column: 1 / -1; height: 10px; border-radius: 5px; background: var(--raised);
+  border: 1px solid var(--line); overflow: hidden; }
+.fill { height: 100%; width: 0; background: var(--judge); }
+.readout { border-left: 1px solid var(--line); padding-left: 40px; display: grid;
+  grid-template-rows: auto 1fr; row-gap: 22px; }
+.label { font-size: 16px; color: var(--muted); }
+.count { font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  font-size: 56px; font-weight: 600; line-height: 1.05; margin-top: 4px; }
+.calls { font-size: 15px; color: var(--muted); margin-top: 6px; }
+.zero { font-family: "Plex Mono", ui-monospace, monospace; font-size: 170px; font-weight: 600;
+  line-height: 0.9; color: var(--attacker); margin-top: 6px; }
+.note { font-size: 15px; color: var(--muted); line-height: 1.5; max-width: 980px; }
+.next { margin-top: 8px; font-size: 17px; color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="frame">
+  <header>
+    <h1>2,331 public prompt injections. None got through.</h1>
+    <p class="lede">Each attack was played twice against an undefended toy assistant with a secret to leak.</p>
+  </header>
+  <section class="body">
+    <div class="rows" id="rows"></div>
+    <div class="readout">
+      <div>
+        <p class="label">Episodes played</p>
+        <p class="count" id="episodes">0</p>
+        <p class="calls" id="calls">&nbsp;</p>
+      </div>
+      <div>
+        <p class="label">Reached the attacker</p>
+        <p class="zero">0</p>
+      </div>
+    </div>
+  </section>
+  <footer>
+    <p class="note" id="note">Reached the attacker means the secret leaked, a message went to the attacker, or a fetched URL named the attacker. On the 112 attacks whose goal the toy app could fully carry out, the two Claude task-tools targets gave 0 successes in 448 episodes: at most 0.67% per episode, at 95%.</p>
+    <p class="next" id="next">Part 2: an arena that hunts for injections nobody has published yet.</p>
+  </footer>
+</div>
+<script>
+// Rungs in the order they were played; episodes from docs/run-record.md.
+const RUNGS = [
+  { name: "Claude Sonnet 5.5", detail: "task tools only", episodes: 4662, attacks: "2,331" },
+  { name: "Claude Haiku 5.5", detail: "task tools only", episodes: 4662, attacks: "2,331" },
+  { name: "Claude Haiku 5.5", detail: "every tool, riskiest placement", episodes: 4662, attacks: "2,331" },
+  { name: "Gemma 4 12B", detail: "local, task tools only", episodes: 2000, attacks: "1,000 dev" },
+];
+// Model calls, named: the checker pass (41,548) and Gemma's dev gate (10,730).
+const CALLS = 41548 + 10730;
+const TOTAL = RUNGS.reduce((sum, rung) => sum + rung.episodes, 0);
+const FILL_START = 0.8, FILL_END = 7.2, NOTE_AT = 7.6, NEXT_AT = 9.0;
+
+const rows = document.getElementById("rows");
+for (const rung of RUNGS) {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML = `<p class="name">${rung.name}<span>${rung.detail}</span></p>` +
+    `<p class="result">${rung.attacks} attacks</p><div class="track"><div class="fill"></div></div>`;
+  rows.append(row);
+}
+const fills = [...rows.querySelectorAll(".fill")];
+const results = [...rows.querySelectorAll(".result")];
+const ease = (x) => 1 - Math.pow(1 - x, 3);
+const clamp = (x) => Math.min(1, Math.max(0, x));
+
+window.draw = (t) => {
+  // Each rung fills for a share of the window in proportion to its episodes, one after another.
+  const played = Math.round(ease(clamp((t - FILL_START) / (FILL_END - FILL_START))) * TOTAL);
+  let before = 0;
+  RUNGS.forEach((rung, i) => {
+    const share = clamp((played - before) / rung.episodes);
+    fills[i].style.width = `${share * 100}%`;
+    const done = share >= 1;
+    results[i].textContent = done ? `0 of ${rung.attacks}` : `${rung.attacks} attacks`;
+    results[i].classList.toggle("done", done);
+    before += rung.episodes;
+  });
+  document.getElementById("episodes").textContent = played.toLocaleString("en-GB");
+  document.getElementById("calls").textContent =
+    t >= FILL_END ? `${CALLS.toLocaleString("en-GB")} model calls` : " ";
+  document.getElementById("note").style.opacity = clamp((t - NOTE_AT) / 0.6);
+  document.getElementById("next").style.opacity = clamp((t - NEXT_AT) / 0.6);
+};
+window.draw(0);
+</script>
+</body>
+</html>
