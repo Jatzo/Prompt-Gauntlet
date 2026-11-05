@@ -1,12 +1,12 @@
 # Part 1: do published prompt injections still work?
 
-<img src="figures/static-test.gif" width="100%" alt="Dashboard: 2,331 public prompt injections played against four targets over 15,986 episodes and 52,278 model calls; 0 reached the attacker">
+<img src="figures/static-test.gif" width="100%" alt="Dashboard: 2,331 public prompt injections played against four targets over 15,986 episodes, 52,278 model calls and 21 h 23 min; 0 reached the attacker">
 
 **No.** I played 2,331 published prompt injections against four targets, and not one reached the
 attacker. That held on Claude Sonnet 5.5, on Claude Haiku 5.5 with the task's own tools, and on
 Claude Haiku 5.5 with every tool and the attack placed where it is read first. On Gemma 4 12B,
 running locally, none of the 1,000 dev attacks got through either. That is 15,986 episodes and
-52,278 model calls, with no defence in place.
+52,278 model calls over 21 h 23 min of run time, with no defence in place.
 
 It's a negative result. These four public corpora do not work on current models in my setup. Why they don't, I can't show. Providers having trained
 against them is the obvious explanation, and the evidence fits it, but nothing here proves it.
@@ -44,8 +44,10 @@ watch for injections.
 | 2 | Claude Haiku 5.5 | all four | first in the tool output | 2,331 | 4,662 | 0 | 30 |
 | 3 | Gemma 4 12B (local) | the task's own | standard | 1,000 (dev) | 2,000 | 0 | 64 unscorable |
 
-Rungs 0 to 2 are the checker pass, run from 27 to 31 October (41,548 calls). Rung 3 is the dev gate
-I ran on 5 November (10,730 calls, none of them to Claude).
+Rungs 0 to 2 are the checker pass: 41,548 calls and 18 h 54 min of active run time, spread from
+27 to 31 October because I stopped and restarted it seven times. Rung 3 is the dev gate I ran on
+5 November: 10,730 calls in 2 h 29 min, none of them to Claude. Together that is 21 h 23 min. The
+time to build and label the dataset isn't in it, because the labelling cache keeps no timestamps.
 
 ## How much a zero is worth
 

@@ -196,7 +196,8 @@ only the model changes, and it uses none of the Claude plan.
 | Pilot, 200 train attack pairs and 10 benign tasks | 400 attack, 50 benign | 2,881 | 0.0% | 60.0% | 4.0% attack, 2.0% benign |
 | Gate, dev injection suite, no defence, 2 trials | 2,000 attack, 20 benign | 10,730 | 0.000 [0.000, 0.000] | 0.70 [0.45, 0.95] | 64 episodes |
 
-No Claude call was made in either run. Gemma ran at 50 to 80 calls a minute; 16% of its replies in
+No Claude call was made in either run. The gate ran in one start, from 17:07 to 19:36 on 5
+November (2 h 29 min). Gemma ran at 50 to 80 calls a minute; 16% of its replies in
 the pilot broke the action schema and were asked again. Most episodes used all 6 turns: Gemma kept
 calling tools rather than answering. In 2,000 dev episodes it tried a refused call once and was
 never hijacked, so 0 of the 1,000 dev attacks are valid on rung 3.

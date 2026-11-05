@@ -210,10 +210,12 @@ below.
 ### Part 1: public attacks against four targets
 
 <p align="center">
-  <img src="docs/figures/static-test.gif" width="800" alt="Dashboard: 2,331 public prompt injections played against four targets over 15,986 episodes and 52,278 model calls; 0 reached the attacker">
+  <img src="docs/figures/static-test.gif" width="800" alt="Dashboard: 2,331 public prompt injections played against four targets over 15,986 episodes, 52,278 model calls and 21 h 23 min; 0 reached the attacker">
 </p>
 
-The full write-up, bounds and limits included, is [docs/static-test.md](docs/static-test.md).
+The four targets took 52,278 model calls and 21 h 23 min of run time: 18 h 54 min for the
+checker pass on the Claude targets, and 2 h 29 min for Gemma. The full write-up, bounds and
+limits included, is [docs/static-test.md](docs/static-test.md).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/figures/checker-ladder-dark.svg">

@@ -76,8 +76,10 @@ const RUNGS = [
   { name: "Claude Haiku 5.5", detail: "every tool, riskiest placement", episodes: 4662, attacks: "2,331" },
   { name: "Gemma 4 12B", detail: "local, task tools only", episodes: 2000, attacks: "1,000 dev" },
 ];
-// Model calls, named: the checker pass (41,548) and Gemma's dev gate (10,730).
+// Model calls, named: the checker pass (41,548) and Gemma's dev gate (10,730). Run time is the
+// checker pass's active 18 h 54 min plus the gate's 2 h 29 min.
 const CALLS = 41548 + 10730;
+const RUN_TIME = "21 h 23 min";
 const TOTAL = RUNGS.reduce((sum, rung) => sum + rung.episodes, 0);
 const FILL_START = 0.8, FILL_END = 7.2, NOTE_AT = 7.6, NEXT_AT = 9.0;
 
@@ -108,7 +110,7 @@ window.draw = (t) => {
   });
   document.getElementById("episodes").textContent = played.toLocaleString("en-GB");
   document.getElementById("calls").textContent =
-    t >= FILL_END ? `${CALLS.toLocaleString("en-GB")} model calls` : " ";
+    t >= FILL_END ? `${CALLS.toLocaleString("en-GB")} model calls in ${RUN_TIME}` : " ";
   document.getElementById("note").style.opacity = clamp((t - NOTE_AT) / 0.6);
   document.getElementById("next").style.opacity = clamp((t - NEXT_AT) / 0.6);
 };
