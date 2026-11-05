@@ -181,6 +181,13 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   record the limit (`docs/limitations.md`) rather than fit frames or rules to each other. The
   bank now has a frame-level test: no rule fires on another technique's frames or on benign text,
   and each fires on its own.
+- 2026-11-05, engineered rungs (Joe: engineer a weaker target rather than write up a
+  negative result; plan, opus critique and answers in `private/weak-target-plan.md`). Rung 4
+  is the open model with permissive tools and risky placements; rung 5 adds one obliging
+  sentence to its act calls, never its plan call. Pre-registered in PLAN section 7 before any
+  pilot: the order is fixed, a train pilot of 20% or more sends a rung to the dev gate, and if
+  both miss the write-up reports the negative result, with no rung 6. The data check stays on
+  rungs 0 to 3, and the baseline measures only up to `--last-rung` (default 3).
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.
