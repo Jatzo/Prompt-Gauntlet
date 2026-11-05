@@ -65,14 +65,14 @@ from arena.schemas import (
     QueryRequest,
     ValidateBatchRequest,
 )
-from arena.target.ladder import LADDER
+from arena.target.ladder import reference_target
 from arena.target.world import ATTACKER_PLACEHOLDER
 from arena.taxonomy import RULE_TECHNIQUES
 
 STEPS = ("plan", "attack", "defend", "judge", "postmortem")
 # The undefended target that decides which attacks are valid: the evaluation target, the same one
-# the data build's checker pass uses.
-REFERENCE_TARGET = LADDER[0]
+# the baseline settles on, set once in the config.
+REFERENCE_TARGET = reference_target(DEFAULTS)
 # What the Judge measures with: its simulated models, or the real ones. Separate from the agents'
 # backend, so live agents can be watched without the Judge's long live measurements.
 JudgeBackend = Literal["simulated", "live"]
@@ -635,10 +635,11 @@ class Orchestrator:
         replay run uses the simulated ones: a cassette holds the agents' calls but not the Judge's
         target and detector answers. Simulated numbers are marked as such in the manifest and the
         evidence pack (docs/limitations.md)."""
+        target = reference_target(self.config)
         return MeasureRequest(
             arms=[ArmSpec(name="incumbent", kind="detector", detector=detector)],
-            targets=[REFERENCE_TARGET],
-            reference_target=REFERENCE_TARGET,
+            targets=[target],
+            reference_target=target,
             backend="live" if self.judge_backend == "live" else "mock",
             trials=self.config.trials_per_pair,
             seed=self.config.seed,

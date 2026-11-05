@@ -101,7 +101,7 @@ def baseline(tmp_path, judge_dir, *extra):
 
 
 def test_baseline_prints_the_table_for_every_arm_and_rung(tmp_path):
-    result, saved, _ = baseline(tmp_path, build(tmp_path))
+    result, saved, _ = baseline(tmp_path, build(tmp_path), "--last-rung", "5")
     assert result.returncode in (0, 3, 4, 5), result.stderr
     for arm in baselines.ARMS:
         assert arm.name in result.stdout

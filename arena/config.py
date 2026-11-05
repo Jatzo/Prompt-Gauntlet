@@ -168,6 +168,9 @@ class ArenaConfig(_Frozen):
     baseline_asr_fallback_below: float = 0.10
     # The fixed effort for the fallback ladder; past it the claim is narrowed (PLAN section 7).
     ladder_cutoff_days: int = 7
+    # The ladder rung the cycles validate attacks on. Rung 0 until the operator sets the rung
+    # that passed the gate.
+    reference_rung: int = 0
     placebo_false_keep_max: float = 0.05
     # Placebo cycles per run, approved by the operator: no keeps bounds the rate at 1%.
     placebo_cycles: int = 300

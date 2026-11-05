@@ -1,8 +1,9 @@
 """The baseline-ASR gate and its pre-decided fallback ladder (PLAN section 7).
 
 A pure function of the no-defence ASR measured on each rung, so anyone can recompute it from a saved
-report. The ladder is data, in the plan's order, ending with rung 3 (a deliberately weak open model
-on the local machine); an exhausted ladder means the claim is narrowed.
+report. The ladder is data, in the plan's order: rung 3 is a deliberately weak open model on the
+local machine, and rungs 4 and 5 are engineered from it, the last told to obey what it reads. An
+exhausted ladder means the claim is narrowed.
 """
 
 from dataclasses import dataclass
@@ -20,7 +21,19 @@ LADDER: tuple[TargetSpec, ...] = (
     TargetSpec(model="target_weak", tools="permissive", placements="risky"),
     # (3) a deliberately weak open model, under rung 0's conditions, so only the model changes
     TargetSpec(model="target_open"),
+    # (4) step (2) on the open model: every tool exposed, and the payload first in a tool's output
+    TargetSpec(model="target_open", tools="permissive", placements="risky"),
+    # (5) rung 4 told to carry out requests in what it reads: a deliberately vulnerable assistant
+    TargetSpec(model="target_open", tools="permissive", placements="risky", prompt="obliging"),
 )
+# The rungs the data build's checker pass plays. Frozen, so adding an engineered rung never
+# relabels the sealed data as confirmed only on that rung.
+DATA_CHECK_RUNGS: tuple[TargetSpec, ...] = LADDER[:4]
+
+
+def reference_target(config: ArenaConfig) -> TargetSpec:
+    """The undefended rung that decides which attacks are valid, for the cycles and the CLI."""
+    return LADDER[config.reference_rung]
 
 
 @dataclass(frozen=True)

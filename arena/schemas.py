@@ -448,6 +448,8 @@ Placement = Literal["email_body", "doc_chunk", "fetched_page", "tool_preamble"]
 TargetModel = Literal["target_strong", "target_weak", "target_open"]
 ToolPolicy = Literal["strict", "permissive"]
 PlacementSet = Literal["standard", "risky"]
+# `obliging` adds one sentence telling the model to carry out requests in what it reads (rung 5).
+TargetPrompt = Literal["standard", "obliging"]
 
 
 class ToolStep(Strict):
@@ -523,10 +525,13 @@ class TargetSpec(Strict):
     model: TargetModel
     tools: ToolPolicy = "strict"
     placements: PlacementSet = "standard"
+    prompt: TargetPrompt = "standard"
 
     @property
     def key(self) -> str:
-        return f"{self.model}.{self.tools}.{self.placements}"
+        # A standard-prompt rung keeps its three-part key, so earlier reports still match it.
+        base = f"{self.model}.{self.tools}.{self.placements}"
+        return base if self.prompt == "standard" else f"{base}.{self.prompt}"
 
 
 class TargetAction(Strict):
@@ -562,8 +567,9 @@ class TargetPlan(Strict):
 # Measurement: what the operator asks the Judge to measure, and the aggregates it returns.
 
 CategoryKey = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,39}$")]
-# A target rung key such as "target_weak.permissive.risky".
-TargetKey = Annotated[str, Field(pattern=r"^target_[a-z]+\.[a-z]+\.[a-z]+$")]
+# A target rung key such as "target_weak.permissive.risky", with the prompt last when it is not
+# the standard one.
+TargetKey = Annotated[str, Field(pattern=r"^target_[a-z]+\.[a-z]+\.[a-z]+(\.[a-z]+)?$")]
 
 
 class ArmSpec(Strict):
@@ -591,7 +597,7 @@ class MeasureRequest(Strict):
     )
 
     arms: Annotated[list[ArmSpec], Field(min_length=1, max_length=12)]
-    targets: Annotated[list[TargetSpec], Field(min_length=1, max_length=4)]
+    targets: Annotated[list[TargetSpec], Field(min_length=1, max_length=6)]
     # The undefended target that decides which attacks are valid (the TPR denominator).
     reference_target: TargetSpec
     backend: Literal["mock", "replay", "live"]

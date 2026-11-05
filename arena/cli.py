@@ -46,7 +46,7 @@ from arena.orchestrator import REFERENCE_TARGET, Orchestrator, phase1_mock_scrip
 from arena.report_tables import render
 from arena.schemas import LabelCheckRequest
 from arena.sim_agents import SimAgentsBackend
-from arena.target.ladder import LADDER
+from arena.target.ladder import DATA_CHECK_RUNGS, LADDER
 
 CONTROL_TARGETS = db.CONTROL_TARGETS
 
@@ -174,7 +174,7 @@ def cmd_data_check(args) -> int:
     request = LabelCheckRequest(
         measure=baselines.request(
             backend=args.backend,
-            targets=list(LADDER),
+            targets=list(DATA_CHECK_RUNGS),
             reference=LADDER[0],
             trials=args.trials,
             seed=DEFAULTS.seed,
@@ -446,7 +446,7 @@ def cmd_live_check(calls: int) -> int:
 
 
 def cmd_baseline(args) -> int:
-    """Measure every baseline arm on every ladder rung, then judge the gate.
+    """Measure every baseline arm on the ladder rungs up to `--last-rung`, then judge the gate.
 
     Validity is measured against the evaluation target first. If the gate settles on a fallback
     rung, the measurement is repeated with that rung as the reference, which costs only the new
@@ -462,7 +462,7 @@ def cmd_baseline(args) -> int:
     def measure(reference):
         request = baselines.request(
             backend=args.backend,
-            targets=list(LADDER),
+            targets=list(LADDER[: args.last_rung + 1]),
             reference=reference,
             trials=args.trials,
             seed=DEFAULTS.seed,
@@ -608,6 +608,13 @@ def main(argv: list[str] | None = None) -> int:
     baseline.add_argument("--cassette", default=None)
     baseline.add_argument("--trials", type=int, default=DEFAULTS.trials_per_pair)
     baseline.add_argument("--replicates", type=int, default=None)
+    baseline.add_argument(
+        "--last-rung",
+        type=int,
+        choices=range(len(LADDER)),
+        default=3,
+        help="measure rungs 0 to this one; the engineered rungs 4 and 5 only when asked",
+    )
     baseline.add_argument("--judge-dir", type=Path, default=None)
     baseline.add_argument("--out", type=Path, default=None, help="default runs/baseline")
     live_check = commands.add_parser("live-check")

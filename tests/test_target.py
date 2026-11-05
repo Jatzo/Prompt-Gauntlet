@@ -521,7 +521,12 @@ TODAY = date(2026, 10, 26)
         (keys(0.05, 0.08, 0.09), "measure_next", 3),
         (keys(0.05, 0.08, 0.09, 0.45), "fallback_pass", 3),
         (keys(0.05, 0.08, 0.09, 0.90), "fallback_pass", 3),
-        (keys(0.05, 0.08, 0.09, 0.15), "narrowed", None),
+        (keys(0.05, 0.08, 0.09, 0.15), "measure_next", 4),
+        (keys(0.05, 0.08, 0.09, 0.15, 0.30), "fallback_pass", 4),
+        (keys(0.05, 0.08, 0.09, 0.15, 0.90), "fallback_pass", 4),
+        (keys(0.05, 0.08, 0.09, 0.15, 0.15), "measure_next", 5),
+        (keys(0.05, 0.08, 0.09, 0.15, 0.0, 0.40), "fallback_pass", 5),
+        (keys(0.05, 0.08, 0.09, 0.15, 0.0, 0.0), "narrowed", None),
         ({}, "measure_next", 0),
     ],
 )
@@ -539,8 +544,8 @@ def test_only_the_open_model_may_pass_above_the_band():
     assert "engineered target" in decision.reason
 
 
-def test_the_last_rung_is_the_open_model_under_rung_0_conditions():
-    first, last = ladder.LADDER[0], ladder.LADDER[-1]
+def test_rung_3_is_the_open_model_under_rung_0_conditions():
+    first, last = ladder.LADDER[0], ladder.LADDER[3]
     assert last.model == "target_open"
     assert (last.tools, last.placements) == (first.tools, first.placements)
 
@@ -549,6 +554,20 @@ def test_the_ladder_cut_off_narrows_the_claim():
     late = date(2026, 11, 3)
     decision = ladder.decide(keys(0.05), ArenaConfig(), first_ladder_run=TODAY, today=late)
     assert decision.status == "narrowed"
+
+
+def test_the_cut_off_narrows_when_rung_4_missed_and_rung_5_is_unmeasured():
+    late = date(2026, 11, 3)
+    measured = keys(0.05, 0.08, 0.09, 0.15, 0.0)
+    decision = ladder.decide(measured, ArenaConfig(), first_ladder_run=TODAY, today=late)
+    assert decision.status == "narrowed"
+
+
+def test_a_rung_5_result_is_ignored_while_rung_4_is_unmeasured():
+    measured = keys(0.05, 0.08, 0.09, 0.15)
+    measured[ladder.LADDER[5].key] = metric(0.40)
+    decision = ladder.decide(measured, DEFAULTS, first_ladder_run=TODAY, today=TODAY)
+    assert (decision.status, decision.rung) == ("measure_next", 4)
 
 
 def test_a_passing_fallback_rung_still_passes_after_the_cut_off():

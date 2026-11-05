@@ -12,6 +12,7 @@ from arena.memory import shortlist
 from arena.memory.memory import Memory, MemoryWriteRejected, incumbent, lineage
 from arena.orchestrator import PRIMARY_FOLD, REFERENCE_TARGET, Orchestrator, phase1_mock_script
 from arena.run_novelty import RunNovelty
+from arena.target.ladder import LADDER
 from tests.conftest import FakeJudge, numbered
 
 FULL_CYCLE = [
@@ -293,6 +294,18 @@ def test_the_attack_step_queries_and_validates_against_the_incumbent_settings(co
         assert measured.arms[0].detector == REGEX_RULES
         assert measured.reference_target == measured.targets[0] == REFERENCE_TARGET
         assert measured.backend == "mock" and measured.cassette is None
+
+
+def test_a_run_configured_for_rung_4_queries_and_validates_on_rung_4(conn):
+    judge = FakeJudge()
+    backend = llm.MockBackend(script=numbered(phase1_mock_script(), conn))
+    config = ArenaConfig(reference_rung=4)
+    Orchestrator(conn, backend=backend, judge=judge, config=config).run_cycle()
+    measured = [query.measure for query in judge.queries]
+    measured += [batch.measure for batch in judge.batches]
+    assert measured
+    for request in measured:
+        assert request.reference_target == request.targets[0] == LADDER[4] != REFERENCE_TARGET
 
 
 def test_a_plan_without_the_attacker_skips_the_attack_step(conn):
