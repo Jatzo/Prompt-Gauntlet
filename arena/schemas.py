@@ -445,7 +445,7 @@ class DetectorQuery(Strict):
 ToolName = Literal["read_email", "search_docs", "fetch_url", "send_message"]
 # `tool_preamble` is the risky placement, used only from fallback rung 2.
 Placement = Literal["email_body", "doc_chunk", "fetched_page", "tool_preamble"]
-TargetModel = Literal["target_strong", "target_weak"]
+TargetModel = Literal["target_strong", "target_weak", "target_open"]
 ToolPolicy = Literal["strict", "permissive"]
 PlacementSet = Literal["standard", "risky"]
 

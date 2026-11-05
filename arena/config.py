@@ -34,10 +34,13 @@ class ModelIds(_Frozen):
     # model runs through a local Ollama server, pinned by digest (`labeller_open_digest`).
     labeller: str = "claude-opus-5-5"
     labeller_open: str = "gemma4:12b"
+    # Rung 3 of the fallback ladder: a deliberately weak open model as the target, the same pulled
+    # model as the open labeller, so it shares `labeller_open_digest`.
+    target_open: str = "gemma4:12b"
 
 
 # Roles served by open-weights models through Ollama rather than Claude.
-OPEN_WEIGHTS_ROLES = ("labeller_open",)
+OPEN_WEIGHTS_ROLES = ("labeller_open", "target_open")
 
 
 class ArenaConfig(_Frozen):
@@ -140,6 +143,11 @@ class ArenaConfig(_Frozen):
     detector_concurrency: int = 8
     # Live calls at once: each is one CLI process of about 1 GB, on a 15 GB machine. Proposal.
     live_concurrency: int = 4
+    # Open-weights calls at once: one local GPU, and parallel requests can push the model off it.
+    ollama_concurrency: int = 1
+    # Ollama's context window in tokens. Ollama cuts a longer prompt without saying so, so a reply
+    # whose prompt filled the window is refused rather than stored.
+    ollama_num_ctx: int = 16384
 
     # Target and detector sampling
     trials_per_pair: int = 5

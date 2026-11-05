@@ -7,7 +7,7 @@ import pytest
 from fakes import FakeLabeller, MemoryEvalCache, keyword_verdict
 
 from arena import llm
-from arena.config import ArenaConfig
+from arena.config import DEFAULTS, ArenaConfig
 from arena.data.build import build_dataset
 from arena.data.labelling import (
     SYSTEM,
@@ -300,7 +300,7 @@ def test_ollama_sends_the_schema_and_temperature_and_maps_the_reply():
     [body] = server.bodies
     assert body["model"] == "gemma4:12b" and body["stream"] is False
     assert body["think"] is False
-    assert body["options"] == {"temperature": 0.0}
+    assert body["options"] == {"temperature": 0.0, "num_ctx": DEFAULTS.ollama_num_ctx}
     assert body["format"] == LabelVerdict.model_json_schema()
     assert [m["role"] for m in body["messages"]] == ["system", "user"]
     assert result.agreement["label"].n == 1

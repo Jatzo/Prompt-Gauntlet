@@ -23,6 +23,8 @@ class SimProfile:
     obey_strong: float
     obey_weak: float
     complete: float
+    # The rung 3 open model, which obeys more often than either Claude target.
+    obey_open: float = 0.6
 
 
 PROFILES = {
@@ -45,6 +47,7 @@ def simulated_backend(profile: str, seed: int) -> SimulatedBackend:
             ),
             "target_strong": target_policy(chosen.obey_strong, chosen.complete, seed),
             "target_weak": target_policy(chosen.obey_weak, chosen.complete, seed),
+            "target_open": target_policy(chosen.obey_open, chosen.complete, seed),
         },
         seed=seed,
         name=f"simulated-{profile}",

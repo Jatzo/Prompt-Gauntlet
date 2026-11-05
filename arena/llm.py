@@ -16,7 +16,8 @@ Backends:
   because recorded output can contain anything a model said.
 - live: the Claude Agent SDK on the operator's plan, behind ARENA_ALLOW_LIVE=1 and always refused
   under pytest.
-- ollama: a local open-weights model, for the second labeller family only, pinned by digest.
+- ollama: a local open-weights model, pinned by digest: the second labeller family and the rung 3
+  target. Live sends those roles there itself, so one measurement can use both.
 """
 
 import asyncio
@@ -49,7 +50,7 @@ from arena.anomaly import (
     UsageCapReached,
     UsageLimitReached,
 )
-from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig
+from arena.config import DEFAULTS, OPEN_WEIGHTS_ROLES, REPO_ROOT, ArenaConfig
 from arena.memory import shortlist
 
 
@@ -175,6 +176,19 @@ def call[Model: pydantic.BaseModel](
     )
 
 
+def backend_name(backend: "Backend", role: str) -> str:
+    """The name a role's answers are keyed and stored under. A backend that sends some roles
+    elsewhere names that backend for them, so an open model's answers carry its digest."""
+    name_for = getattr(backend, "name_for", None)
+    return name_for(role) if name_for is not None else backend.name
+
+
+def _takes_fallback(backend: "Backend", role: str) -> bool:
+    """Whether a reply from another model can be a safeguard answer. Only Claude's plan answers
+    flagged inputs from an older model; from an open model, another id is a configuration fault."""
+    return getattr(backend, "safeguard_fallback", False) and role not in OPEN_WEIGHTS_ROLES
+
+
 def _pinned_model(role: str, config: ArenaConfig) -> str:
     pinned = getattr(config.models, role, None)
     if pinned is None:
@@ -266,7 +280,7 @@ def _store(
                 attempt,
                 role,
                 response.model_id,
-                backend.name,
+                backend_name(backend, role),
                 response.raw_output,
                 int(failure is None),
                 failure,
@@ -387,7 +401,8 @@ def call_batch[Model: pydantic.BaseModel](
     usage table, and each database is capped on its own.
     """
     pinned = _pinned_model(role, config)
-    keys = [request_key(role, pinned, keyed, backend.name) for keyed in requests]
+    named = backend_name(backend, role)
+    keys = [request_key(role, pinned, keyed, named) for keyed in requests]
     outputs = cache.lookup_many(list(dict.fromkeys(keys)))
     missing: dict[str, KeyedRequest] = {}
     for key, keyed in zip(keys, requests, strict=True):
@@ -426,12 +441,12 @@ def call_batch[Model: pydantic.BaseModel](
                     model_id=pinned,
                     input_tokens=0,
                     output_tokens=0,
-                    backend=backend.name,
+                    backend=named,
                 )
             with spent_lock:
                 spent[0] += response.input_tokens + response.output_tokens
             if response.model_id != pinned:
-                if not (refusals_are_items and getattr(backend, "safeguard_fallback", False)):
+                if not (refusals_are_items and _takes_fallback(backend, role)):
                     raise _wrong_model(role, pinned, response)
                 # A flagged input answered by another model: a refusal for this item, never
                 # retried, with the model that answered kept in the row. `_check_switches` stops
@@ -445,7 +460,7 @@ def call_batch[Model: pydantic.BaseModel](
                     model_id=response.model_id[:64],
                     input_tokens=response.input_tokens,
                     output_tokens=response.output_tokens,
-                    backend=backend.name,
+                    backend=named,
                 )
             parsed, failure = _validate(response, keyed.request, response_model)
             output = CachedOutput(
@@ -457,7 +472,7 @@ def call_batch[Model: pydantic.BaseModel](
                 model_id=response.model_id,
                 input_tokens=response.input_tokens,
                 output_tokens=response.output_tokens,
-                backend=backend.name,
+                backend=named,
             )
             # A hijack is not retried: asking again only gives the attack another go.
             if parsed is not None or failure.startswith("hijack"):
@@ -713,8 +728,16 @@ class LiveBackend:
         import claude_agent_sdk
 
         self._sdk = claude_agent_sdk
+        self._open = OpenRoute()
+
+    def name_for(self, role: str) -> str:
+        return self._open.name if role in OPEN_WEIGHTS_ROLES else self.name
 
     def complete(self, *, role, model_id, step_key, request):
+        if role in OPEN_WEIGHTS_ROLES:
+            return self._open.complete(
+                role=role, model_id=model_id, step_key=step_key, request=request
+            )
         # Each worker thread of call_batch runs its own event loop for its one query.
         with self._slots:
             return asyncio.run(self._complete(model_id, request))
@@ -901,13 +924,49 @@ def _open_schema(schema: dict) -> dict:
     return schema
 
 
+def open_backend_name(digest: str | None = DEFAULTS.labeller_open_digest) -> str:
+    """The name an open model's answers are keyed under. It carries the digest, so a re-pulled
+    model never reuses old answers."""
+    return f"ollama@{(digest or 'none')[:12]}"
+
+
+class OpenRoute:
+    """The open-weights roles of a live run, sent to a local Ollama backend.
+
+    The backend is made on the first open-role call, not before, so a run that uses only Claude
+    never needs the Ollama server. Calls go one at a time by default: there is one local GPU, and
+    parallel requests can push the model off it.
+    """
+
+    kind = "live"
+
+    def __init__(self, make: Callable[[], Backend] | None = None, concurrency: int | None = None):
+        self._make = make or OllamaBackend
+        self._backend: Backend | None = None
+        self._lock = threading.Lock()
+        self._slots = threading.BoundedSemaphore(concurrency or DEFAULTS.ollama_concurrency)
+        self.name = open_backend_name()
+
+    def complete(self, *, role, model_id, step_key, request):
+        with self._lock:
+            if self._backend is None:
+                self._backend = self._make()
+        with self._slots:
+            return self._backend.complete(
+                role=role, model_id=model_id, step_key=step_key, request=request
+            )
+
+
 class OllamaBackend:
-    """Open-weights models through a local Ollama server: the second labeller family.
+    """Open-weights models through a local Ollama server: the second labeller family and the rung 3
+    target.
 
     Refused in tests, and until the config pins the digest of the pulled model; the digest is
     checked against the server once, when the backend is made, so a re-pulled model cannot change
     labels quietly. The server must be on this machine. Temperature is sent as the request sets it,
-    and the tool's schema goes in as Ollama's structured-output `format`.
+    and the tool's schema goes in as Ollama's structured-output `format`. The context window is set
+    on every call, and a reply whose prompt filled it is refused, because Ollama cuts a longer
+    prompt without saying so.
     """
 
     name = "ollama"
@@ -920,8 +979,10 @@ class OllamaBackend:
         model_id: str = DEFAULTS.models.labeller_open,
         digest: str | None = DEFAULTS.labeller_open_digest,
         url: str = "http://127.0.0.1:11434",
+        num_ctx: int = DEFAULTS.ollama_num_ctx,
         post=None,
     ):
+        self._num_ctx = num_ctx
         if post is None and os.environ.get("PYTEST_CURRENT_TEST"):
             raise LiveCallRefused("Ollama calls are never made from tests. Pass a fake.")
         if not digest or len(digest) < 12:
@@ -932,8 +993,7 @@ class OllamaBackend:
         if urllib.parse.urlsplit(url).hostname not in self._HOSTS:
             raise LiveCallRefused(f"The Ollama server must be local, not {url}.")
         self._url, self._post = url.rstrip("/"), post or _post_json
-        # The backend name is in every cache key, so a re-pulled model never reuses old answers.
-        self.name = f"ollama@{digest[:12]}"
+        self.name = open_backend_name(digest)
         found = {
             entry.get("name"): entry.get("digest", "")
             for entry in self._post(f"{self._url}/api/tags", None).get("models", [])
@@ -952,7 +1012,7 @@ class OllamaBackend:
             # A thinking model otherwise spends its whole context reasoning and returns no content.
             "think": False,
             "format": tool["input_schema"],
-            "options": {"temperature": request.temperature},
+            "options": {"temperature": request.temperature, "num_ctx": self._num_ctx},
             "messages": [
                 {"role": "system", "content": request.system},
                 {"role": "user", "content": request.user},
@@ -967,6 +1027,12 @@ class OllamaBackend:
             raise LiveCallFailed(
                 f"{model_id} hit its length limit before finishing (done_reason 'length'). "
                 "Check that thinking is off and the context window is large enough."
+            )
+        if (reply.get("prompt_eval_count") or 0) >= self._num_ctx:
+            # Ollama keeps the end of a prompt that does not fit, which can drop the system prompt.
+            raise LiveCallFailed(
+                f"The prompt filled {model_id}'s {self._num_ctx}-token context window, so Ollama "
+                "may have cut it. Raise ollama_num_ctx in config.py."
             )
         return LLMResponse(
             tool=request.tool,

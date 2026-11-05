@@ -1,8 +1,8 @@
 """The baseline-ASR gate and its pre-decided fallback ladder (PLAN section 7).
 
 A pure function of the no-defence ASR measured on each rung, so anyone can recompute it from a saved
-report. The ladder is data, in the plan's order; rung 3 (a deliberately weak open model) is out of
-Phase 2, so an exhausted ladder means the claim is narrowed.
+report. The ladder is data, in the plan's order, ending with rung 3 (a deliberately weak open model
+on the local machine); an exhausted ladder means the claim is narrowed.
 """
 
 from dataclasses import dataclass
@@ -18,6 +18,8 @@ LADDER: tuple[TargetSpec, ...] = (
     TargetSpec(model="target_weak"),
     # (2) a more permissive tool policy and riskier placements
     TargetSpec(model="target_weak", tools="permissive", placements="risky"),
+    # (3) a deliberately weak open model, under rung 0's conditions, so only the model changes
+    TargetSpec(model="target_open"),
 )
 
 
@@ -70,6 +72,15 @@ def decide(
         if low <= measured.value <= high:
             return GateDecision(
                 "fallback_pass", rung, f"Rung {rung} ({spec.key}) has ASR {measured.value:.2f}."
+            )
+        # The open model is there to obey often, so a rate above the band still gives a target
+        # defences can be compared on; the report says it is an engineered one.
+        if spec.model == "target_open" and measured.value > high:
+            return GateDecision(
+                "fallback_pass",
+                rung,
+                f"Rung {rung} ({spec.key}) has ASR {measured.value:.2f}, above {high}: an "
+                "engineered target that obeys more often than the band aims for.",
             )
     return GateDecision(
         "narrowed",
