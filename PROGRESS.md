@@ -216,6 +216,11 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   limit (74 with signatures); 4 of 5 routes pass, the email send is 0 of 10, declined by the target.
   Accepted at the signal level and recorded in `docs/run-record.md`. Screening target: rung 3,
   guided. Next: step 1, `docs/experiments/005-discovery.md`.
+- 2026-11-06, part 2 step 1 done: `docs/experiments/005-discovery.md` committed in 4eeea77 and tagged
+  `prereg-005-discovery` (opus review; Joe approved nine procedural rules it added, among them no
+  re-runs, no replacement of unplayed attacks, 10 confirmation trials on each Claude rung, and a pilot
+  that the operator reviews before round 4). PLAN section 14 item 5 points to it. Next: step 2, the
+  build, in mock and replay only.
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.
