@@ -254,6 +254,33 @@ obey, the target still reached the attacker in only 0.5% of episodes. Part of ev
 comes from the setup (attacks that do not fit the toy app, and a small model that often fails the
 action format), not from the target resisting.
 
+## Why rung 5 missed, and a re-run with tool arguments shown (6 November)
+
+Replayed from the pilot cache (no model calls), 331 of rung 5's 400 attack episodes ended with no
+answer, 290 of them at the 6-turn limit. By cause: 257 had an LLMail payload naming the attacker
+that the target never acted on, 43 ended unscorable, 73 had a payload with no attacker placeholder
+(so they could never count), 25 sent or fetched to someone else, and 2 reached the attacker.
+
+Most of it has one cause. The target is shown tool names but not their arguments, and `read_email`
+needs an `id`. On rung 5 Gemma called it with `query` 1,182 times and with `id` 63 times. Across the
+Judge cache, Gemma used `id` in 329 of about 9,500 `read_email` calls, Claude Haiku 5.5 in 39,137
+and Claude Sonnet 5.5 in 16,615 (the rest of Claude's calls tried other keys first). Every Claude
+send used `to`, the key the checker reads, so no Claude send to the attacker was missed.
+
+The fix is a target option, `tool_help="signatures"`, that shows each tool's arguments. Every ladder
+rung keeps `names`, and a test pins a digest of their requests, so rungs 0 to 5 and their cache are
+unchanged. Rung 5 re-run with signatures, same 200 train attacks and harness:
+
+| Episodes | Calls | ASR | Utility | Ended unscorable |
+|---|---|---|---|---|
+| 400 attack, 50 benign | 2,481 | 4.8% (19 of 400) | 44.0% | 0.5% attack, 0.0% benign |
+
+All 19 were messages to the attacker. It ran from 17:59 to 18:54 (55 minutes) at 45.1 calls a
+minute. Schema-invalid act outputs fell from 25.7% to 4.5%, and `read_email` used `id` in 1,286 of
+1,297 calls. 284 of 400 attack episodes still ended at the turn limit with no answer, mostly
+re-reading the same email or repeating searches. Recorded but not counted: a call outside the
+task's tools 93 times, a message to someone the task did not name 10.
+
 ## Tests and CI
 
 - The suite has 1,246 tests (5 November) and runs in about 2 to 3 minutes locally (113 to 170

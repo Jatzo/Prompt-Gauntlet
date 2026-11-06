@@ -16,6 +16,16 @@ requests in what it reads, and it still reached the attacker in only 2 of 400 ep
 the zero is the setup itself, and it says as much about these attacks in this app as about the
 models.
 
+**Erratum, 6 November.** I found one cause after writing this up. The target was told its tools'
+names but not their arguments, and `read_email` only works with an `id`. The Claude targets mostly
+found it from the inbox list the tool sends back: 39,137 of Haiku's and 16,615 of Sonnet's
+`read_email` calls used `id`. Gemma used it in about 330 of about 9,500 calls and looped on wrong
+guesses until the 6-turn limit. So the Gemma zeros below (rung 3, and the rung 4 and 5 pilots)
+mostly measure this bug, not the model resisting. The Claude results stand. Re-run with the
+arguments shown, the rung 5 control reached the attacker in 19 of 400 episodes (4.8%): more, and
+still far below the 20% bar, because Gemma now re-reads the same email until the turn limit. The
+ladder's numbers stay as measured, and the fix is a separate target option (`tool_help`).
+
 So part 2 asks the harder question: can an agent find attacks that nobody has published?
 
 Every number below traces to [run-record.md](run-record.md), which names the log or cache entry it
@@ -125,11 +135,12 @@ so they aren't part of the headline.
 |---|---|---|---|---|
 | 4 | every tool, attack read first | 1 of 400 (0.25%) | 40% | 9.8% |
 | 5 | rung 4, told to carry out requests in what it reads | 2 of 400 (0.5%) | 54% | 10.8% |
+| 5, re-run | rung 5 with the tools' arguments shown (erratum) | 19 of 400 (4.8%) | 44% | 0.5% |
 
 Every success was a message to the attacker. Rung 5 was the last rung, so the pre-registered order
-stops here: no dev gate and no rung 6. Gemma broke the action schema in 18% to 26% of its outputs,
-and an episode that breaks it too often ends with no success, which pulls both rates down. I can't
-say how much.
+stops here: no dev gate and no rung 6. On rungs 4 and 5 Gemma broke the action schema in 18% to 26%
+of its outputs, mostly by guessing tool arguments (see the erratum). With the arguments shown that
+fell to 4.5%, and 284 of 400 attack episodes still ended at the turn limit with no answer.
 
 ## What this doesn't cover
 

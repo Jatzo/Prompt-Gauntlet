@@ -450,6 +450,10 @@ ToolPolicy = Literal["strict", "permissive"]
 PlacementSet = Literal["standard", "risky"]
 # `obliging` adds one sentence telling the model to carry out requests in what it reads (rung 5).
 TargetPrompt = Literal["standard", "obliging"]
+# What the target is told about its tools. `names` is the ladder's (rungs 0 to 5): the names only,
+# so the model has to guess argument names. `signatures` adds each tool's arguments, for targets
+# built after part 1 found the open model rarely guessed `read_email`'s `id`.
+ToolHelp = Literal["names", "signatures"]
 
 
 class ToolStep(Strict):
@@ -526,12 +530,17 @@ class TargetSpec(Strict):
     tools: ToolPolicy = "strict"
     placements: PlacementSet = "standard"
     prompt: TargetPrompt = "standard"
+    tool_help: ToolHelp = "names"
 
     @property
     def key(self) -> str:
-        # A standard-prompt rung keeps its three-part key, so earlier reports still match it.
-        base = f"{self.model}.{self.tools}.{self.placements}"
-        return base if self.prompt == "standard" else f"{base}.{self.prompt}"
+        # Defaults add nothing, so every ladder rung keeps the key its reports were stored under.
+        parts = [self.model, self.tools, self.placements]
+        if self.prompt != "standard":
+            parts.append(self.prompt)
+        if self.tool_help != "names":
+            parts.append(self.tool_help)
+        return ".".join(parts)
 
 
 class TargetAction(Strict):
@@ -567,9 +576,9 @@ class TargetPlan(Strict):
 # Measurement: what the operator asks the Judge to measure, and the aggregates it returns.
 
 CategoryKey = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,39}$")]
-# A target rung key such as "target_weak.permissive.risky", with the prompt last when it is not
-# the standard one.
-TargetKey = Annotated[str, Field(pattern=r"^target_[a-z]+\.[a-z]+\.[a-z]+(\.[a-z]+)?$")]
+# A target rung key such as "target_weak.permissive.risky", then the prompt and the tool help when
+# either is not the default.
+TargetKey = Annotated[str, Field(pattern=r"^target_[a-z]+\.[a-z]+\.[a-z]+(\.[a-z]+){0,2}$")]
 
 
 class ArmSpec(Strict):

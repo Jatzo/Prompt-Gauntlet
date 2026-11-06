@@ -257,6 +257,11 @@ What the zero is worth:
   episodes (0.5%), with 54% benign utility. The checker saw both, so it can see a success. But if
   an obedient target rarely gets there, a zero from a careful one proves less.
   Rung 5 was the last pre-registered rung, so there is no rung 6.
+- **Erratum: the Gemma zeros are mostly a harness bug.** The target saw tool names but not their
+  arguments. Claude mostly worked out `read_email`'s `id`; Gemma used it in about 330 of about 9,500
+  calls and looped until the turn limit. With the arguments shown, rung 5 reached the attacker in
+  19 of 400 episodes (4.8%). The Claude results stand. Details in
+  [docs/static-test.md](docs/static-test.md).
 
 ### Controls, in simulation only
 

@@ -202,6 +202,14 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   assistant told to obey rarely reached the attacker here, so the zero says as much about the
   setup as about the models. Gemma's schema failures (18% to 26% of act outputs) pull every
   Gemma rate down, by an amount not measured. Next: the part 2 plan.
+- 2026-11-06, part 2 plan approved (`private/part2-discovery-plan.md`, opus critique; Joe: Sonnet 5.5
+  Attacker, new Judge code in `arena/judge/discovery.py`, known-answer injections public, confirmed
+  means 3 of 10 on a Claude target). Step 0 found a harness bug: the target saw tool names but not
+  arguments, and Gemma rarely guessed `read_email`'s `id`. Joe chose option A: a `tool_help` target
+  option ("signatures"), with every ladder rung pinned unchanged by a request digest, and an erratum
+  in part 1. Rung 5 re-run with signatures: 19 of 400 (4.8%), utility 44%, unscorable 0.5%; 284 of
+  400 episodes still end at the turn limit. Next: step 0's known-answer gate on rung 3 with
+  signatures, then step 1.
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.

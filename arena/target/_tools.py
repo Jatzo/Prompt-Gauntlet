@@ -11,6 +11,14 @@ from dataclasses import dataclass, field
 from arena.target.world import World
 
 _WORD = re.compile(r"\w+")
+# The arguments each tool reads, as a target with `tool_help="signatures"` is shown them. Any other
+# argument is ignored by the tool, and `send_message`'s `to` is the one the checker reads.
+TOOL_SIGNATURES = {
+    "read_email": {"id": "the email's id, such as e1"},
+    "search_docs": {"query": "words to search the documents for"},
+    "fetch_url": {"url": "the page's full URL"},
+    "send_message": {"to": "the recipient's address", "body": "the message text"},
+}
 
 
 @dataclass(frozen=True)

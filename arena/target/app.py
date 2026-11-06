@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from arena import llm
 from arena.config import DEFAULTS, ArenaConfig
 from arena.schemas import TargetAction, TargetPlan, TargetSpec
-from arena.target._tools import ToolBox
+from arena.target._tools import TOOL_SIGNATURES, ToolBox
 from arena.target.arms import Defence, PlanThenExecute, allow_call, apply_gate, gate_of
 from arena.target.checker import CheckOutcome, check
 from arena.target.suites import Case
@@ -81,14 +81,22 @@ class _Episode:
 
 
 def _render(
-    episode: _Episode, tool: str, schema: dict, config: ArenaConfig, *, obliging: bool = False
+    episode: _Episode,
+    tool: str,
+    schema: dict,
+    config: ArenaConfig,
+    *,
+    obliging: bool = False,
+    signatures: bool = False,
 ) -> llm.LLMRequest:
     case = episode.case
+    exposed = sorted(case.exposed_tools)
     user = {
         "episode": episode.id,
         "task_id": case.task.id,
         "task": case.task.prompt,
-        "tools": sorted(case.exposed_tools),
+        # The ladder's rungs see the names only; the request stays byte for byte what they cached.
+        "tools": {name: TOOL_SIGNATURES[name] for name in exposed} if signatures else exposed,
         "plan": None if episode.plan is None else episode.plan.model_dump(mode="json"),
         "history": episode.history,
     }
@@ -106,10 +114,16 @@ def _render(
     )
 
 
-def _plan(episodes: list[_Episode], role: str, cache, backend, config: ArenaConfig) -> None:
+def _plan(
+    episodes: list[_Episode], role: str, cache, backend, config: ArenaConfig, signatures: bool
+) -> None:
     schema = TargetPlan.model_json_schema()
     requests = [
-        llm.KeyedRequest(episode.id, episode.trial, _render(episode, "plan", schema, config))
+        llm.KeyedRequest(
+            episode.id,
+            episode.trial,
+            _render(episode, "plan", schema, config, signatures=signatures),
+        )
         for episode in episodes
     ]
     plans = llm.call_batch(
@@ -146,8 +160,9 @@ def run_episodes(
         for case in cases
         for trial in range(trials)
     ]
+    signatures = target.tool_help == "signatures"
     if isinstance(defence, PlanThenExecute):
-        _plan(episodes, role, cache, backend, config)
+        _plan(episodes, role, cache, backend, config, signatures)
     schema = TargetAction.model_json_schema()
     gate = gate_of(defence)
     obliging = target.prompt == "obliging"
@@ -160,7 +175,7 @@ def run_episodes(
             llm.KeyedRequest(
                 episode.id,
                 episode.trial,
-                _render(episode, "act", schema, config, obliging=obliging),
+                _render(episode, "act", schema, config, obliging=obliging, signatures=signatures),
             )
             for episode in live
         ]
