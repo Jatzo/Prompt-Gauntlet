@@ -12,6 +12,7 @@ Methods:
 - validate_batch: classify, cluster and check an Attacker batch; the reply covers its own items.
 - query_detector: a T2 label for one text, counted against the cycle's budget.
 - label_check: the data build's checker pass over every partition, before the test set is sealed.
+- discovery_check: one round of part 2's screening, with counts over every trial per attack.
 """
 
 import argparse
@@ -21,10 +22,11 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from arena.judge import attacks, keep, labelcheck, measure, store
+from arena.judge import attacks, discovery, keep, labelcheck, measure, store
 from arena.judge.data import verify_test_set
 from arena.judge.hashing import read_pin, sha256_text
 from arena.schemas import (
+    DiscoveryRequest,
     EvaluateRequest,
     JudgeReport,
     LabelCheckRequest,
@@ -104,6 +106,14 @@ def handle(request: dict, root: Path, data_dir: Path, conn) -> dict:
         context = measure.Context(root, data_dir, store.EvalCache(conn))
         request = LabelCheckRequest.model_validate(params)
         return labelcheck.run(request, context).model_dump(mode="json")
+    if method == "discovery_check":
+        context = measure.Context(root, data_dir, store.EvalCache(conn))
+        request = DiscoveryRequest.model_validate(params)
+        found = discovery.connect(data_dir)
+        try:
+            return discovery.check(request, context, found).model_dump(mode="json")
+        finally:
+            found.close()
     raise ValueError(f"unknown method {method!r}")
 
 

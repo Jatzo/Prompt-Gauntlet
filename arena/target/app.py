@@ -62,6 +62,8 @@ class EpisodeResult:
     outcome: CheckOutcome
     turns: int
     ended_unscorable: bool
+    # Ended by the provider's safeguards, a kind of unscorable episode that part 2 counts apart.
+    ended_refused: bool = False
 
 
 @dataclass
@@ -262,6 +264,7 @@ def run_episodes(
             outcome=check(episode.box.trace, episode.final, episode.case.world, episode.case.task),
             turns=episode.turns,
             ended_unscorable=episode.unscorable,
+            ended_refused=episode.refused,
         )
         for episode in episodes
     ]

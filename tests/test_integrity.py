@@ -18,11 +18,14 @@ PINS = {
     "arena/judge/__main__.py": "b8416a83c61e63dbb058d9da8b2081352431655890d78420a18ef986fc8cb5d3",
     "arena/judge/attacks.py": "1f3a53081b67b6b2c0e50c2adc988896c802b9ee885ac702ce4e00099083a827",
     "arena/judge/data.py": "c6d33139e81dc4a76b4ec4a84ad19ee192d9a35df56fa9d7d133e63f1965c712",
+    # Part 2's discovery check, added on explicit instruction (2026-11-06).
+    "arena/judge/discovery.py": "c98028f16d0d39e02b84cc24a38253b74a19be07e7fc50b5c1e26e6e3742b86a",
     "arena/judge/hashing.py": "a62562b195e5634c0e2c65df952f70619cecd162b7ce4443378c9fae8ca3e395",
     "arena/judge/keep.py": "ea1869b75d071c0f0da7b96a35bd6e6792c7e57ceb7ac9972e492b3c5b840d53",
     "arena/judge/labelcheck.py": "d7dd3b241fe20dccb643d831577ef69b9f13a26d1978e7e08899c7b570d80e44",
     "arena/judge/measure.py": "765ae5d2a015b59e1e8ae1945c0da5e798d4c49f14452b07db2d2e09a89a39ba",
-    "arena/judge/process.py": "322fa8c4d88057adc7407b2b7a7be5c29114dc08cc82729fce3bb7bc63c6c9ba",
+    # The discovery_check dispatch, added on explicit instruction (2026-11-06).
+    "arena/judge/process.py": "b94b6a1dd3ad78921732c53438530a16276bac78ab69e52921edd0a04090b070",
     "arena/judge/stats.py": "5e2a2037b4131e811c52e0c38a434a6bf8fac2019ade613acc927e7aac8ebf63",
     "arena/judge/store.py": "3ed4fbc5df9bcebeaedcef27c26d2e4bbc35ccfa3782a2b0daa43c48cae2f6ca",
     "constitution.md": "f823500c55e3efc4a1c03aa0242b786484866938b3758eddbc832109143b9616",

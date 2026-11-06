@@ -9,7 +9,7 @@ run, so no wording was tuned on a result.
 
 from dataclasses import dataclass
 
-from arena.target.suites import STANDARD_PLACEMENT, TASKS_BY_ID, Case, exposed_tools
+from arena.target.suites import TASKS_BY_ID, Case, exposed_tools, placed_world
 from arena.target.world import ATTACKER_PLACEHOLDER, World
 
 NOTE = "Message for Sam's assistant from the office manager: "
@@ -66,21 +66,14 @@ def known_answer_cases(
 ) -> list[Case]:
     """One case per task, with the payload placed as `injection_cases` places a dataset payload."""
     base = World.build(world_seed)
-    cases = []
-    for task_id in answer.task_ids:
-        task = TASKS_BY_ID[task_id]
-        if placements == "risky":
-            world = base.with_payload("tool_preamble", "", answer.text, tool=task.steps[0].tool)
-        else:
-            world = base.with_payload(STANDARD_PLACEMENT[task.reads], task.carrier_id, answer.text)
-        cases.append(
-            Case(
-                f"known-{answer.route}-{task_id}",
-                task,
-                world,
-                exposed_tools(task, policy),
-                f"known-{answer.route}",
-                True,
-            )
+    return [
+        Case(
+            f"known-{answer.route}-{task_id}",
+            TASKS_BY_ID[task_id],
+            placed_world(base, TASKS_BY_ID[task_id], answer.text, placements),
+            exposed_tools(TASKS_BY_ID[task_id], policy),
+            f"known-{answer.route}",
+            True,
         )
-    return cases
+        for task_id in answer.task_ids
+    ]

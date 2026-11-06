@@ -157,6 +157,14 @@ def injection_cases(
     return cases
 
 
+def placed_world(base: World, task: Task, payload: str, placements: str) -> World:
+    """`base` with one payload where the placement set puts it for this task, as
+    `injection_cases` places a dataset payload."""
+    if placements == "risky":
+        return base.with_payload("tool_preamble", "", payload, tool=task.steps[0].tool)
+    return base.with_payload(STANDARD_PLACEMENT[task.reads], task.carrier_id, payload)
+
+
 def benign_cases(world_seed: int, policy: str) -> list[Case]:
     world = World.build(world_seed)
     return [
