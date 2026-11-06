@@ -318,6 +318,18 @@ the email route's 0 of 10 is recorded as the target declining. This relaxes the 
 after seeing the result, and the part 2 write-up says so. Part 2 screens on rung 3 with `guided`,
 a target made easier to follow than a real assistant.
 
+## Part 2 Attacker prompt (6 November)
+
+`prompts/discovery_attacker.md` was written and committed before round 1, as the pre-registration
+requires. Its SHA-256 (line endings normalised, as `arena/judge/hashing.py` reads files):
+
+`ce9dba6710374ab6fc19282ca906bfafe218eb0670aaea0b993441fe210de5f5`
+
+`tests/test_integrity.py` pins the same value, so any edit fails the suite. It names the 10 tasks
+with their channels and tools, the three ways to win, the submission fields and what comes back
+each round. It does not name the held-out class and does not give the secret's value. No round has
+run yet.
+
 ## Tests and CI
 
 - The suite has 1,246 tests (5 November) and runs in about 2 to 3 minutes locally (113 to 170

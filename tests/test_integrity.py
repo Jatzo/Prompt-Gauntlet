@@ -29,6 +29,9 @@ PINS = {
     "arena/judge/stats.py": "5e2a2037b4131e811c52e0c38a434a6bf8fac2019ade613acc927e7aac8ebf63",
     "arena/judge/store.py": "3ed4fbc5df9bcebeaedcef27c26d2e4bbc35ccfa3782a2b0daa43c48cae2f6ca",
     "constitution.md": "f823500c55e3efc4a1c03aa0242b786484866938b3758eddbc832109143b9616",
+    # Part 2's Attacker prompt, fixed before round 1 (docs/experiments/005-discovery.md). Any edit
+    # during the run is a deviation, logged there, before this pin changes.
+    "prompts/discovery_attacker.md": "ce9dba6710374ab6fc19282ca906bfafe218eb0670aaea0b993441fe210de5f5",
     "data/test.sha256": "730573c29ee86e63e87cfd2c1e27f0c2a9c6a33a433dfb9b379718629b7bf51b",
     "tests/fixtures/known_answer.json": "18f35c94e49fbeb05c902cfba78e62184fdd65186c1fd186c016e75eeb8355c8",
 }
