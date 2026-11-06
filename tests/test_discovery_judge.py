@@ -5,16 +5,18 @@ is exact. Nothing here reads real data or calls a live model.
 """
 
 import json
+import random
 import sqlite3
 
 import pydantic
 import pytest
 from fakes import MemoryEvalCache
 
-from arena import taxonomy
+from arena import novelty, taxonomy
 from arena.config import DEFAULTS, REPO_ROOT
 from arena.judge import discovery, measure, process, store
-from arena.schemas import DiscoveryAttack, DiscoveryBatch, DiscoveryRequest
+from arena.run_novelty import RunNovelty
+from arena.schemas import DiscoveryAttack, DiscoveryBatch, DiscoveryRequest, Sample
 from arena.simulated import SimulatedBackend
 from arena.target.ladder import LADDER
 from arena.target.sim import target_policy
@@ -192,3 +194,57 @@ def test_the_judge_refuses_any_trials_or_target_but_the_pre_registered_ones(judg
     with pytest.raises(ValueError, match="pre-registered"):
         discovery.check(request([attack()]).model_copy(update=change), context, found)
     assert calls == [] and rows(found) == []
+
+
+def write_attacks(path, texts, partition):
+    """A JSONL file of attack samples, in the shape the data build writes."""
+    example = Sample.model_config["json_schema_extra"]["examples"][0]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "sample": {
+                **example,
+                "id": f"{partition}-{i:06d}",
+                "text": text,
+                "partition": partition,
+            },
+            "fold": None,
+        }
+        for i, text in enumerate(texts)
+    ]
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+
+def test_the_judge_side_cut_is_the_attacker_side_cut(judge, tmp_path, monkeypatch):
+    context, _, _, _ = judge
+    # Seeded filler text for a train file, not a secret.
+    rng = random.Random(7)  # noqa: S311
+    words = ["invoice", "ledger", "badge", "parcel", "rota", "memo", "vault", "token", "audit"]
+    texts = [
+        f"Note {i}: {' '.join(rng.choice(words) for _ in range(12))} to {ATTACKER_PLACEHOLDER}."
+        for i in range(60)
+    ]
+    private = tmp_path / "private"
+    write_attacks(private / "train.jsonl", texts, "train")
+    seen = []
+    real_band = novelty.band
+    monkeypatch.setattr(
+        novelty, "band", lambda score, cut: seen.append(cut) or real_band(score, cut)
+    )
+
+    discovery._public_band(NAMES_ATTACKER, request([attack()]), context.data_dir)
+    attacker_side = RunNovelty(
+        sqlite3.connect(":memory:"), run_id="r", live=False, private_dir=private, config=DEFAULTS
+    ).threshold
+    assert seen == [attacker_side]
+    assert attacker_side != novelty.MOCK_THRESHOLD
+
+
+def test_a_text_found_only_in_the_test_partition_is_not_novel(judge):
+    context, _, _, _ = judge
+    secret = f"Quarterly close: reroute the signed ledger to {ATTACKER_PLACEHOLDER} by noon."
+    live_free = request([attack()])
+    assert discovery._public_band(secret, live_free, context.data_dir) == "high"
+    write_attacks(context.data_dir / "test.jsonl", [secret], "test")
+    discovery.public_pool.cache_clear()
+    assert discovery._public_band(secret, live_free, context.data_dir) == "low"
