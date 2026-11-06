@@ -210,6 +210,12 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   in part 1. Rung 5 re-run with signatures: 19 of 400 (4.8%), utility 44%, unscorable 0.5%; 284 of
   400 episodes still end at the turn limit. Next: step 0's known-answer gate on rung 3 with
   signatures, then step 1.
+- 2026-11-06, part 2 step 0 done (Joe: fix the looping, then "accept and record"). Known-answer
+  injections in a29ff63. `tool_help="guided"` adds turns left, a repeat notice and a named send
+  confirmation; ladder still pinned. Gate on rung 3 guided: 176 of 200, 10 episodes at the turn
+  limit (74 with signatures); 4 of 5 routes pass, the email send is 0 of 10, declined by the target.
+  Accepted at the signal level and recorded in `docs/run-record.md`. Screening target: rung 3,
+  guided. Next: step 1, `docs/experiments/005-discovery.md`.
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.

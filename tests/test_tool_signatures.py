@@ -16,7 +16,7 @@ from arena.schemas import TargetAction, TargetKey, TargetPlan
 from arena.simulated import SimulatedBackend
 from arena.target import app, ladder
 from arena.target._tools import TOOL_SIGNATURES, ToolBox
-from arena.target.arms import PlanThenExecute
+from arena.target.arms import NoDefence, PlanThenExecute
 from arena.target.sim import target_policy
 from arena.target.suites import ALL_TOOLS, benign_cases
 
@@ -82,3 +82,43 @@ def test_each_signature_names_the_arguments_its_tool_reads():
     [segment] = box.run("read_email", {"id": email.id})
     assert segment.id == f"read_email:{email.id}"
     assert set(TOOL_SIGNATURES["send_message"]) >= {"to", "body"}
+
+
+def test_a_guided_target_is_told_its_turns_left_about_repeats_and_who_it_sent_to():
+    """A scripted target reads e1 twice, sends once, then answers: what it sees each turn."""
+    script = [
+        {"tool": "read_email", "args": {"id": "e1"}},
+        {"tool": "read_email", "args": {"id": "e1"}},
+        {"tool": "send_message", "args": {"to": "sam@example.invalid", "body": "Thursday"}},
+        {"final": "Done."},
+    ]
+    seen = []
+
+    def scripted(request, rng):
+        state = json.loads(request.user)
+        seen.append(state)
+        return "act", json.dumps(script[len(seen) - 1])
+
+    target = ladder.LADDER[3].model_copy(update={"tool_help": "guided"})
+    case = next(c for c in benign_cases(DEFAULTS.seed, target.tools) if c.id == "email-forward")
+    [result] = app.run_episodes(
+        [case],
+        target=target,
+        defence=NoDefence(),
+        trials=1,
+        cache=MemoryEvalCache(),
+        backend=SimulatedBackend({"target_open": scripted}, seed=1),
+    )
+    assert [state["turns_left"] for state in seen] == [6, 5, 4, 3]
+    assert seen[0]["tools"] == {name: TOOL_SIGNATURES[name] for name in case.exposed_tools}
+    results = [entry["result"] for entry in seen[-1]["history"]]
+    assert "Thursday" in results[0][0]
+    assert results[1] == [app.REPEAT_NOTICE]
+    assert results[2] == [f"Message sent to sam@example.invalid. {app.SENT_NOTICE}"]
+    assert result.turns == 4 and result.outcome.task_completed
+
+
+def test_a_guided_key_is_valid():
+    spec = ladder.LADDER[3].model_copy(update={"tool_help": "guided"})
+    assert spec.key == "target_open.strict.standard.guided"
+    assert TypeAdapter(TargetKey).validate_python(spec.key) == spec.key

@@ -452,8 +452,10 @@ PlacementSet = Literal["standard", "risky"]
 TargetPrompt = Literal["standard", "obliging"]
 # What the target is told about its tools. `names` is the ladder's (rungs 0 to 5): the names only,
 # so the model has to guess argument names. `signatures` adds each tool's arguments, for targets
-# built after part 1 found the open model rarely guessed `read_email`'s `id`.
-ToolHelp = Literal["names", "signatures"]
+# built after part 1 found the open model rarely guessed `read_email`'s `id`. `guided` adds the
+# turns left, a notice on a repeated call and a send that names its recipient, after part 2's gate
+# found the open model repeating one call until the turn limit.
+ToolHelp = Literal["names", "signatures", "guided"]
 
 
 class ToolStep(Strict):
