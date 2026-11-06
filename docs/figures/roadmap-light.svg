@@ -10,7 +10,7 @@
 <circle cx="52" cy="136" r="3" fill="#1f7a58"/>
 <text x="62" y="140" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Four targets, 0 got through</text>
 <circle cx="52" cy="158" r="3" fill="#1f7a58"/>
-<text x="62" y="162" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Positive control: 2 of 400</text>
+<text x="62" y="162" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Positive control: 19 of 400</text>
 <circle cx="52" cy="180" r="3" fill="#1f7a58"/>
 <text x="62" y="184" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Shortcut probe found</text>
 <circle cx="52" cy="202" r="3" fill="#1f7a58"/>

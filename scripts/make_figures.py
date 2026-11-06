@@ -397,7 +397,7 @@ def roadmap(t):
             t["live"],
             [
                 "Four targets, 0 got through",
-                "Positive control: 2 of 400",
+                "Positive control: 19 of 400",
                 "Shortcut probe found",
                 "Write-up and figures",
             ],

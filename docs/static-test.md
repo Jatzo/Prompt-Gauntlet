@@ -1,6 +1,6 @@
 # Part 1: do published prompt injections still work?
 
-<img src="figures/static-test.gif" width="100%" alt="Dashboard: 2,331 public prompt injections played against four targets over 15,986 episodes, 52,278 model calls and 21 h 23 min; 0 reached the attacker; a positive control told to obey reached it in 2 of 400 pilot episodes">
+<img src="figures/static-test.gif" width="100%" alt="Dashboard: 2,331 public prompt injections played against four targets over 15,986 episodes, 52,278 model calls and 21 h 23 min; 0 reached the attacker; a positive control told to obey reached it in 19 of 400 pilot episodes">
 
 **No.** I played 2,331 published prompt injections against four targets, and not one reached the
 attacker. That held on Claude Sonnet 5.5, on Claude Haiku 5.5 with the task's own tools, and on
