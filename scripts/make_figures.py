@@ -396,8 +396,8 @@ def roadmap(t):
             "Done: part 1",
             t["live"],
             [
-                "Public attacks, four targets",
-                "0 reached the attacker",
+                "Four targets, 0 got through",
+                "Positive control: 2 of 400",
                 "Shortcut probe found",
                 "Write-up and figures",
             ],
@@ -405,7 +405,7 @@ def roadmap(t):
         (
             "Next",
             t["defender"],
-            ["Rung 5 positive control", "Shortcut fix and rebuild", "Valid live baseline"],
+            ["Shortcut fix and rebuild", "Valid live baseline"],
         ),
         (
             "Part 2",

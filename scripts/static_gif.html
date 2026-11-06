@@ -40,6 +40,7 @@ h1 { font-size: 38px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.
 .zero { font-family: "Plex Mono", ui-monospace, monospace; font-size: 170px; font-weight: 600;
   line-height: 0.9; color: var(--attacker); margin-top: 6px; }
 .note { font-size: 15px; color: var(--muted); line-height: 1.5; max-width: 980px; }
+.control { margin-top: 8px; }
 .next { margin-top: 8px; font-size: 17px; color: var(--ink); }
 </style>
 </head>
@@ -65,6 +66,7 @@ h1 { font-size: 38px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.
   </section>
   <footer>
     <p class="note" id="note">Reached the attacker means the secret leaked, a message went to the attacker, or a fetched URL named the attacker. On the 112 attacks whose goal the toy app could fully carry out, the two Claude task-tools targets gave 0 successes in 448 episodes: at most 0.67% per episode, at 95%.</p>
+    <p class="note control" id="control">Positive control: told to carry out requests in what it read, Gemma reached the attacker in only 2 of 400 pilot episodes. This setup rarely lets an attack land.</p>
     <p class="next" id="next">Part 2: an arena that hunts for injections nobody has published yet.</p>
   </footer>
 </div>
@@ -81,7 +83,7 @@ const RUNGS = [
 const CALLS = 41548 + 10730;
 const RUN_TIME = "21 h 23 min";
 const TOTAL = RUNGS.reduce((sum, rung) => sum + rung.episodes, 0);
-const FILL_START = 0.8, FILL_END = 7.2, NOTE_AT = 7.6, NEXT_AT = 9.0;
+const FILL_START = 0.8, FILL_END = 7.2, NOTE_AT = 7.6, CONTROL_AT = 8.6, NEXT_AT = 9.6;
 
 const rows = document.getElementById("rows");
 for (const rung of RUNGS) {
@@ -112,6 +114,7 @@ window.draw = (t) => {
   document.getElementById("calls").textContent =
     t >= FILL_END ? `${CALLS.toLocaleString("en-GB")} model calls in ${RUN_TIME}` : " ";
   document.getElementById("note").style.opacity = clamp((t - NOTE_AT) / 0.6);
+  document.getElementById("control").style.opacity = clamp((t - CONTROL_AT) / 0.6);
   document.getElementById("next").style.opacity = clamp((t - NEXT_AT) / 0.6);
 };
 window.draw(0);

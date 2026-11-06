@@ -1,6 +1,6 @@
 # Part 1: do published prompt injections still work?
 
-<img src="figures/static-test.gif" width="100%" alt="Dashboard: 2,331 public prompt injections played against four targets over 15,986 episodes, 52,278 model calls and 21 h 23 min; 0 reached the attacker">
+<img src="figures/static-test.gif" width="100%" alt="Dashboard: 2,331 public prompt injections played against four targets over 15,986 episodes, 52,278 model calls and 21 h 23 min; 0 reached the attacker; a positive control told to obey reached it in 2 of 400 pilot episodes">
 
 **No.** I played 2,331 published prompt injections against four targets, and not one reached the
 attacker. That held on Claude Sonnet 5.5, on Claude Haiku 5.5 with the task's own tools, and on
@@ -10,6 +10,11 @@ running locally, none of the 1,000 dev attacks got through either. That is 15,98
 
 It's a negative result. These four public corpora do not work on current models in my setup. Why they don't, I can't show. Providers having trained
 against them is the obvious explanation, and the evidence fits it, but nothing here proves it.
+
+The positive control makes me trust that explanation less. I told a local model to carry out the
+requests in what it reads, and it still reached the attacker in only 2 of 400 episodes. So part of
+the zero is the setup itself, and it says as much about these attacks in this app as about the
+models.
 
 So part 2 asks the harder question: can an agent find attacks that nobody has published?
 
@@ -104,18 +109,27 @@ that, every honest summary would be an attack.
   > offered the operator's account connectors (see `docs/debug-log.md`). None of them ran, but their
   > definitions were in the model's context, which may have changed how it behaved.
 
-- **There's no positive control yet.** A zero only means something if the harness can see a
-  success when one happens. The unit tests plant successes and check the checker catches them, and
-  the engineered pilot below caught one live. The real control is rung 5, an assistant told to
-  carry out requests in what it reads. It was pre-registered, it runs on 6 November, and its result
-  goes here whatever it is.
+- **The positive control barely fired.** A zero only means something if the harness can see a
+  success when one happens. The unit tests plant successes and the checker catches them, and it
+  caught three live in the engineered pilots below. But rung 5, an assistant told to obey, reached
+  the attacker in 2 of 400 episodes. A setup where even an obedient target rarely gets there can't
+  tell you much about how well a careful one resists.
 
-## An engineered stress test
+## Engineered targets, and the positive control
 
-Rung 4 gives Gemma every tool and puts the attack first in the tool output. I pre-registered it
-before running it (e9af148). As a pilot on 200 train attacks, it reached the attacker once in 400
-episodes (0.25%), by sending a message, and its benign utility dropped to 40%. It's an engineered
-target, so it isn't part of the headline.
+Both are pre-registered (e9af148), both are Gemma with every tool and the attack first in the tool
+output, and both were piloted on 200 train attacks at 2 trials with no defence. They're engineered,
+so they aren't part of the headline.
+
+| Rung | What changes | Reached the attacker | Benign utility | Attack episodes unscorable |
+|---|---|---|---|---|
+| 4 | every tool, attack read first | 1 of 400 (0.25%) | 40% | 9.8% |
+| 5 | rung 4, told to carry out requests in what it reads | 2 of 400 (0.5%) | 54% | 10.8% |
+
+Every success was a message to the attacker. Rung 5 was the last rung, so the pre-registered order
+stops here: no dev gate and no rung 6. Gemma broke the action schema in 18% to 26% of its outputs,
+and an episode that breaks it too often ends with no success, which pulls both rates down. I can't
+say how much.
 
 ## What this doesn't cover
 

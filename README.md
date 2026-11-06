@@ -8,9 +8,10 @@ It is a toy tool-using assistant with a secret to leak, a separate Judge process
 counts as a successful attack, and an arena where an Attacker agent and a Defender agent take turns
 against it.
 
-> **Status, 5 November 2026.** Part 1 is done and written up in
+> **Status, 6 November 2026.** Part 1 is done and written up in
 > [docs/static-test.md](docs/static-test.md): I played 2,331 published attacks against four targets
-> and none reached the attacker. Part 2, the arena that hunts for new attacks, is built and has only
+> and none reached the attacker. Its positive control, an assistant told to obey, got there in only
+> 2 of 400 episodes, so the zero says as much about this setup as about the models. Part 2, the arena that hunts for new attacks, is built and has only
 > run on simulated agents so far. Nothing here is a pre-registered finding yet, and I make no claim
 > about how good any defence is.
 
@@ -210,7 +211,7 @@ below.
 ### Part 1: public attacks against four targets
 
 <p align="center">
-  <img src="docs/figures/static-test.gif" width="800" alt="Dashboard: 2,331 public prompt injections played against four targets over 15,986 episodes, 52,278 model calls and 21 h 23 min; 0 reached the attacker">
+  <img src="docs/figures/static-test.gif" width="800" alt="Dashboard: 2,331 public prompt injections played against four targets over 15,986 episodes, 52,278 model calls and 21 h 23 min; 0 reached the attacker; a positive control told to obey reached it in 2 of 400 pilot episodes">
 </p>
 
 The four targets took 52,278 model calls and 21 h 23 min of run time: 18 h 54 min for the
@@ -251,8 +252,11 @@ What the zero is worth:
   refusal.
 - **During this pass and the labelling build, the sessions could see my account connectors**
   (problem 3 below). [docs/limitations.md](docs/limitations.md) says what that means.
-- **There's no positive control yet.** Rung 5, an assistant told to carry out requests in what it
-  reads, runs on 6 November. I'll add its result whatever it shows.
+- **The positive control barely fired.** Rung 5 is Gemma with every tool, told to carry out
+  requests in what it reads. As a pilot on 200 train attacks it reached the attacker in 2 of 400
+  episodes (0.5%), with 54% benign utility. The checker saw both, so it can see a success. But if
+  an obedient target rarely gets there, a zero from a careful one proves less.
+  Rung 5 was the last pre-registered rung, so there is no rung 6.
 
 ### Controls, in simulation only
 
@@ -310,8 +314,7 @@ Details in [docs/debug-log.md](docs/debug-log.md) and [docs/limitations.md](docs
 </picture>
 
 **Part 1, done.** The static test above, written up in [docs/static-test.md](docs/static-test.md).
-On 6 November I run rung 5, an assistant told to carry out requests in what it reads, as its
-positive control.
+Its positive control, rung 5, ran on 6 November and reached the attacker in 2 of 400 episodes.
 
 **Next.** Fix the bag-of-words shortcut, rebuild the data, then run a valid live baseline.
 

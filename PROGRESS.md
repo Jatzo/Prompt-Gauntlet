@@ -195,6 +195,13 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   `scripts/checker_replay.py`, from the cache only. Rung 5 runs on 2026-11-06 at 10:00 as the
   positive control and is added to the write-up and the GIF whatever it shows. Part 2 is an
   Attacker-only discovery loop with a findings log, and gets its own plan first.
+- 2026-11-06, the positive control missed (Joe: write the negative result as pre-registered).
+  The rung 5 pilot gave ASR 0.5% (2 of 400, both messages to the attacker), utility 54%, and
+  10.8% of attack episodes unscorable, over the stop rule's 10%. Rung 5 is the last rung, so
+  there is no dev gate and no rung 6. The write-up, README, roadmap and GIF now say that an
+  assistant told to obey rarely reached the attacker here, so the zero says as much about the
+  setup as about the models. Gemma's schema failures (18% to 26% of act outputs) pull every
+  Gemma rate down, by an amount not measured. Next: the part 2 plan.
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.
