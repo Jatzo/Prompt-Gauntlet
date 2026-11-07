@@ -25,7 +25,8 @@ from typing import Literal, Protocol, get_args
 
 import pydantic
 
-from arena import cycle, db, dispatcher, llm
+from arena import cycle, db, llm
+from arena.agent_call import agent_call
 from arena.agents import defender
 from arena.agents.attacker import SUBMIT_STEP, Attacker, AttackerView
 from arena.agents.defender import Defender, DefenderView
@@ -764,35 +765,20 @@ class Orchestrator:
         user: str | None = None,
         check: Callable[[Model], str | None] | None = None,
     ) -> Model:
-        """One forced tool call: the model is shown only its role's tools, and the result goes
-        through the dispatcher like any other agent tool call."""
-        request = llm.LLMRequest(
-            tool=tool,
-            tools=dispatcher.tool_schemas_for(role),
-            system=self._system_prompt(role),
-            user=user or f"Cycle {cycle_id}. Call {tool}.",
-        )
-        output = llm.call(
-            role,
-            (cycle_id, step),
-            request,
-            response_model,
+        """One forced tool call, through the shared stored-call path in `arena/agent_call.py`."""
+        return agent_call(
             self.conn,
             backend=self.backend,
             config=self.config,
+            root=self.root,
+            role=role,
+            tool=tool,
+            cycle_id=cycle_id,
+            step=step,
+            response_model=response_model,
+            user=user,
             check=check,
         )
-        dispatched = dispatcher.dispatch(
-            self.conn, role, tool, output.model_dump(mode="json"), cycle_id=cycle_id
-        )
-        if not isinstance(dispatched, response_model):
-            raise TypeError(f"{tool} is registered with a different schema than {response_model}.")
-        return dispatched
-
-    def _system_prompt(self, role: str) -> str:
-        constitution = (self.root / "constitution.md").read_text()
-        prompt = (self.root / "prompts" / f"{role}.md").read_text()
-        return f"{constitution}\n\n{prompt}"
 
     def _written(self, cycle_id: int, step: str) -> bool:
         return (
