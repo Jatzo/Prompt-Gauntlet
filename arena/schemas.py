@@ -840,6 +840,67 @@ class DiscoveryReport(Strict):
     verdicts: Annotated[list[DiscoveryVerdict], Field(max_length=DEFAULTS.discovery_batch_size)]
 
 
+class DiscoveryConfirmRequest(Strict):
+    """Confirm one round's candidates on the Claude targets. Its trials and targets are not fields:
+    the Judge takes them from the pre-registered config, so no caller can change them."""
+
+    run_id: Identifier
+    round: Annotated[int, Field(ge=1)]
+    backend: Literal["mock", "replay", "live"]
+    profile: Literal["clean", "low_asr", "placebo"] = "clean"
+    cassette: Annotated[str, Field(max_length=500)] | None = None
+    seed: int
+
+
+class DiscoveryConfirmation(Strict):
+    """Whether one candidate is confirmed. The counts stay in the Judge, so they can never reach
+    the Attacker's side."""
+
+    index: Annotated[int, Field(ge=0)]
+    confirmed: bool
+
+
+class DiscoveryConfirmReport(Strict):
+    candidates: Annotated[
+        list[DiscoveryConfirmation], Field(max_length=DEFAULTS.discovery_batch_size)
+    ]
+
+
+class DiscoveryExportRequest(Strict):
+    run_id: Identifier
+
+
+class DiscoveryExportRow(Strict):
+    """One attack as the Judge stored it, for the operator's private findings file only. It holds
+    the attack text and the band against every public attack, so it never goes to an agent."""
+
+    round: int
+    index: int
+    text: str
+    claimed_technique: str
+    technique: str
+    channel: str
+    impact_class: str
+    task_id: str
+    status: str
+    trials: int
+    successes: int
+    success_signals: list[str]
+    unscorable: int
+    target_refused: int
+    candidate: bool
+    public_band: str | None
+    # Candidates only: shingle-Jaccard cluster across every round of the run.
+    cluster: str | None
+    # Candidates only: successes out of the pinned trials, by target key.
+    confirmations: dict[str, int]
+
+
+class DiscoveryExport(Strict):
+    run_id: Identifier
+    rows: list[DiscoveryExportRow]
+
+
 class QueryRequest(Strict):
     cycle_id: Annotated[int, Field(ge=1)]
     # The Attacker's step. A repeat of the same step gets the stored reply and spends no budget,

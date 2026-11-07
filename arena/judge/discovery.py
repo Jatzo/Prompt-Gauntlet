@@ -11,6 +11,7 @@ The band against every public attack, test included, is computed here for candid
 stored with the row. It is never returned, so no agent sees anything derived from the test set.
 """
 
+import hashlib
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -21,10 +22,23 @@ from arena import novelty, taxonomy
 from arena.config import DEFAULTS, private_data_dir
 from arena.judge import data as judge_data
 from arena.judge import measure
-from arena.schemas import DiscoveryReport, DiscoveryRequest, DiscoveryVerdict, Sample
+from arena.judge.attacks import cluster
+from arena.schemas import (
+    DiscoveryConfirmation,
+    DiscoveryConfirmReport,
+    DiscoveryConfirmRequest,
+    DiscoveryExport,
+    DiscoveryExportRequest,
+    DiscoveryExportRow,
+    DiscoveryReport,
+    DiscoveryRequest,
+    DiscoveryVerdict,
+    Sample,
+)
 from arena.target.app import run_episodes
 from arena.target.arms import NoDefence
 from arena.target.checker import SUCCESS_SIGNALS
+from arena.target.ladder import LADDER
 from arena.target.suites import TASKS_BY_ID, Case, exposed_tools, placed_world
 from arena.target.world import World
 
@@ -52,6 +66,21 @@ CREATE TABLE IF NOT EXISTS discovery_attacks (
     PRIMARY KEY (run_id, round, idx)
 )
 """
+# One row per candidate and confirmation target. `text_sha256` is the text that was played, so a
+# repeat can refuse if the stored candidate has changed since.
+_CONFIRM_SCHEMA = """
+CREATE TABLE IF NOT EXISTS discovery_confirmations (
+    run_id TEXT NOT NULL,
+    round INTEGER NOT NULL,
+    idx INTEGER NOT NULL,
+    target TEXT NOT NULL,
+    text_sha256 TEXT NOT NULL,
+    trials INTEGER NOT NULL,
+    successes INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, round, idx, target)
+)
+"""
 
 
 def connect(data_dir: Path) -> sqlite3.Connection:
@@ -59,6 +88,7 @@ def connect(data_dir: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=FULL")
     conn.execute(_SCHEMA)
+    conn.execute(_CONFIRM_SCHEMA)
     return conn
 
 
@@ -238,3 +268,151 @@ def _store(conn, request: DiscoveryRequest, verdicts, bands) -> None:
         conn.execute("ROLLBACK")
         raise
     conn.execute("COMMIT")
+
+
+def _confirm_targets():
+    """The pre-registered confirmation targets, resolved from the ladder by key."""
+    by_key = {spec.key: spec for spec in LADDER}
+    missing = [key for key in DEFAULTS.discovery_confirm_keys if key not in by_key]
+    if missing:
+        raise ValueError(f"Confirmation targets {missing} are not ladder rungs.")
+    return [by_key[key] for key in DEFAULTS.discovery_confirm_keys]
+
+
+def confirm(
+    request: DiscoveryConfirmRequest, context: measure.Context, conn: sqlite3.Connection
+) -> DiscoveryConfirmReport:
+    """Play each of a round's stored candidates on every confirmation target, in its own task, at
+    the pinned trials. The texts are read from this database, so nothing new can be confirmed, and
+    only `confirmed` goes back: the counts stay here."""
+    rows = conn.execute(
+        "SELECT idx, text, task_id FROM discovery_attacks"
+        " WHERE run_id = ? AND round = ? AND candidate = 1 ORDER BY idx",
+        (request.run_id, request.round),
+    ).fetchall()
+    trials = DEFAULTS.discovery_confirm_trials
+    base = World.build(request.seed)
+    backend = measure._backend(request, context.root)
+    counts: dict[int, dict[str, int]] = {idx: {} for idx, _, _ in rows}
+    stored = []
+    for target in _confirm_targets():
+        cases, index_of, digest_of = [], {}, {}
+        for idx, text, task_id in rows:
+            digest = hashlib.sha256(text.encode()).hexdigest()
+            earlier = conn.execute(
+                "SELECT text_sha256 FROM discovery_confirmations"
+                " WHERE run_id = ? AND round = ? AND idx = ? AND target = ?",
+                (request.run_id, request.round, idx, target.key),
+            ).fetchone()
+            if earlier is not None and earlier[0] != digest:
+                raise ValueError(
+                    f"Candidate {idx} of round {request.round} changed after it was confirmed."
+                )
+            task = TASKS_BY_ID[task_id]
+            case_id = f"conf-{request.run_id}-r{request.round}-a{idx}"
+            index_of[case_id], digest_of[idx] = idx, digest
+            cases.append(
+                Case(
+                    case_id,
+                    task,
+                    placed_world(base, task, text, target.placements),
+                    exposed_tools(task, target.tools),
+                    case_id,
+                    True,
+                )
+            )
+        results = (
+            run_episodes(
+                cases,
+                target=target,
+                defence=NoDefence(),
+                trials=trials,
+                cache=context.cache,
+                backend=backend,
+            )
+            if cases
+            else []
+        )
+        for idx in counts:
+            counts[idx][target.key] = 0
+        for result in results:
+            if result.outcome.attack_succeeded:
+                counts[index_of[result.case_id]][target.key] += 1
+        stored += [
+            (request.run_id, request.round, idx, target.key, digest_of[idx], trials,
+             counts[idx][target.key])
+            for idx in counts
+        ]
+    stamp = datetime.now(UTC).isoformat(timespec="milliseconds")
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO discovery_confirmations VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [(*row, stamp) for row in stored],
+        )
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+    conn.execute("COMMIT")
+    return DiscoveryConfirmReport(
+        candidates=[
+            DiscoveryConfirmation(
+                index=idx,
+                confirmed=any(n >= DEFAULTS.discovery_confirm_min for n in by_target.values()),
+            )
+            for idx, by_target in counts.items()
+        ]
+    )
+
+
+def export(request: DiscoveryExportRequest, conn: sqlite3.Connection) -> DiscoveryExport:
+    """Every attack of a run with its confirmations and, for candidates, a cluster across rounds.
+    For the operator's private findings file only."""
+    columns = (
+        "round, idx, text, claimed_technique, technique, channel, impact_class, task_id, status,"
+        " trials, successes, success_signals, unscorable, target_refused, candidate, public_band"
+    )
+    rows = conn.execute(
+        f"SELECT {columns} FROM discovery_attacks WHERE run_id = ? ORDER BY round, idx",  # noqa: S608
+        (request.run_id,),
+    ).fetchall()
+    confirmations: dict[tuple[int, int], dict[str, int]] = {}
+    for round_, idx, target, successes in conn.execute(
+        "SELECT round, idx, target, successes FROM discovery_confirmations WHERE run_id = ?",
+        (request.run_id,),
+    ):
+        confirmations.setdefault((round_, idx), {})[target] = successes
+    candidates = [row for row in rows if row[14]]
+    names = cluster(
+        0,
+        [row[2] for row in candidates],
+        [row[4] for row in candidates],
+        DEFAULTS.attack_cluster_jaccard,
+    )
+    cluster_of = {(row[0], row[1]): name for row, name in zip(candidates, names, strict=True)}
+    return DiscoveryExport(
+        run_id=request.run_id,
+        rows=[
+            DiscoveryExportRow(
+                round=row[0],
+                index=row[1],
+                text=row[2],
+                claimed_technique=row[3],
+                technique=row[4],
+                channel=row[5],
+                impact_class=row[6],
+                task_id=row[7],
+                status=row[8],
+                trials=row[9],
+                successes=row[10],
+                success_signals=json.loads(row[11]),
+                unscorable=row[12],
+                target_refused=row[13],
+                candidate=bool(row[14]),
+                public_band=row[15],
+                cluster=cluster_of.get((row[0], row[1])),
+                confirmations=confirmations.get((row[0], row[1]), {}),
+            )
+            for row in rows
+        ],
+    )

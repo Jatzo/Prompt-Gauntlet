@@ -24,6 +24,12 @@ from arena.config import DEFAULTS, REPO_ROOT
 from arena.schemas import (
     BaselineReport,
     BatchReport,
+    DiscoveryConfirmReport,
+    DiscoveryConfirmRequest,
+    DiscoveryExport,
+    DiscoveryExportRequest,
+    DiscoveryReport,
+    DiscoveryRequest,
     EvaluateRequest,
     JudgeReport,
     LabelCheckReport,
@@ -195,3 +201,27 @@ class JudgeClient:
             "measure", timeout=DEFAULTS.measure_timeout_seconds, **request.model_dump(mode="json")
         )
         return BaselineReport.model_validate(reply)
+
+    def discovery_check(self, request: DiscoveryRequest) -> DiscoveryReport:
+        """One round of part 2's screening: target episodes for every attack, so the long wait."""
+        reply = self._request(
+            "discovery_check",
+            timeout=DEFAULTS.measure_timeout_seconds,
+            **request.model_dump(mode="json"),
+        )
+        return DiscoveryReport.model_validate(reply)
+
+    def discovery_confirm(self, request: DiscoveryConfirmRequest) -> DiscoveryConfirmReport:
+        """A round's candidates on the Claude targets. Only whether each is confirmed comes back."""
+        reply = self._request(
+            "discovery_confirm",
+            timeout=DEFAULTS.measure_timeout_seconds,
+            **request.model_dump(mode="json"),
+        )
+        return DiscoveryConfirmReport.model_validate(reply)
+
+    def discovery_export(self, request: DiscoveryExportRequest) -> DiscoveryExport:
+        """A run's stored attacks for the operator's private findings file. Never to an agent."""
+        return DiscoveryExport.model_validate(
+            self._request("discovery_export", **request.model_dump(mode="json"))
+        )

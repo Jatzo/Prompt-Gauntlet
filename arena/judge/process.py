@@ -13,6 +13,8 @@ Methods:
 - query_detector: a T2 label for one text, counted against the cycle's budget.
 - label_check: the data build's checker pass over every partition, before the test set is sealed.
 - discovery_check: one round of part 2's screening, with counts over every trial per attack.
+- discovery_confirm: a round's candidates on the Claude targets; only whether each is confirmed.
+- discovery_export: a run's stored attacks, for the operator's private findings file.
 """
 
 import argparse
@@ -26,6 +28,8 @@ from arena.judge import attacks, discovery, keep, labelcheck, measure, store
 from arena.judge.data import verify_test_set
 from arena.judge.hashing import read_pin, sha256_text
 from arena.schemas import (
+    DiscoveryConfirmRequest,
+    DiscoveryExportRequest,
     DiscoveryRequest,
     EvaluateRequest,
     JudgeReport,
@@ -112,6 +116,21 @@ def handle(request: dict, root: Path, data_dir: Path, conn) -> dict:
         found = discovery.connect(data_dir)
         try:
             return discovery.check(request, context, found).model_dump(mode="json")
+        finally:
+            found.close()
+    if method == "discovery_confirm":
+        context = measure.Context(root, data_dir, store.EvalCache(conn))
+        request = DiscoveryConfirmRequest.model_validate(params)
+        found = discovery.connect(data_dir)
+        try:
+            return discovery.confirm(request, context, found).model_dump(mode="json")
+        finally:
+            found.close()
+    if method == "discovery_export":
+        request = DiscoveryExportRequest.model_validate(params)
+        found = discovery.connect(data_dir)
+        try:
+            return discovery.export(request, found).model_dump(mode="json")
         finally:
             found.close()
     raise ValueError(f"unknown method {method!r}")
