@@ -20,6 +20,7 @@ from arena.schemas import (
     LessonProposal,
     OperatorQuestion,
     PostMortem,
+    RewordBatch,
     SourceRequest,
     TechniqueRecord,
 )
@@ -35,6 +36,7 @@ TOOLS: dict[str, type[pydantic.BaseModel]] = {
     "submit_attack_batch": AttackBatch,
     "query_detector": DetectorQuery,
     "submit_detector_patch": DefenderPatch,
+    "submit_rewordings": RewordBatch,
 }
 
 # PLAN.md section 5. The case-study writer and the Judge's grader get no tools.
@@ -47,6 +49,8 @@ ALLOWLISTS: dict[str, frozenset[str]] = {
     "grader": frozenset(),
     # Part 2's Attacker: one batch a round, each attack naming its task, and no detector.
     "discovery_attacker": frozenset({"submit_attack_batch"}),
+    # Part 2's novelty check: rewords train attacks, in its own database, and nothing else.
+    "rewriter": frozenset({"submit_rewordings"}),
 }
 
 # A role that takes a different schema under a tool's usual name. It never grants a tool: only a

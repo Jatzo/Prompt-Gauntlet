@@ -78,6 +78,7 @@ def test_the_allowlists_match_the_plan():
     assert ALLOWLISTS["casestudy"] == set()
     assert ALLOWLISTS["grader"] == set()
     assert ALLOWLISTS["discovery_attacker"] == {"submit_attack_batch"}
+    assert ALLOWLISTS["rewriter"] == {"submit_rewordings"}
 
 
 def test_every_allowlisted_tool_exists_in_the_registry():

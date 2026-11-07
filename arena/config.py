@@ -27,6 +27,8 @@ class ModelIds(_Frozen):
     attacker: str = "claude-sonnet-5-5"
     # Part 2's Attacker (docs/experiments/005-discovery.md).
     discovery_attacker: str = "claude-sonnet-5-5"
+    # The novelty check's rewordings, by the Attacker's model, as pre-registered.
+    rewriter: str = "claude-sonnet-5-5"
     defender: str = "claude-sonnet-5-5"
     grader: str = "claude-sonnet-5-5"
     detector: str = "claude-haiku-5-5"

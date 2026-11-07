@@ -125,6 +125,8 @@ The CEO is never given a task list. It forms hypotheses, predicts outcomes, choo
 
 *(Note 2026-11-07: part 2 adds a **discovery Attacker** role (section 14, item 5). It may call only `submit_attack_batch`, checked against a task-naming schema through a per-role schema table in `arena/dispatcher.py`. That table can never grant a tool: an entry for a tool off its role's allowlist fails at import.)*
 
+*(Note 2026-11-07: part 2's pre-registered novelty check adds a **rewriter** role, the Attacker's model, allowed only `submit_rewordings`. It rewords 50 train attacks, which agents may see, in its own database, and never sees the discovery Attacker's context or any test data.)*
+
 Default models (per-role config): **Opus 5.5** for the CEO and the case-study writer; **Sonnet 5.5** for the Researcher, Attacker, Defender agent and ambiguity grading. The **detector under test** is a separate setting (default a small fast model such as Haiku 5.5). The **target app's own LLM** has a weak and a strong variant (section 7). Benchmark more than one detector and target model.
 
 All agent I/O is **forced-JSON tool use with small, flat schemas**, one call per concern (e.g. plan call, then post-mortem call), validated with pydantic. All model calls go through `llm.py`.

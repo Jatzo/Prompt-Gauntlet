@@ -32,6 +32,8 @@ PINS = {
     # Part 2's Attacker prompt, fixed before round 1 (docs/experiments/005-discovery.md). Any edit
     # during the run is a deviation, logged there, before this pin changes.
     "prompts/discovery_attacker.md": "ce9dba6710374ab6fc19282ca906bfafe218eb0670aaea0b993441fe210de5f5",
+    # The novelty check's rewording prompt, fixed before its first live call.
+    "prompts/rewriter.md": "1d06e8c6c3d247bf8aab46255de9f221d54915cab0ff42133fd6577e711bede0",
     "data/test.sha256": "730573c29ee86e63e87cfd2c1e27f0c2a9c6a33a433dfb9b379718629b7bf51b",
     "tests/fixtures/known_answer.json": "18f35c94e49fbeb05c902cfba78e62184fdd65186c1fd186c016e75eeb8355c8",
 }

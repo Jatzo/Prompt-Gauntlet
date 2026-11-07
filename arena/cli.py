@@ -31,7 +31,7 @@ from datetime import UTC, date, datetime
 from functools import partial
 from pathlib import Path
 
-from arena import baselines, cycle, db, evidence, llm, usage
+from arena import baselines, cycle, db, evidence, llm, novelty_check, usage
 from arena.anomaly import Anomaly
 from arena.config import DEFAULTS, OPEN_WEIGHTS_ROLES, REPO_ROOT, agent_db_path, private_data_dir
 from arena.control import placebo
@@ -630,6 +630,53 @@ def cmd_discover_run(args) -> int:
         conn.close()
 
 
+def novelty_check_db(backend: str) -> Path:
+    """One database per backend, so a mock or replay run can never stand in for the live check."""
+    return REPO_ROOT / "runs" / f"novelty-check-{backend}.db"
+
+
+def cmd_discover_novelty_check(args) -> int:
+    """Part 2's pre-registered novelty check, in its own agent database. Counts only on screen;
+    per-item results, with no attack text, under private/findings."""
+    try:
+        backend = llm.get_backend(args.backend, cassette=args.cassette)
+    except llm.LiveCallRefused as refused:
+        print(refused, file=sys.stderr)
+        return ExitCode.FAILED
+    conn = db.connect(args.db or novelty_check_db(args.backend))
+    try:
+        with db.runner(conn):
+            report = novelty_check.run(
+                conn, backend=backend, train_path=private_data_dir() / "train.jsonl"
+            )
+    except (
+        db.RunnerBusy,
+        llm.ReplayMiss,
+        llm.LiveCallFailed,
+        novelty_check.MixedBackends,
+        FileNotFoundError,
+    ) as failed:
+        print(f"The check did not finish. {failed}", file=sys.stderr)
+        return ExitCode.FAILED
+    except Anomaly as anomaly:
+        print(f"The check paused for the operator: {anomaly}", file=sys.stderr)
+        return ExitCode.NEEDS_OPERATOR
+    finally:
+        conn.close()
+    out = REPO_ROOT / "private" / "findings" / "novelty-check.jsonl"
+    novelty_check.write(report, out)
+    counts = report.counts
+    for name, value in counts.items():
+        print(f"{name}: {value}")
+    verdict = "passes" if counts["passes"] else "does not pass"
+    print(
+        f"The check {verdict}: worst case {counts['worst_case_rate']:.0%} of "
+        f"{novelty_check.SIZE} against the {novelty_check.PASS_MAX / novelty_check.SIZE:.0%} "
+        f"limit. Per-item results in {out}."
+    )
+    return ExitCode.OK
+
+
 def cmd_discover_export(args) -> int:
     """The run's attacks, candidates, clusters and confirmations, from the Judge, to a private file.
     Only per-round counts go to the terminal, never attack text."""
@@ -749,11 +796,18 @@ def main(argv: list[str] | None = None) -> int:
     discover_export.add_argument("--run-id", required=True)
     discover_export.add_argument("--judge-dir", type=Path, default=None)
     discover_export.add_argument("--out", type=Path, default=None)
+    novelty_parser = discover.add_parser("novelty-check")
+    novelty_parser.add_argument("--backend", choices=("mock", "replay", "live"), default="mock")
+    novelty_parser.add_argument("--cassette", type=Path, default=None)
     args = parser.parse_args(argv)
     if args.command == "discover" and args.discover_command == "run" and args.rounds < 1:
         parser.error("--rounds must be at least 1")
     if args.command == "discover":
-        commands_for = {"run": cmd_discover_run, "export": cmd_discover_export}
+        commands_for = {
+            "run": cmd_discover_run,
+            "export": cmd_discover_export,
+            "novelty-check": cmd_discover_novelty_check,
+        }
         return commands_for[args.discover_command](args)
     if args.command == "run" and args.cycles < 1:
         parser.error("--cycles must be at least 1")
