@@ -394,3 +394,11 @@ decides the narrowed claim and its write-up, then the shortcut fix. The README r
 Small leftovers: retake `docs/dashboard/1-replay-in-flight.jpg` with the notes showing; dashboard
 step D findings 4 (redrawing lists loses text selection) and 5 (two scripts page `/arena/cycles`
 separately).
+
+2026-11-07, part 2 step 3 build (plan `private/part2-step3-plan.md`, draft 2, approved). The novelty
+check has its own rewording role and pinned prompt (`prompts/rewriter.md`, hash in
+`docs/run-record.md`): `discover novelty-check --backend live` rewords 50 train attacks and passes only
+if the worst case, high plus bad, is 5 of 50 or fewer. A pre-flight test runs one mock round through
+the real Judge process. Committed 7fbca29 and 124fcb0 (1,392 tests), not pushed. Next, each on
+Joe's word: push, the live novelty check (record its figures in the run record), then the pilot
+(`control start`, then `discover run --rounds 30 --backend live`), which stops after round 3.
