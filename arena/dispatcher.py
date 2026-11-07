@@ -16,6 +16,7 @@ from arena.schemas import (
     CEOPlan,
     DefenderPatch,
     DetectorQuery,
+    DiscoveryBatch,
     LessonProposal,
     OperatorQuestion,
     PostMortem,
@@ -44,13 +45,36 @@ ALLOWLISTS: dict[str, frozenset[str]] = {
     "defender": frozenset({"submit_detector_patch"}),
     "casestudy": frozenset(),
     "grader": frozenset(),
+    # Part 2's Attacker: one batch a round, each attack naming its task, and no detector.
+    "discovery_attacker": frozenset({"submit_attack_batch"}),
 }
+
+# A role that takes a different schema under a tool's usual name. It never grants a tool: only a
+# role's allowlist does, and the check below refuses an entry for a tool off that list.
+ROLE_SCHEMAS: dict[tuple[str, str], type[pydantic.BaseModel]] = {
+    ("discovery_attacker", "submit_attack_batch"): DiscoveryBatch,
+}
+
+
+def check_role_schemas(table: dict, allowlists: dict[str, frozenset[str]]) -> None:
+    """Refuse a schema entry for a tool its role may not call. Run at import."""
+    for role, tool in table:
+        if tool not in allowlists.get(role, frozenset()):
+            raise RuntimeError(f"ROLE_SCHEMAS lists {tool!r} for {role!r}, which may not call it.")
+
+
+check_role_schemas(ROLE_SCHEMAS, ALLOWLISTS)
+
+
+def schema_for(role: str, tool: str) -> type[pydantic.BaseModel]:
+    """The schema a role's call to a tool is shown and checked against, the same in both places."""
+    return ROLE_SCHEMAS.get((role, tool), TOOLS[tool])
 
 
 def tool_schemas_for(role: str) -> tuple[dict, ...]:
     """The tool definitions a role's model is shown: its own, and nothing else."""
     return tuple(
-        {"name": name, "input_schema": TOOLS[name].model_json_schema()}
+        {"name": name, "input_schema": schema_for(role, name).model_json_schema()}
         for name in sorted(ALLOWLISTS[role])
     )
 
@@ -71,7 +95,7 @@ def dispatch(
             db.raise_anomaly(conn, ForbiddenTool.kind, detail, cycle_id=cycle_id)
         raise ForbiddenTool(f"{role!r} may not call {tool_name!r}.", recorded=True, **detail)
     try:
-        return TOOLS[tool_name].model_validate(args)
+        return schema_for(role, tool_name).model_validate(args)
     except pydantic.ValidationError as error:
         extra = [e for e in error.errors() if e["type"] == "extra_forbidden"]
         if extra:

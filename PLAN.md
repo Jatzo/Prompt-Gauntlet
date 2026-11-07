@@ -123,6 +123,8 @@ The CEO is never given a task list. It forms hypotheses, predicts outcomes, choo
 | **Defender** | Proposes a patch to the `DetectorConfig` | `submit_detector_patch` | Code execution, test data, scorer |
 | **Judge** | Scores everything; deterministic code, LLM only for ambiguous grading | Internal | Nobody can modify it, including the CEO |
 
+*(Note 2026-11-07: part 2 adds a **discovery Attacker** role (section 14, item 5). It may call only `submit_attack_batch`, checked against a task-naming schema through a per-role schema table in `arena/dispatcher.py`. That table can never grant a tool: an entry for a tool off its role's allowlist fails at import.)*
+
 Default models (per-role config): **Opus 5.5** for the CEO and the case-study writer; **Sonnet 5.5** for the Researcher, Attacker, Defender agent and ambiguity grading. The **detector under test** is a separate setting (default a small fast model such as Haiku 5.5). The **target app's own LLM** has a weak and a strong variant (section 7). Benchmark more than one detector and target model.
 
 All agent I/O is **forced-JSON tool use with small, flat schemas**, one call per concern (e.g. plan call, then post-mortem call), validated with pydantic. All model calls go through `llm.py`.
