@@ -56,10 +56,14 @@ def test_the_episode_kinds_are_pinned_and_the_private_ones_are_among_them():
         "novelty_closed",
         "patch",
         "control_move",
+        "discovery_round",
+        "discovery_ack",
     )
     assert set(PRIVATE_EPISODE_KINDS) <= set(EPISODE_KINDS)
     # A patch's literal rules can quote an evasion, so no agent may read one back.
     assert "patch" in PRIVATE_EPISODE_KINDS
+    # A discovery round quotes the Attacker's attacks, so it is private too.
+    assert "discovery_round" in PRIVATE_EPISODE_KINDS
 
 
 def test_an_unknown_episode_kind_is_rejected_and_nothing_is_written(conn):

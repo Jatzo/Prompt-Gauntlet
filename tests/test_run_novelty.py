@@ -152,4 +152,5 @@ def test_batch_episodes_are_marked_private_to_agent_facing_reads():
         "patch",
         "briefing",
         "control_move",
+        "discovery_round",
     }

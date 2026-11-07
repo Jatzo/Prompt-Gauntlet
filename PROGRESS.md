@@ -221,6 +221,14 @@ v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
   re-runs, no replacement of unplayed attacks, 10 confirmation trials on each Claude rung, and a pilot
   that the operator reviews before round 4). PLAN section 14 item 5 points to it. Next: step 2, the
   build, in mock and replay only.
+- 2026-11-07, part 2 step 2 built (plan `private/part2-step2-plan.md`, draft 2 after an opus critique;
+  Joe approved the Judge's confirm and export, a per-role schema table in the dispatcher and the
+  shared stored-call path). Discovery Attacker prompt pinned before round 1; dispatcher role;
+  `arena/agent_call.py`; Judge confirm and export; the Attacker turn; and the loop, `python -m
+  arena.cli discover run|export`, with its own `runs/discovery-agent.db`. An opus review of the loop
+  found a schema spike could lose a refusal and early or failed-pilot flags could skip a stop; all
+  fixed and tested. Mock only, nothing live has run. Next: step 3, the novelty check and the pilot,
+  each on Joe's word.
 
 ## Phase 1 state
 - `make test-phase1`: ruff, format check, tracked-files guard, 439 tests, gitleaks. All green.

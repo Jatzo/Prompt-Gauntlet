@@ -32,6 +32,7 @@ from functools import partial
 from pathlib import Path
 
 from arena import baselines, cycle, db, evidence, llm, usage
+from arena.anomaly import Anomaly
 from arena.config import DEFAULTS, OPEN_WEIGHTS_ROLES, REPO_ROOT, agent_db_path, private_data_dir
 from arena.control import placebo
 from arena.data import large_synthetic
@@ -40,11 +41,12 @@ from arena.data.fetch import ChangedSource, fetch_all
 from arena.data.labelling import ContestedCapExceeded, LabelCache, label_rows
 from arena.data.splits import SplitRow
 from arena.data.templates import synthetic_corpus
+from arena.discover import AckRefused, DiscoveryRun
 from arena.exit_codes import ExitCode
 from arena.judge_client import JudgeClient, JudgeError
 from arena.orchestrator import REFERENCE_TARGET, Orchestrator, phase1_mock_script
 from arena.report_tables import render
-from arena.schemas import LabelCheckRequest
+from arena.schemas import DiscoveryExportRequest, LabelCheckRequest
 from arena.sim_agents import SimAgentsBackend
 from arena.target.ladder import DATA_CHECK_RUNGS, LADDER
 
@@ -582,6 +584,73 @@ def cmd_evidence(args) -> int:
     return ExitCode.OK
 
 
+DISCOVERY_DB = REPO_ROOT / "runs" / "discovery-agent.db"
+
+
+def cmd_discover_run(args) -> int:
+    """Part 2's discovery rounds (docs/experiments/005-discovery.md), in their own agent database.
+
+    Every stop is for the operator. Carrying on past the pilot or a confirmed candidate needs the
+    matching flag, whose note is recorded before any further round.
+    """
+    path = args.db or DISCOVERY_DB
+    conn = db.connect(path)
+    try:
+        state, reason = db.control_state(conn)
+        if state != "running":
+            print(
+                f"The discovery run is {state} ({reason}). Start it with: "
+                f"python -m arena.cli --db {path} control start"
+            )
+            return ExitCode.NEEDS_OPERATOR
+        try:
+            backend = llm.get_backend(args.backend, cassette=args.cassette)
+        except llm.LiveCallRefused as refused:
+            print(refused, file=sys.stderr)
+            return ExitCode.FAILED
+        with db.runner(conn), JudgeClient(judge_dir=args.judge_dir) as judge:
+            run = DiscoveryRun(
+                conn, judge, run_id=args.run_id, backend=backend, judge_backend=args.backend
+            )
+            if args.pilot_reviewed:
+                run.acknowledge("pilot_reviewed", args.pilot_reviewed)
+            if args.after_confirmed:
+                run.acknowledge("after_confirmed", args.after_confirmed)
+            outcome = run.run(args.rounds)
+        print(f"{outcome.status}: {outcome.rounds_done} rounds. {outcome.message}")
+        return ExitCode.OK if outcome.status == "done" else ExitCode.NEEDS_OPERATOR
+    except (db.RunnerBusy, AckRefused, llm.ReplayMiss, llm.LiveCallFailed) as failed:
+        print(f"Nothing more was run. {failed}", file=sys.stderr)
+        return ExitCode.FAILED
+    except Anomaly as anomaly:
+        # A hijack, a usage cap or another anomaly pauses the run; the operator decides.
+        print(f"The run paused: {anomaly}", file=sys.stderr)
+        return ExitCode.NEEDS_OPERATOR
+    finally:
+        conn.close()
+
+
+def cmd_discover_export(args) -> int:
+    """The run's attacks, candidates, clusters and confirmations, from the Judge, to a private file.
+    Only per-round counts go to the terminal, never attack text."""
+    private = (REPO_ROOT / "private").resolve()
+    out = (args.out or private / "findings" / f"{args.run_id}.jsonl").resolve()
+    if not out.is_relative_to(private):
+        print(f"The findings hold attack text, so they go under {private} only.", file=sys.stderr)
+        return ExitCode.FAILED
+    with JudgeClient(judge_dir=args.judge_dir) as judge:
+        exported = judge.discovery_export(DiscoveryExportRequest(run_id=args.run_id))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("".join(row.model_dump_json() + "\n" for row in exported.rows))
+    by_round = Counter(row.round for row in exported.rows)
+    candidates = Counter(row.round for row in exported.rows if row.candidate)
+    for number in sorted(by_round):
+        print(f"Round {number}: {by_round[number]} attacks, {candidates[number]} candidates")
+    clusters = {row.cluster for row in exported.rows if row.cluster is not None}
+    print(f"{len(exported.rows)} attacks, {len(clusters)} candidate clusters, written to {out}.")
+    return ExitCode.OK
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m arena.cli")
     parser.add_argument(
@@ -658,7 +727,34 @@ def main(argv: list[str] | None = None) -> int:
     fetch = data.add_parser("fetch")
     fetch.add_argument("--only", nargs="+", default=None, metavar="SOURCE")
     fetch.add_argument("--raw-dir", type=Path, default=raw_dir)
+    discover = commands.add_parser("discover").add_subparsers(
+        dest="discover_command", required=True
+    )
+    discover_run = discover.add_parser("run")
+    discover_run.add_argument("--run-id", required=True)
+    discover_run.add_argument("--rounds", type=int, required=True)
+    discover_run.add_argument("--backend", choices=("mock", "replay", "live"), default="mock")
+    discover_run.add_argument("--cassette", type=Path, default=None)
+    discover_run.add_argument("--judge-dir", type=Path, default=None)
+    discover_run.add_argument(
+        "--pilot-reviewed", metavar="NOTE", default=None, help="carry on past the pilot review"
+    )
+    discover_run.add_argument(
+        "--after-confirmed",
+        metavar="DEVIATION_NOTE",
+        default=None,
+        help="carry on past a confirmed candidate, as a dated deviation",
+    )
+    discover_export = discover.add_parser("export")
+    discover_export.add_argument("--run-id", required=True)
+    discover_export.add_argument("--judge-dir", type=Path, default=None)
+    discover_export.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
+    if args.command == "discover" and args.discover_command == "run" and args.rounds < 1:
+        parser.error("--rounds must be at least 1")
+    if args.command == "discover":
+        commands_for = {"run": cmd_discover_run, "export": cmd_discover_export}
+        return commands_for[args.discover_command](args)
     if args.command == "run" and args.cycles < 1:
         parser.error("--cycles must be at least 1")
     if args.command == "data" and getattr(args, "large", False) and not args.synthetic:
