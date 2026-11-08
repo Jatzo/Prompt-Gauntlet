@@ -413,29 +413,31 @@ def roadmap(t):
             ],
         ),
         (
-            "Now: live arena",
+            "Stopped: part 3",
             t["held"],
             [
-                "Rung 6 pilot: 0 of 400",
-                "Search on guided Gemma",
-                "Best finds checked on Claude",
+                "Live arena on guided Gemma",
+                "Cycle 1: brief bug, 0 valid",
+                "Cycle 2: safeguards stopped",
+                "the Attacker, no batch played",
             ],
         ),
         (
-            "Next",
-            t["defender"],
+            "Not pursued",
+            t["muted"],
             [
+                "Local-model Attacker",
                 "Paraphrase-aware novelty",
                 "Shortcut fix and dev rebuild",
             ],
         ),
     ]
     b = [
-        text(32, 44, "Plan of action", t["ink"], 20, 700),
+        text(32, 44, "Where the project stopped", t["ink"], 20, 700),
         text(
             32,
             66,
-            "In order. Each new experiment gets its own plan and pre-registration before any result is reported.",
+            "Three parts, in order. Each had its own plan before any result was reported.",
             t["muted"],
             13,
         ),
@@ -450,7 +452,13 @@ def roadmap(t):
             b.append(text(x + 30, yy, item, t["muted"], 12))
         if i < len(cols) - 1:
             b.append(arrow(x + w, 112, x + w + gap, 112, t["muted"]))
-    return svg(960, 240, t, "\n".join(b), "Plan of action: part 1 done, part 2 done, next, then")
+    return svg(
+        960,
+        240,
+        t,
+        "\n".join(b),
+        "Where the project stopped: part 1 done, part 2 done, part 3 stopped, not pursued",
+    )
 
 
 def main(out):

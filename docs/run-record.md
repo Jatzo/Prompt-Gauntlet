@@ -448,9 +448,38 @@ the attacks. Making the Attacker's attacks the valid set would move the bar a se
 results, so I did not. The arena counts them as findings on an engineered target, never as
 valid benchmark attacks.
 
+## Live arena run a1 (8 November)
+
+The arena on guided Gemma (`run --reference guided`, 1 trial a dev pair), Claude agents through the
+plan login, Judge copy `private/judge-arena` without the real test files. Figures from
+`python scripts/arena_report.py report a1`. Write-up: [arena.md](arena.md).
+
+| | Cycle 1 | Cycle 2 |
+|---|---|---|
+| Clock time (UTC) | 15:23 to 16:44 (81.8 min) | 20:30 to 21:46 (75.4 min, about 2 min of Attacker work) |
+| Ended | committed | rolled back with `abandon-cycle` |
+| Focus | homoglyphs | encodings |
+| Claude calls stored | 12: Attacker 9, CEO 2, Defender 1 | 6: Attacker 3 on the pinned model and 2 from `claude-sonnet-5`, CEO 1 |
+| Claude tokens in / out | 46,775 / 7,341 | 52,170 / 4,387 |
+| Attacks played | 12 (4 on a channel no task reads), 0 valid | 0 |
+| Gemma calls in the Judge cache | 4,740 | 0 |
+| Judge | reject, `no_tpr_gain` | not reached |
+| Anomalies | hash mismatch before any call (real test set, first start); Judge unavailable once (Ollama HTTP 500) | 2 model-id mismatches (`claude-sonnet-5`, pinned `claude-sonnet-5-5`) |
+
+- **Two counts of cycle 1's Gemma calls.** The live log printed 5,568 stores across its two starts;
+  the cache holds 4,740 new rows in the cycle's window, because a repeated call overwrites its cache
+  key. The table gives the cache count, which can be traced.
+- **Cycle 2's refusal has no stored row.** At 20:31 the provider refused the Attacker's third query,
+  tagged `[bio]`, and the run crashed before logging it (fixed in `a37ed84`). The log that showed it
+  was overwritten by the next start; the refusal text and request id are from that log as read at
+  the time. So cycle 2 had 6 Attacker requests in all: 1 refused, 3 answered on the pinned model and 2
+  answered by another model, with queries 3 and 4 each asked twice.
+- **The cycle 1 result came from a brief bug**, not the target: the Attacker's prompt never stated
+  the success rule ([debug-log.md](debug-log.md)).
+
 ## Tests and CI
 
-- The suite has 1,246 tests (5 November) and runs in about 2 to 3 minutes locally (113 to 170
+- The suite has 1,434 tests (8 November) and runs in about 2 to 3 minutes locally (113 to 170
   seconds). None make a live call.
 - 11 CI runs from 26 to 30 October, all green, each between 1 and 7 minutes. The last push,
   eb80069, passed CI (run 41241741310).

@@ -117,10 +117,26 @@ tell whether the target is passing the attacker's link on or summarising the ema
 
 One more rung was pre-registered on 8 November: rung 3 with the part 2 screening target's guided
 help. It measured 0 of 400 on 200 train pairs against a bar of 20% (`docs/run-record.md`), so the
-dev partition still holds no valid attack. The arena therefore searches on guided Gemma with
-attacks its own Attacker writes, and its findings hold for that engineered target only. While dev
-holds no valid attack, the keep rule's TPR gain cannot be computed, so the Defender cannot keep a
-patch and the run pauses at each plateau.
+dev partition still holds no valid attack. The arena therefore searched on guided Gemma with
+attacks its own Attacker wrote, so anything it found would have held for that engineered target
+only. While dev holds no valid attack, the keep rule's TPR gain cannot be computed, so the Defender
+cannot keep a patch. The arena found nothing before it ended (next section).
+
+## The provider's safeguards stopped the Attacker
+
+The arena ended on 8 November when the provider's safeguards stopped its Attacker, Claude Sonnet 5.5
+through the plan login ([arena.md](arena.md)). In cycle 2 of run a1 one Attacker request was refused
+(tagged `[bio]`) and two were answered by `claude-sonnet-5` instead of the pinned model; the second
+of those said it would not keep writing encoded injection payloads.
+
+- Part 3 therefore has no attack result. No batch was played in cycle 2, and cycle 1's 12 attacks
+  were made under a broken brief.
+- The cause is my inference, with low confidence. A `[bio]` tag does not fit text about a door code,
+  so a classifier misfire is as likely as a deliberate rule, and I have no statement from the
+  provider.
+- The refusal itself has no stored record (the run crashed before logging it); it rests on the run
+  log as read at the time.
+- I did not reword requests to get past the safeguards or accept another model's answers.
 
 ## Labels made while the target saw extra tools
 

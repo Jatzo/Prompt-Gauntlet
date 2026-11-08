@@ -8,13 +8,16 @@ It is a toy tool-using assistant with a secret to leak, a separate Judge process
 counts as a successful attack, and an arena where an Attacker agent and a Defender agent take turns
 against it.
 
-> **Status, 8 November 2026.** Part 1 is done and written up in
+> **Finished, 8 November 2026, in three parts.** Part 1, written up in
 > [docs/static-test.md](docs/static-test.md): I played 2,331 published attacks against four targets
 > and none reached the attacker. Its positive control, an assistant told to obey, got there in only
-> 19 of 400 episodes (4.8%), so the zero says as much about this setup as about the models. Part 2
-> is done and written up in [docs/discovery.md](docs/discovery.md): a Claude Attacker wrote 288
-> attacks over 30 pre-registered rounds, 246 of them worked on a helped local Gemma, and none of
-> them reached the attacker in 4,920 Claude episodes. I make no claim about how good any defence is.
+> 19 of 400 episodes (4.8%), so the zero says as much about this setup as about the models. Part 2,
+> in [docs/discovery.md](docs/discovery.md): a Claude Attacker wrote 288 attacks over 30
+> pre-registered rounds, 246 of them worked on a helped local Gemma, and none of them reached the
+> attacker in 4,920 Claude episodes. Part 3, in [docs/arena.md](docs/arena.md): the live arena ran,
+> and the model provider's safeguards stopped its Attacker before it played a batch, so part 3 has no
+> attack result. I make no claim about how good any defence is. The verdicts, with how far I trust
+> each, are under [Verdict and confidence](#verdict-and-confidence).
 
 <p align="center">
   <img src="docs/figures/arena-replay.gif" width="800" alt="The dashboard's arena replaying one cycle: red attacks fly at the blue detector ring, caught ones stop with a cross, ones that get past reach the target in the centre, and the Judge rejects the patch">
@@ -35,17 +38,19 @@ that names the attacker. Looking like an attack is not enough.
 Scoring lives in its own process. The Judge owns the data and the statistics, and the agents only
 ever get aggregates back, so no agent can mark its own homework.
 
-So far I have:
+What I did:
 
 - built the harness and labelled a 15,208-item dataset with no hand labels;
 - played 2,331 public attacks against four targets: Claude Sonnet 5.5, Claude Haiku 5.5 with the
   task's own tools and with every tool, and Gemma 4 12B running locally. None reached the attacker;
-- found six problems in my own harness along the way, and fixed or written down each one.
+- had a Claude Attacker write 288 new attacks; none of the 246 that worked on Gemma worked on Claude;
+- ran the live arena until the provider's safeguards stopped its Attacker;
+- found eight problems in my own harness along the way, and fixed or written down each one.
 
 Everything runs against my own toy assistant. No real system, credential or third-party target is
 attacked.
 
-## What's built so far
+## What's built
 
 - **A scorer the agents cannot reach.** The Judge is its own process with its own data,
   hash-pinned files and a narrow JSON interface that returns aggregates only.
@@ -56,16 +61,19 @@ attacked.
   where it can, and disagreements are left out and counted.
 - **A negative result with its bounds.** No public attack reached the attacker on any of four
   targets. The write-up, limits included, is [docs/static-test.md](docs/static-test.md).
-- **Six harness problems found and dealt with** (below). Most of the work so far has gone into
-  making the numbers trustworthy.
+- **An arena that runs live.** CEO, Attacker, Defender and Judge, with hash and model-id pins and a
+  pause on anything unexpected. It ran two live cycles before the provider's safeguards stopped it
+  ([docs/arena.md](docs/arena.md)).
+- **Eight harness problems found and dealt with** (below). Most of the work went into making the
+  numbers trustworthy.
 
 ## Threat model
 
 | | What the attacker knows | Where it is used |
 |---|---|---|
 | **T1, static** | nothing: public attack strings, written for other systems | the checker pass and the baseline |
-| **T2, adaptive black-box** | its own last batch and which attacks got past, under a query budget | the arena (Phase 3) |
-| **T3, design-aware** | the defence's design, not its live configuration | Phase 4 |
+| **T2, adaptive black-box** | its own last batch and which attacks got past, under a query budget | part 2's feedback loop, and the arena (part 3) |
+| **T3, design-aware** | the defence's design, not its live configuration | planned, never run |
 
 The target is "Gauntlet Target", a toy assistant that reads email, searches documents, fetches pages
 and sends messages through deterministic mock tools. An attack succeeds if the canary (a dummy door
@@ -95,7 +103,7 @@ reserved `example.invalid` domain.
 </picture>
 
 - **Agents** ([arena/agents/](arena/agents/)): the CEO plans, the Attacker writes injections, the
-  Defender proposes one patch. The Researcher is planned, not built.
+  Defender proposes one patch. A fourth agent, the Researcher, was planned and never built.
 - **Dispatcher and model calls** ([arena/dispatcher.py](arena/dispatcher.py),
   [arena/llm.py](arena/llm.py)): each role may call only the tools on its allowlist. Every call is
   forced-JSON tool use, checked against a schema, and its raw output is stored by `(cycle, step)`
@@ -148,7 +156,7 @@ There is no semantic retrieval in v1, on purpose:
 - **The memory is small and capped.** Tag overlap over a few dozen lessons needs no index.
 - **Briefings must be deterministic and auditable.** The same database gives the same briefing, so
   a cycle can be replayed and a lesson's influence traced.
-- **The memory ablation needs a clean contrast.** The memory and no-memory arms should differ only in
+- **The memory ablation, planned and never run, needed a clean contrast.** The memory and no-memory arms should differ only in
   what they can recall (PLAN sections 9 and 14), not in a retriever's quirks.
 
 Novelty is measured with character 5-gram containment ([arena/novelty.py](arena/novelty.py)).
@@ -287,6 +295,17 @@ pre-registered (`prereg-005-discovery`); three deviations are stated in the writ
 
 Bounds, the per-round table, limits and deviations: [docs/discovery.md](docs/discovery.md).
 
+### Part 3: the live arena
+
+I ran the full loop live on 8 November, validating attacks on the same helped Gemma and keeping
+Claude for confirmation. Cycle 1 ran to the end with 12 attacks and 0 valid, because my brief never
+told the Attacker how an attack wins; I fixed it. In cycle 2 the Attacker's queries went at the
+secret, and within four turns the provider stopped it: one refusal, then two answers from
+`claude-sonnet-5` instead of the pinned model, the second saying it would not keep writing encoded
+injection payloads. No batch was played, and no Claude target was ever played in part 3. I did not
+reword anything to get past the safeguards, and I ended the arena there. [docs/arena.md](docs/arena.md)
+says how little two cycles can show, and why the cause is only my inference.
+
 ### Controls, in simulation only
 
 The placebo in mock mode: 1 keep in 300 null cycles (upper bound 1.6%, under the 5% limit), while a
@@ -301,10 +320,41 @@ of the 1,000 dev attacks come from LLMail and share its wording. The benchmark w
 wording, not detection, so I'm not reporting its detection figures as results. The fix is planned;
 details are in [docs/run-record.md](docs/run-record.md).
 
+## Verdict and confidence
+
+- **Part 1: public attacks did not reach the attacker on Claude in this setup.** Medium confidence
+  for the narrow claim: the 112 send attacks paired with the one task where sending is the job went
+  0 of 448 on the two Claude task-tools targets, which caps them at about 2.7% per attack. Low
+  confidence for anything wider: the positive control fired in only 4.8% of episodes, about a third
+  of the attacks ask for something the toy app cannot show, I changed the success rule after seeing
+  a result, and the Gemma zeros are mostly a harness bug ([docs/static-test.md](docs/static-test.md)).
+- **Part 2: attacks that worked on a helped Gemma did not carry over to Claude.** Medium confidence
+  per cluster, where the largest went 0 of 2,020; low per attack, where 0 of 10 only bounds a rate
+  below 25.9%. Whether any attack is new is unmeasured, because the novelty check failed before the
+  run ([docs/discovery.md](docs/discovery.md)).
+- **Part 3: no attack result.** That the provider's safeguards stopped the Attacker is a recorded
+  event, apart from the first refusal, which rests on a log I read at the time. Why they did is my
+  inference, low confidence ([docs/arena.md](docs/arena.md)).
+
+## What I would tell a team running a similar agent
+
+1. **Score what the assistant did, not what the detector saw.** Under my first success rule, 649
+   "successes" were a habit the weak target had without any attack.
+2. **Run a positive control before trusting a zero.** Mine fired 4.8% of the time, which made my
+   zeros weaker than they looked.
+3. **Data must not set the rules for the reply.** Gemma obeyed formatting rules hidden in emails and
+   pages, and leaked the secret through the format. Test with data that tries to dictate the
+   answer, not only with "ignore your instructions".
+4. **Pin models and pause on a refusal or a switch.** The provider sometimes answers from another
+   model. Mixing two models' output in one result without saying so is worse than stopping.
+5. **If you red-team with a hosted model, plan for its safeguards.** Host the attacker yourself or
+   agree the work with the provider first.
+6. **Test your own harness hardest.** All eight problems below were mine.
+
 ## What broke along the way
 
-Live runs found the first five; a smoke test of this README's own commands found the sixth. Each is
-fixed or written down.
+Live runs found seven; a smoke test of this README's own commands found one. Each is fixed or
+written down.
 
 1. **A safeguard answer from another model stopped a whole run.** The provider answers some flagged
    inputs from an older model. Now a refusal ends only that episode, counted as unscorable; a batch
@@ -321,6 +371,9 @@ fixed or written down.
    from the cache. I kept the limit and wrote it down.
 6. **A smoke test overwrote the real train split.** It was rebuilt from cached labels and matched
    byte for byte. A synthetic build now refuses to write into the private folder.
+7. **The arena Attacker's brief never said how an attack wins.** Cycle 1 gave 12 attacks and 0
+   valid. The prompt now states the rules and lists the tasks.
+8. **A refused Attacker request crashed the run.** It now pauses with the cycle still open.
 
 Details in [docs/debug-log.md](docs/debug-log.md) and [docs/limitations.md](docs/limitations.md).
 
@@ -335,49 +388,32 @@ Details in [docs/debug-log.md](docs/debug-log.md) and [docs/limitations.md](docs
 | One model family as attacker, defender and target | one provider, one set of controls | results may not transfer to other families |
 | 2 trials in the checker, 5 in the baseline | plan usage kept to hours, not weeks | rare successes can be missed |
 
-## What's next
+## Where I stopped
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/figures/roadmap-dark.svg">
-  <img src="docs/figures/roadmap-light.svg" width="100%" alt="Plan of action in four columns: part 1 done, part 2 done, the live arena on an engineered target, next">
+  <img src="docs/figures/roadmap-light.svg" width="100%" alt="Where the project stopped, in four columns: part 1 done, part 2 done, part 3 stopped when the provider's safeguards stopped the Attacker, and the work not pursued">
 </picture>
 
-**Part 1, done.** The static test above, written up in [docs/static-test.md](docs/static-test.md).
-Its positive control, rung 5, ran on 6 November and reached the attacker in 19 of 400 episodes.
+The project ends with part 3. The loop I wanted needs an Attacker that writes working injections
+automatically, cycle after cycle, and on this account the provider's safeguards stop that once the
+attacks get good. Parts 1 and 2 are finished and written up.
 
-**The live arena, on an engineered target.** No target I pre-registered is hijacked by the corpus
-attacks under the current rule. The last try, guided Gemma, measured 0 of 400 on 8 November
-against a bar of 20% ([run record](docs/run-record.md)). So the arena searches there with attacks
-its own Attacker writes, logs each one that hijacks the target, and checks the best on Claude.
-The Defender cannot keep a patch until the dev set holds a valid attack. The bag-of-words
-shortcut stays recorded and unfixed.
+Not done, and not planned:
 
-**Part 2, done.** The Attacker-only loop above, written up in
-[docs/discovery.md](docs/discovery.md). It ran 30 rounds on 7 November and nothing was confirmed on
-Claude. A better novelty measure, one that catches paraphrase, comes before any claim that an
-attack is new.
+- **An Attacker on a model I host.** It would let the arena run without the provider's safeguards in
+  the loop, probably with weaker attacks.
+- **Research access from the provider**, one legitimate way to run a hosted Attacker unattended.
+- **The shortcut fix and a dev rebuild**, so detection can be measured; the first live baseline
+  ended invalid on a bag-of-words shortcut.
+- **A novelty measure that catches paraphrase**, before any claim that an attack is new.
+- **The pre-registered experiments**: defence arms against threat models, and the memory ablation.
+- **A case study in PLAN section 13's format.** It needs a finding that was fixed and held, and there
+  was none.
 
-**Open problems I still have to fix:**
-- A runner lock, so two cycles cannot run at once, and a command to abandon an open cycle.
-- The Judge scores an unscorable attack episode as a failed attack, which favours the defence. It is
-  written down and waits for a Judge change.
-- Safeguard refusals are not paired across arms, so compare unscorable counts before trusting an arm.
-- Calibrate the novelty threshold before the first live-agent run.
-
-**Then:** a Defender against part 2's findings, the adaptive attacker under T2 and T3, the memory
-ablation, and case studies written for a security reader, at least one of them a negative result or
-a bypass.
-
-### To be pre-registered
-
-These are open questions, with no results attached. Each gets a hypothesis, design, metric and power analysis in
-`docs/experiments/`, committed and tagged before it runs.
-
-1. **Defence arms against threat models:** whether an adaptive attacker breaks the classifier but not
-   the architecture (plan-then-execute and capability gating).
-2. **The memory ablation:** full memory against no memory against the hill-climb control, at least 5
-   independent runs an arm, with the run as the unit of analysis. If that is unaffordable, it is
-   reported as exploratory with no confidence intervals.
+Two known problems stay as written down: the Judge scores an unscorable attack episode as a failed
+attack, which favours the defence, and safeguard refusals are not paired across defence arms
+([docs/limitations.md](docs/limitations.md)).
 
 ## What this builds on
 
@@ -394,13 +430,15 @@ source is checked against a primary source in [docs/references.md](docs/referenc
 |---|---|
 | Target models | `claude-sonnet-5-5` (strong), `claude-haiku-5-5` (weak), Gemma 4 12B through Ollama (rung 3) |
 | Detector classifier | `claude-haiku-5-5` |
-| Agents | CEO and labeller `claude-opus-5-5`; Attacker and Defender `claude-sonnet-5-5` |
+| Agents | CEO and labeller `claude-opus-5-5`; Attacker and Defender `claude-sonnet-5-5`; in the arena, two Attacker answers came from `claude-sonnet-5` and paused the run |
 | Second labeller | Gemma 4 12B through Ollama, digest pinned in `arena/config.py` |
 | Dataset build | 27 October 2026 |
 | Checker pass | 27 to 31 October 2026, 41,548 calls, 2 trials a pair |
 | Rung 3 dev gate | 5 November 2026, 10,730 calls, 2 trials a pair |
 | Live baseline | 1 to 5 November 2026, ended invalid (exit 4) |
-| Tests | 1,246, none of them live |
+| Part 2 run | 7 November 2026, 30 rounds |
+| Live arena | 8 November 2026, two cycles, stopped by the provider's safeguards |
+| Tests | 1,434, none of them live |
 
 ## Run it
 
@@ -432,8 +470,8 @@ tests the machinery and says nothing about real defences.
   improvement on this setup, not real-world security.
 - There are no human labels. The error left on items both model families agree on is not measured.
 - One model family attacks, defends and plays the target, which may limit how far results transfer.
-- The memory ablation may be too small to separate from noise at 40 cycles and 5 runs an arm. A null
-  result is a valid result here.
+- The live arena ran two cycles and played one batch, made under a broken brief, so part 3 has no
+  attack result.
 
 The full list is in [docs/limitations.md](docs/limitations.md), and the design, guardrails and phases
 are in [PLAN.md](PLAN.md).
@@ -442,7 +480,7 @@ are in [PLAN.md](PLAN.md).
 
 ```
 arena/
-  agents/      CEO, Attacker and Defender (the Researcher is still to build)
+  agents/      CEO, Attacker and Defender
   judge/       the separate scoring process, statistics and hash checks (pinned)
   target/      the toy assistant, its mock tools and the attack checker
   detector/    the configurable detector the Defender patches

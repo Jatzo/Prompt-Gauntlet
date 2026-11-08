@@ -11,6 +11,8 @@ Update this at the end of every working session.
 - [ ] 6. Findings and case studies
 - [ ] 7. Harden and publish
 
+Stopped on 2026-11-08: the operator ended the project after part 3, when the provider's safeguards stopped the arena Attacker. Phases 2 to 7 stay as they are; parts 1 to 3 are written up.
+
 v2 extensions are deferred until v1 produces results (see PLAN.md section 4).
 
 ## Decisions made
@@ -436,3 +438,11 @@ critique, approved): the prompt states the win rules, every request lists the ta
 names the send and fetch slots, `{ATTACKER}` is a constraint for every focus, unplayed attacks are
 logged as `attack_unplayed`, and the hijack bait no longer says "code". Next, on Joe's word: one
 live cycle to check attacks are playable, then the 3-cycle pilot.
+
+2026-11-08 (night), the end. Live cycle 2 was stopped by the provider's safeguards: one
+Attacker request refused (tagged bio), then two answered by claude-sonnet-5 and paused by the
+model-id pin. Joe ended the arena there. Cycle 2 closed with abandon-cycle. Written up per
+`private/writeup-plan.md` (draft 2, opus critique, approved): `docs/arena.md`,
+`scripts/arena_report.py` (report, and a part 3 leak check, since `discovery_report.py check`
+only sees part 2), the run record, limitations, README (verdicts, advice, Where I stopped) and
+the roadmap figure. Nothing pushed without Joe's word.
