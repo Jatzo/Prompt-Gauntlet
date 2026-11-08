@@ -6,6 +6,7 @@ keeps the dark ground free of dithering bands.
 
 Needs Python with Playwright (and its Chromium) and ffmpeg on PATH. Usage, from the repo root:
     python scripts/make_static_gif.py
+    python scripts/make_static_gif.py scripts/discovery_gif.html docs/figures/discovery.gif
 """
 
 import base64
@@ -43,11 +44,11 @@ def font_faces() -> str:
     return "\n".join(rules)
 
 
-def main() -> int:
+def main(page: Path = PAGE, out: Path = OUT) -> int:
     if shutil.which("ffmpeg") is None:
         print("ffmpeg is not on PATH. Install it, then run this again.", file=sys.stderr)
         return 1
-    html = PAGE.read_text(encoding="utf-8").replace("FONT_FACES", font_faces())
+    html = page.read_text(encoding="utf-8").replace("FONT_FACES", font_faces())
     with tempfile.TemporaryDirectory() as scratch:
         frames = Path(scratch)
         with sync_playwright() as p:
@@ -93,13 +94,16 @@ def main() -> int:
                 "paletteuse=dither=none:diff_mode=rectangle",
                 "-loop",
                 "0",
-                str(OUT),
+                str(out),
             ],
             check=True,
         )
-    print(f"{OUT.relative_to(ROOT)}: {OUT.stat().st_size / 1_000_000:.2f} MB")
+    print(f"{out.relative_to(ROOT)}: {out.stat().st_size / 1_000_000:.2f} MB")
     return 0
 
 
 if __name__ == "__main__":
+    # With no arguments, part 1's GIF; with PAGE and OUT (repo-relative), any other page.
+    if len(sys.argv) == 3:
+        sys.exit(main(ROOT / sys.argv[1], ROOT / sys.argv[2]))
     sys.exit(main())

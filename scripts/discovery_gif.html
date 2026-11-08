@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Discovery run</title>
+<!-- Every number below comes from docs/run-record.md, "Part 2 run d1", as printed by
+     scripts/discovery_report.py. scripts/make_static_gif.py inlines the dashboard's fonts in place
+     of FONT_FACES and steps `draw(t)` one frame at a time. No attack text is on this page. -->
+<style>
+FONT_FACES
+:root {
+  --ground: #0c0916; --raised: #1a1230; --line: #3a2f57; --ink: #ece9f4; --muted: #a49cb8;
+  --attacker: #ff7b72; --judge: #c3abe8; --quiet: #7a85a0; --live: #3fbf8f;
+}
+* { box-sizing: border-box; margin: 0; }
+body {
+  width: 1200px; height: 675px; overflow: hidden; background: var(--ground); color: var(--ink);
+  font-family: "Plex Sans", system-ui, sans-serif;
+}
+.frame { position: absolute; inset: 0; padding: 48px 64px 40px; display: grid;
+  grid-template-rows: auto 1fr auto; row-gap: 28px; }
+h1 { font-size: 36px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; }
+.lede { margin-top: 10px; font-size: 18px; color: var(--muted); }
+.body { display: grid; grid-template-columns: 1fr 300px; column-gap: 48px; align-items: stretch; }
+.board { display: grid; grid-template-rows: auto 1fr auto auto; row-gap: 12px; }
+.label { font-size: 16px; color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(30, 1fr); column-gap: 6px; align-items: end; }
+.round { display: grid; grid-template-rows: repeat(10, 1fr); row-gap: 4px; height: 210px; }
+.cell { border-radius: 3px; border: 1px solid transparent; }
+.cell.played { border-color: var(--line); background: var(--raised); }
+.cell.candidate { background: var(--quiet); border-color: var(--quiet); }
+.cell.idea { background: var(--attacker); border-color: var(--attacker); }
+.cell.refused { border: 1px dashed var(--line); }
+.axis { display: grid; grid-template-columns: repeat(30, 1fr); column-gap: 6px;
+  font-size: 12px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+.claude { display: grid; grid-template-columns: repeat(30, 1fr); column-gap: 6px; height: 14px; }
+.claude span { justify-self: center; width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--live); opacity: 0; }
+.key { display: flex; gap: 18px; font-size: 13px; color: var(--muted); align-items: center;
+  white-space: nowrap; }
+.key i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 7px;
+  vertical-align: -1px; }
+.key .o { border-radius: 50%; border: 2px solid var(--live); }
+.readout { border-left: 1px solid var(--line); padding-left: 36px; display: grid;
+  grid-template-rows: auto auto 1fr; row-gap: 18px; }
+.count { font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  font-size: 44px; font-weight: 600; line-height: 1.05; margin-top: 2px; }
+.sub { font-size: 14px; color: var(--muted); margin-top: 4px; }
+.zero { font-family: "Plex Mono", ui-monospace, monospace; font-size: 140px; font-weight: 600;
+  line-height: 0.9; color: var(--live); margin-top: 4px; }
+.note { font-size: 15px; color: var(--muted); line-height: 1.5; max-width: 1060px; }
+.note + .note { margin-top: 6px; }
+.note b { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <header>
+    <h1>An agent wrote 288 injections. None got through to Claude.</h1>
+    <p class="lede">A Claude Attacker wrote 10 a round for 30 rounds, screened each on a helped local Gemma, and every one that worked there was replayed on Claude.</p>
+  </header>
+  <section class="body">
+    <div class="board">
+      <p class="label">Attacks per round on Gemma, 5 trials each</p>
+      <div class="grid" id="grid"></div>
+      <div class="axis" id="axis"></div>
+      <div class="claude" id="claude"></div>
+      <div class="key">
+        <span><i style="background:var(--attacker)"></i>worked: the one idea</span>
+        <span><i style="background:var(--quiet)"></i>worked: other</span>
+        <span><i style="background:var(--raised);border:1px solid var(--line)"></i>did not work</span>
+        <span><i style="border:1px dashed var(--line)"></i>not written</span>
+        <span><i class="o"></i>Claude: 0 of 20 each</span>
+      </div>
+    </div>
+    <div class="readout">
+      <div>
+        <p class="label">Worked on Gemma</p>
+        <p class="count" id="candidates">0</p>
+        <p class="sub" id="played">&nbsp;</p>
+      </div>
+      <div>
+        <p class="label">Replayed on Claude</p>
+        <p class="count" id="claude-episodes">0</p>
+        <p class="sub">episodes, Sonnet 5.5 and Haiku 5.5</p>
+      </div>
+      <div>
+        <p class="label">Reached the attacker on Claude</p>
+        <p class="zero">0</p>
+      </div>
+    </div>
+  </section>
+  <footer>
+    <p class="note" id="note1"><b>It narrowed to one idea.</b> From round 6, nearly every attack that worked was text in an email, document or page posing as a formatting rule for the reply. It never saw Claude's results, by design.</p>
+    <p class="note" id="note2"><b>Pre-registered, with 3 deviations stated.</b> No attack can be called new: the novelty measure failed its check (34% of plain rewordings read as new). The largest cluster went 0 of 2,020 on Claude, below 0.15% at 95%.</p>
+  </footer>
+</div>
+<script>
+// Per round: attacks played, candidates (at least 2 of 5 on Gemma), and candidates in the six
+// largest clusters. Claude successes were 0 in every round.
+const PLAYED = [10, 10, 10, 10, 8, 8, 8, 10, 10, 10, 10, 10, 10, 8, 8, 8, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10];
+const CANDIDATES = [7, 9, 8, 7, 7, 6, 8, 8, 8, 10, 8, 9, 6, 6, 7, 6, 6, 10, 8, 9, 10, 8, 10, 10, 9, 9, 9, 9, 10, 9];
+const IDEA = [1, 2, 3, 4, 6, 6, 8, 8, 8, 10, 8, 9, 5, 5, 6, 5, 6, 10, 8, 9, 10, 8, 10, 10, 9, 9, 9, 9, 10, 9];
+const ROUNDS = PLAYED.length;
+const FILL_START = 0.6, FILL_END = 7.4, NOTE1_AT = 7.9, NOTE2_AT = 9.0;
+
+const grid = document.getElementById("grid");
+const axis = document.getElementById("axis");
+const claude = document.getElementById("claude");
+const columns = [];
+for (let r = 0; r < ROUNDS; r++) {
+  const column = document.createElement("div");
+  column.className = "round";
+  // Cells stack from the bottom: the one idea first, then other candidates, then the rest played.
+  const cells = [];
+  for (let k = 0; k < 10; k++) {
+    const cell = document.createElement("div");
+    cell.className = "cell";
+    cells.push(cell);
+  }
+  cells.slice().reverse().forEach((cell) => column.append(cell));
+  grid.append(column);
+  columns.push(cells);
+  const tick = document.createElement("span");
+  tick.textContent = r === 0 || (r + 1) % 5 === 0 ? String(r + 1) : "";
+  axis.append(tick);
+  claude.append(document.createElement("span"));
+}
+const dots = [...claude.children];
+const clamp = (x) => Math.min(1, Math.max(0, x));
+const sum = (list, n) => list.slice(0, n).reduce((a, b) => a + b, 0);
+
+window.draw = (t) => {
+  // Rounds appear one after another at an even pace; each round's Claude dot follows it.
+  const shown = Math.floor(clamp((t - FILL_START) / (FILL_END - FILL_START)) * ROUNDS + 1e-9);
+  columns.forEach((cells, r) => {
+    const on = r < shown;
+    cells.forEach((cell, k) => {
+      cell.className = "cell";
+      if (!on) return;
+      if (k < IDEA[r]) cell.classList.add("idea");
+      else if (k < CANDIDATES[r]) cell.classList.add("candidate");
+      else if (k < PLAYED[r]) cell.classList.add("played");
+      else cell.classList.add("refused");
+    });
+    dots[r].style.opacity = on ? 1 : 0;
+  });
+  const candidates = sum(CANDIDATES, shown);
+  document.getElementById("candidates").textContent = candidates.toLocaleString("en-GB");
+  document.getElementById("played").textContent =
+    shown ? `of ${sum(PLAYED, shown).toLocaleString("en-GB")} played, round ${shown} of 30` : " ";
+  document.getElementById("claude-episodes").textContent = (20 * candidates).toLocaleString("en-GB");
+  document.getElementById("note1").style.opacity = clamp((t - NOTE1_AT) / 0.6);
+  document.getElementById("note2").style.opacity = clamp((t - NOTE2_AT) / 0.6);
+};
+window.draw(0);
+</script>
+</body>
+</html>

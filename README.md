@@ -8,12 +8,13 @@ It is a toy tool-using assistant with a secret to leak, a separate Judge process
 counts as a successful attack, and an arena where an Attacker agent and a Defender agent take turns
 against it.
 
-> **Status, 6 November 2026.** Part 1 is done and written up in
+> **Status, 8 November 2026.** Part 1 is done and written up in
 > [docs/static-test.md](docs/static-test.md): I played 2,331 published attacks against four targets
 > and none reached the attacker. Its positive control, an assistant told to obey, got there in only
-> 19 of 400 episodes (4.8%), so the zero says as much about this setup as about the models. Part 2, the arena that hunts for new attacks, is built and has only
-> run on simulated agents so far. Nothing here is a pre-registered finding yet, and I make no claim
-> about how good any defence is.
+> 19 of 400 episodes (4.8%), so the zero says as much about this setup as about the models. Part 2
+> is done and written up in [docs/discovery.md](docs/discovery.md): a Claude Attacker wrote 288
+> attacks over 30 pre-registered rounds, 246 of them worked on a helped local Gemma, and none of
+> them reached the attacker in 4,920 Claude episodes. I make no claim about how good any defence is.
 
 <p align="center">
   <img src="docs/figures/arena-replay.gif" width="800" alt="The dashboard's arena replaying one cycle: red attacks fly at the blue detector ring, caught ones stop with a cross, ones that get past reach the target in the centre, and the Judge rejects the patch">
@@ -263,6 +264,29 @@ What the zero is worth:
   attacker in 2 of 400. The Claude results stand. Details in
   [docs/static-test.md](docs/static-test.md).
 
+### Part 2: an agent writing new attacks
+
+<p align="center">
+  <img src="docs/figures/discovery.gif" width="800" alt="Dashboard: 30 rounds of attacks fill in one by one on Gemma, turning almost entirely to the one idea from round 6; 246 of 288 worked on Gemma, all were replayed on Claude over 4,920 episodes, and 0 reached the attacker">
+</p>
+
+A Claude Sonnet 5.5 Attacker wrote 10 attacks a round for 30 rounds, seeing after each round how its
+attacks did on a screening target: local Gemma 4 12B with extra tool help. 246 of the 288 attacks it
+returned reached the attacker in at least 2 of 5 trials. Each of those got 10 trials on Claude
+Sonnet 5.5 and 10 on Claude Haiku 5.5, and none of the 4,920 succeeded. The design was
+pre-registered (`prereg-005-discovery`); three deviations are stated in the write-up.
+
+- **The Attacker narrowed to one idea.** From round 6, nearly every candidate was text in a data
+  channel posing as a formatting rule for the reply. It found what Gemma rewarded and repeated it,
+  and it never saw Claude's results, by design.
+- **"New" can't be claimed.** Before the run, 17 of 50 plain rewordings of known attacks read as
+  novel to my 5-gram measure, against a 10% bar, so its verdict that every cluster is novel means
+  little. I found no class that isn't already described publicly.
+- **The zero is strongest per cluster.** The largest cluster, 101 near-duplicates, went 0 for 2,020
+  on Claude (below 0.15% at 95%). A single attack's 0 of 10 per model only bounds it below 25.9%.
+
+Bounds, the per-round table, limits and deviations: [docs/discovery.md](docs/discovery.md).
+
 ### Controls, in simulation only
 
 The placebo in mock mode: 1 keep in 300 null cycles (upper bound 1.6%, under the 5% limit), while a
@@ -323,9 +347,10 @@ Its positive control, rung 5, ran on 6 November and reached the attacker in 19 o
 
 **Next.** Fix the bag-of-words shortcut, rebuild the data, then run a valid live baseline.
 
-**Part 2.** An Attacker-only loop against the same toy assistant. Every attack the Judge sees reach
-the attacker, and that is far enough from the public corpora, goes into a findings log with a
-replay, ready to report. It gets its own plan and pre-registration before it runs.
+**Part 2, done.** The Attacker-only loop above, written up in
+[docs/discovery.md](docs/discovery.md). It ran 30 rounds on 7 November and nothing was confirmed on
+Claude. A better novelty measure, one that catches paraphrase, comes before any claim that an
+attack is new.
 
 **Open problems I still have to fix:**
 - A runner lock, so two cycles cannot run at once, and a command to abandon an open cycle.

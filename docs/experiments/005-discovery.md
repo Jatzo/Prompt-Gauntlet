@@ -111,4 +111,23 @@ payload. Attack texts, transcripts and the findings export stay in `private/`.
 - The app is a toy with mock tools; results describe this setup.
 
 ## Deviations
-None yet.
+
+**8 November 2026, run `d1`.** Recorded after the run, with the write-up in `docs/discovery.md`.
+
+1. **Round 3's screening was played twice.** I stopped the run during round 3's screening at 14:05
+   UTC on 7 November. On resume at 15:27 the Attacker's stored batch was reused and all 50 screening
+   episodes were played again from the start, fresh samples at temperature 0.7. "Nothing is re-run"
+   above is broken for those 50 episodes. Nothing from the interrupted attempt was stored or
+   counted, so nothing counts twice and no outcome was chosen.
+2. **Turn-limit episodes and per-round calls and time are not reported as listed.** The discovery
+   check does not store turn-limit counts or per-round call counts, and the Judge is not changed
+   after the run to add them. The write-up gives wall time per round and the Attacker's calls (32,
+   30 valid).
+3. **Operator stops between rounds.** After the pilot review, rounds 4 to 30 ran in sittings of 3,
+   with the run set to stopped between rounds. "Stopping" above provides only for the pilot and a
+   confirmation. Between sittings no commit landed, the Attacker prompt's SHA-256 stayed
+   `ce9dba67...`, and the Attacker saw "Round N of 30" throughout.
+
+Handled as written above, so not deviations: the novelty check failed (17 of 50 read `high`, 34%),
+and the write-up leans on behaviour and triage; in 6 rounds the Attacker returned 8 attacks, and the
+12 missing count as refused; the Attacker never saw Claude results.
