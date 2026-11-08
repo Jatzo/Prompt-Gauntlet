@@ -413,22 +413,20 @@ def roadmap(t):
             ],
         ),
         (
-            "Next",
-            t["defender"],
+            "Now: live arena",
+            t["held"],
             [
-                "Shortcut fix and rebuild",
-                "Valid live baseline",
-                "Paraphrase-aware novelty",
+                "Rung 6 pilot: 0 of 400",
+                "Search on guided Gemma",
+                "Best finds checked on Claude",
             ],
         ),
         (
-            "Then",
-            t["held"],
+            "Next",
+            t["defender"],
             [
-                "Defender against the findings",
-                "Adaptive attacker, T2 and T3",
-                "Memory ablation",
-                "Case studies",
+                "Paraphrase-aware novelty",
+                "Shortcut fix and dev rebuild",
             ],
         ),
     ]

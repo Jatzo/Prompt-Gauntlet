@@ -28,25 +28,21 @@
 <circle cx="282" cy="202" r="3" fill="#1f7a58"/>
 <text x="292" y="206" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Write-up and dashboard</text>
 <line x1="472" y1="112" x2="492" y2="112" stroke="#5c5672" stroke-width="1.5" marker-end="url(#head)"/>
-<rect x="492" y="92" width="210" height="128" rx="8" fill="#f5f3fa" stroke="#1d6bb3" stroke-width="1.5"/>
-<rect x="492" y="92" width="4" height="128" rx="2" fill="#1d6bb3"/>
-<text x="508" y="116" fill="#1d1730" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Next</text>
-<circle cx="512" cy="136" r="3" fill="#1d6bb3"/>
-<text x="522" y="140" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Shortcut fix and rebuild</text>
-<circle cx="512" cy="158" r="3" fill="#1d6bb3"/>
-<text x="522" y="162" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Valid live baseline</text>
-<circle cx="512" cy="180" r="3" fill="#1d6bb3"/>
-<text x="522" y="184" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Paraphrase-aware novelty</text>
+<rect x="492" y="92" width="210" height="128" rx="8" fill="#f5f3fa" stroke="#8a5d00" stroke-width="1.5"/>
+<rect x="492" y="92" width="4" height="128" rx="2" fill="#8a5d00"/>
+<text x="508" y="116" fill="#1d1730" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Now: live arena</text>
+<circle cx="512" cy="136" r="3" fill="#8a5d00"/>
+<text x="522" y="140" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Rung 6 pilot: 0 of 400</text>
+<circle cx="512" cy="158" r="3" fill="#8a5d00"/>
+<text x="522" y="162" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Search on guided Gemma</text>
+<circle cx="512" cy="180" r="3" fill="#8a5d00"/>
+<text x="522" y="184" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Best finds checked on Claude</text>
 <line x1="702" y1="112" x2="722" y2="112" stroke="#5c5672" stroke-width="1.5" marker-end="url(#head)"/>
-<rect x="722" y="92" width="210" height="128" rx="8" fill="#f5f3fa" stroke="#8a5d00" stroke-width="1.5"/>
-<rect x="722" y="92" width="4" height="128" rx="2" fill="#8a5d00"/>
-<text x="738" y="116" fill="#1d1730" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Then</text>
-<circle cx="742" cy="136" r="3" fill="#8a5d00"/>
-<text x="752" y="140" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Defender against the findings</text>
-<circle cx="742" cy="158" r="3" fill="#8a5d00"/>
-<text x="752" y="162" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Adaptive attacker, T2 and T3</text>
-<circle cx="742" cy="180" r="3" fill="#8a5d00"/>
-<text x="752" y="184" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Memory ablation</text>
-<circle cx="742" cy="202" r="3" fill="#8a5d00"/>
-<text x="752" y="206" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Case studies</text>
+<rect x="722" y="92" width="210" height="128" rx="8" fill="#f5f3fa" stroke="#1d6bb3" stroke-width="1.5"/>
+<rect x="722" y="92" width="4" height="128" rx="2" fill="#1d6bb3"/>
+<text x="738" y="116" fill="#1d1730" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" text-anchor="start" opacity="1.0">Next</text>
+<circle cx="742" cy="136" r="3" fill="#1d6bb3"/>
+<text x="752" y="140" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Paraphrase-aware novelty</text>
+<circle cx="742" cy="158" r="3" fill="#1d6bb3"/>
+<text x="752" y="162" fill="#5c5672" font-family="'IBM Plex Sans', 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" text-anchor="start" opacity="1.0">Shortcut fix and dev rebuild</text>
 </svg>

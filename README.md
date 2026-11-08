@@ -339,13 +339,18 @@ Details in [docs/debug-log.md](docs/debug-log.md) and [docs/limitations.md](docs
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/figures/roadmap-dark.svg">
-  <img src="docs/figures/roadmap-light.svg" width="100%" alt="Plan of action in four columns: part 1 done, part 2 done, next, then">
+  <img src="docs/figures/roadmap-light.svg" width="100%" alt="Plan of action in four columns: part 1 done, part 2 done, the live arena on an engineered target, next">
 </picture>
 
 **Part 1, done.** The static test above, written up in [docs/static-test.md](docs/static-test.md).
 Its positive control, rung 5, ran on 6 November and reached the attacker in 19 of 400 episodes.
 
-**Next.** Fix the bag-of-words shortcut, rebuild the data, then run a valid live baseline.
+**The live arena, on an engineered target.** No target I pre-registered is hijacked by the corpus
+attacks under the current rule. The last try, guided Gemma, measured 0 of 400 on 8 November
+against a bar of 20% ([run record](docs/run-record.md)). So the arena searches there with attacks
+its own Attacker writes, logs each one that hijacks the target, and checks the best on Claude.
+The Defender cannot keep a patch until the dev set holds a valid attack. The bag-of-words
+shortcut stays recorded and unfixed.
 
 **Part 2, done.** The Attacker-only loop above, written up in
 [docs/discovery.md](docs/discovery.md). It ran 30 rounds on 7 November and nothing was confirmed on

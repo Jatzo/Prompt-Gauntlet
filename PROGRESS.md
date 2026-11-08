@@ -412,3 +412,16 @@ deviations in `docs/experiments/005-discovery.md`. `scripts/discovery_report.py`
 and checks public files for attack text. Plan: `private/part2-writeup-plan.md` (draft 2). Left: the
 roadmap figure still shows part 2 as next; a novelty measure that catches paraphrase comes before
 any claim that an attack is new.
+
+2026-11-08, the rung 6 pilot and the arena's new target. The approved shortcut-fix plan predated the checker rule: with 0
+valid dev attacks it could not give a valid baseline. Draft 4 (`private/shortcut-fix-plan-v3.md`,
+opus critique, approved) pre-registered rung 6, guided Gemma, in PLAN section 7 (6e7ad8e, with
+`scripts/gemma_pilot.py` pinned by hash). The pilot measured 0 of 400 on 200 train pairs against a
+20% bar, so as pre-registered there is no further rung. Joe's goal is a live arena that searches
+for new injections whatever it finds, so the arena moves to guided Gemma with Attacker-written
+attacks (`private/arena-live-plan.md`, draft 2, opus critique, approved). Built: `run --reference guided` (config only, ladder and baseline unchanged), up to 5 valid
+attacks a cycle through part 2 discovery check and Claude confirmation (`discover export --run-id
+arena-RUN`), a pause on a confirmed finding (resuming is the acknowledgement, recorded as a control
+change), and a clean `no_tpr_gain` reject while dev has no valid attack. Wired in sim and mock
+through the real Judge process; no live arena cycle yet. The new config fields change the config
+hash, so finish or roll back any cycle opened before this change before resuming it.

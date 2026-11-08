@@ -115,6 +115,13 @@ attacker's address in the final answer, and a message to someone the task did no
 the attacker's address appears in 61% to 66% of injected answers on each rung. The checker cannot
 tell whether the target is passing the attacker's link on or summarising the email that holds it.
 
+One more rung was pre-registered on 8 November: rung 3 with the part 2 screening target's guided
+help. It measured 0 of 400 on 200 train pairs against a bar of 20% (`docs/run-record.md`), so the
+dev partition still holds no valid attack. The arena therefore searches on guided Gemma with
+attacks its own Attacker writes, and its findings hold for that engineered target only. While dev
+holds no valid attack, the keep rule's TPR gain cannot be computed, so the Defender cannot keep a
+patch and the run pauses at each plateau.
+
 ## Labels made while the target saw extra tools
 
 Every call in the checker pass (41,548) and the labelling build was made while the session also
