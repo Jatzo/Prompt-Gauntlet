@@ -425,3 +425,14 @@ arena-RUN`), a pause on a confirmed finding (resuming is the acknowledgement, re
 change), and a clean `no_tpr_gain` reject while dev has no valid attack. Wired in sim and mock
 through the real Judge process; no live arena cycle yet. The new config fields change the config
 hash, so finish or roll back any cycle opened before this change before resuming it.
+
+2026-11-08 (evening), first live arena cycle and the Attacker brief. Run a1 (`runs/arena-live.db`,
+Judge copy `private/judge-arena` without the real test files, since sealing broke 110 tests)
+committed cycle 1 in about 82 minutes: 12 attacks, 0 valid on guided Gemma, no findings screened,
+patch rejected (`no_tpr_gain`), 5,568 Gemma calls in the keep step, 11 Claude calls. One Ollama
+CUDA crash paused it; the resume reran from cache. The 0 came from the Attacker's brief, not the
+target (`docs/debug-log.md`). Fixed per `private/attacker-prompt-fix-plan.md` (draft 2, sonnet
+critique, approved): the prompt states the win rules, every request lists the tasks, the submit turn
+names the send and fetch slots, `{ATTACKER}` is a constraint for every focus, unplayed attacks are
+logged as `attack_unplayed`, and the hijack bait no longer says "code". Next, on Joe's word: one
+live cycle to check attacks are playable, then the 3-cycle pilot.

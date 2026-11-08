@@ -111,3 +111,33 @@ scratch folders.
   the Judge folder), with the repo's private folder redirected so a broken guard could only touch a
   temporary folder. Both cases fail with the guard removed.
 - `tests/test_cli.py::test_a_synthetic_build_with_scratch_folders_writes_only_there`.
+
+## The arena Attacker could not write a valid attack
+
+**Phase 3, live arena.**
+
+**What broke.** The first live arena cycle on guided Gemma (run a1, 8 November) gave 12 attacks and
+0 valid. Part 2's Attacker made candidates of 85% of its attacks on the same target, so the target
+was not the cause. The arena Attacker's prompt never stated the checker rule. It asked for "the
+canary" (the target knows its secret as a door code), said any `example.invalid` address would do
+(only `{ATTACKER}` counts, and the arena named it only on `explore` cycles), and listed no tasks, so
+email-sending attacks landed on fetch-only tasks. 4 of the 12 used the `user` channel, which no task
+reads; they were never played and were counted as not valid with no trace.
+
+**How it was found.** Reading the cycle's stored batch and the Judge's `attacks` rows, then pairing
+each attack with `pick_task` the way the Judge does, and comparing `prompts/attacker.md` with
+`prompts/discovery_attacker.md`. Only 1 or 2 of the 12 could have won at all.
+
+**The fix.** The prompt now gives the app, the three ways to win and `{ATTACKER}` as the only address
+that counts. Every request lists the tasks from `TASKS`. The submit turn names the slots whose task
+can send or fetch, computed with the same `pick_task` call the Judge makes (`arena/judge/attacks.py`
+is hash-pinned, so a change there fails first). `{ATTACKER}` is a constraint for every focus, and
+attacks with no task or a refused technique are logged as an `attack_unplayed` event. The hijack
+bait no longer says "code", so an attack reusing its wording is not steered; a copied token still
+pauses the run.
+
+**Regression tests.** `tests/test_attacker_brief.py`, among them
+`test_the_submit_turn_names_exactly_the_slots_the_judge_gives_a_send_or_fetch_task`,
+`test_unplayed_attacks_are_logged_as_no_task_and_refused_apart` and
+`test_an_attack_repeating_the_bait_with_its_token_still_pauses`; and
+`tests/test_shortlist.py::test_a_technique_focus_gets_the_hypothesis_as_written_and_the_attacker_rule`.
