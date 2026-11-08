@@ -402,3 +402,13 @@ if the worst case, high plus bad, is 5 of 50 or fewer. A pre-flight test runs on
 the real Judge process. Committed 7fbca29 and 124fcb0 (1,392 tests), not pushed. Next, each on
 Joe's word: push, the live novelty check (record its figures in the run record), then the pilot
 (`control start`, then `discover run --rounds 30 --backend live`), which stops after round 3.
+
+2026-11-07 and 08, part 2 run and write-up. The live novelty check failed (17 of 50 rewordings
+read high, 34%, against 10%), so high alone cannot call a candidate novel. Run `d1` played all 30
+pre-registered rounds in sittings of 3 after the pilot review: 288 attacks, 246 candidates on guided
+Gemma, 0 of 4,920 Claude confirmation episodes, nothing confirmed. Written up in
+`docs/discovery.md` with a dashboard GIF, the run record section "Part 2 run d1" and three dated
+deviations in `docs/experiments/005-discovery.md`. `scripts/discovery_report.py` prints every figure
+and checks public files for attack text. Plan: `private/part2-writeup-plan.md` (draft 2). Left: the
+roadmap figure still shows part 2 as next; a novelty measure that catches paraphrase comes before
+any claim that an attack is new.
