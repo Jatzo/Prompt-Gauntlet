@@ -339,7 +339,7 @@ Details in [docs/debug-log.md](docs/debug-log.md) and [docs/limitations.md](docs
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/figures/roadmap-dark.svg">
-  <img src="docs/figures/roadmap-light.svg" width="100%" alt="Plan of action in four columns: part 1 done, next, part 2, then">
+  <img src="docs/figures/roadmap-light.svg" width="100%" alt="Plan of action in four columns: part 1 done, part 2 done, next, then">
 </picture>
 
 **Part 1, done.** The static test above, written up in [docs/static-test.md](docs/static-test.md).

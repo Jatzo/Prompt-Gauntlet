@@ -403,18 +403,22 @@ def roadmap(t):
             ],
         ),
         (
-            "Next",
-            t["defender"],
-            ["Shortcut fix and rebuild", "Valid live baseline"],
+            "Done: part 2",
+            t["live"],
+            [
+                "30-round discovery loop",
+                "0 of 4,920 on Claude",
+                "Novelty check failed: 34%",
+                "Write-up and dashboard",
+            ],
         ),
         (
-            "Part 2",
-            t["attacker"],
+            "Next",
+            t["defender"],
             [
-                "Attacker-only discovery loop",
-                "Findings log with replays",
-                "Novelty against public corpora",
-                "Report what works",
+                "Shortcut fix and rebuild",
+                "Valid live baseline",
+                "Paraphrase-aware novelty",
             ],
         ),
         (
@@ -433,7 +437,7 @@ def roadmap(t):
         text(
             32,
             66,
-            "In order. Part 2 gets its own plan and pre-registration before any result is reported.",
+            "In order. Each new experiment gets its own plan and pre-registration before any result is reported.",
             t["muted"],
             13,
         ),
@@ -448,7 +452,7 @@ def roadmap(t):
             b.append(text(x + 30, yy, item, t["muted"], 12))
         if i < len(cols) - 1:
             b.append(arrow(x + w, 112, x + w + gap, 112, t["muted"]))
-    return svg(960, 240, t, "\n".join(b), "Plan of action: part 1 done, next, part 2, then")
+    return svg(960, 240, t, "\n".join(b), "Plan of action: part 1 done, part 2 done, next, then")
 
 
 def main(out):
