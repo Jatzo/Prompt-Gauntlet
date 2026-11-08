@@ -47,6 +47,13 @@ class UsageLimitReached(Anomaly):
     kind = "usage_limit"
 
 
+class AgentRefused(Anomaly):
+    """The provider's safeguards refused an agent's request. The cycle stays open, so a resume
+    asks the same step again; nothing is reworded to get past the check."""
+
+    kind = "agent_refused"
+
+
 class HashMismatch(Anomaly):
     kind = "hash_mismatch"
 

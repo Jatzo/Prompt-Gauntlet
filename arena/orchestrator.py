@@ -31,6 +31,7 @@ from arena.agents import defender
 from arena.agents.attacker import SUBMIT_STEP, Attacker, AttackerView
 from arena.agents.defender import Defender, DefenderView
 from arena.anomaly import (
+    AgentRefused,
     Anomaly,
     ConfigMismatch,
     HashMismatch,
@@ -467,7 +468,17 @@ class Orchestrator:
             # The Judge counts the query budget; the turns never ask for more than it allows.
             turns = min(self.config.attacker_query_turns, DEFAULTS.query_budget_t2)
             attacker = Attacker(turns=turns, seed=self.config.seed)
-            batch = attacker.run(cycle_id, view, CyclePorts(self, cycle_id, judge_query))
+            try:
+                batch = attacker.run(cycle_id, view, CyclePorts(self, cycle_id, judge_query))
+            except llm.ContentRefused as refused:
+                # Live cycle 2 exited here. Earlier turns are stored, so a resume repeats only the
+                # refused request.
+                raise AgentRefused(
+                    "The provider's safeguards refused the Attacker's request: resume to ask"
+                    " again, or stop the run.",
+                    role="attacker",
+                    reason=str(refused)[:200],
+                ) from refused
             # Safe to repeat on resume: the Judge's cache holds every episode and score it ran.
             report = self.judge.validate_batch(
                 ValidateBatchRequest(cycle_id=cycle_id, attacks=batch.attacks, measure=settings)

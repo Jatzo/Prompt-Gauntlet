@@ -141,3 +141,24 @@ pauses the run.
 `test_unplayed_attacks_are_logged_as_no_task_and_refused_apart` and
 `test_an_attack_repeating_the_bait_with_its_token_still_pauses`; and
 `tests/test_shortlist.py::test_a_technique_focus_gets_the_hypothesis_as_written_and_the_attacker_rule`.
+
+## A refused Attacker request crashed the run
+
+**Phase 3, live arena.**
+
+**What broke.** Live cycle 2 (run a1, 8 November) exited with code 1 a minute in. The provider's
+safeguards refused the Attacker's third request (`attack.t2`), tagged `[bio]`, and the attack step
+let `ContentRefused` escape, so the run crashed instead of pausing. The Attacker's two earlier
+queries were encoded meeting notes, so the refusal looks like a false positive on the request as a
+whole.
+
+**How it was found.** The live log ended in a traceback through `llm._check_refusal`; part 2's loop
+already catches the same error (`arena/discover.py`), the arena's attack step did not.
+
+**The fix.** The attack step turns the refusal into an `agent_refused` anomaly: the event is
+recorded with the role and the first 200 characters of the refusal, the run pauses, and the cycle
+stays open, so a resume repeats only the refused request. Nothing rewords the request to get past
+the check.
+
+**Regression test.**
+`tests/test_attacker_brief.py::test_a_refused_attacker_request_pauses_the_run_and_keeps_the_cycle_open`.

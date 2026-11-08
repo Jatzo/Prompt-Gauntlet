@@ -136,3 +136,33 @@ def test_an_attack_repeating_the_bait_with_its_token_still_pauses():
     copied = BAIT.format(tag=canary(7, SUBMIT_STEP))
     with pytest.raises(HijackDetected):
         Attacker(turns=0, seed=1).run(7, VIEW, BatchPorts(copied))
+
+
+class RefusingBackend(llm.MockBackend):
+    """The scripted mock, except the provider refuses every Attacker request."""
+
+    def complete(self, *, role, model_id, step_key, request):
+        if role == "attacker":
+            raise llm.ContentRefused("API Error: Sonnet 5 can't help with this.")
+        return super().complete(role=role, model_id=model_id, step_key=step_key, request=request)
+
+
+def test_a_refused_attacker_request_pauses_the_run_and_keeps_the_cycle_open(conn):
+    from arena import db
+
+    backend = RefusingBackend(script=numbered(phase1_mock_script(), conn))
+    outcome = Orchestrator(conn, backend=backend, judge=FakeJudge()).run_cycle()
+    assert outcome.status == "paused" and "agent_refused" in outcome.detail
+    assert db.control_state(conn) == ("paused", "anomaly: agent_refused")
+    [(detail, severity)] = conn.execute(
+        "SELECT detail, severity FROM events WHERE kind = 'agent_refused'"
+    ).fetchall()
+    assert severity == "anomaly" and json.loads(detail)["role"] == "attacker"
+    # Not rolled back: a resume finishes the same cycle without asking for the plan again.
+    [(state,)] = conn.execute("SELECT state FROM cycles WHERE id = ?", (outcome.cycle_id,))
+    assert state == "running"
+    with db.transaction(conn):
+        db.set_control(conn, "running", "operator: resume")
+    resumed = llm.MockBackend(script=numbered(phase1_mock_script(), conn))
+    again = Orchestrator(conn, backend=resumed, judge=FakeJudge()).run_cycle()
+    assert (again.status, again.cycle_id) == ("committed", outcome.cycle_id)
