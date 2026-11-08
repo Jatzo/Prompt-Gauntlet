@@ -5,6 +5,7 @@ python -m arena.cli control start|pause|resume|stop
 python -m arena.cli run-cycle --backend mock|sim|replay|live [--cassette PATH] [--judge JUDGE]
     [--arm full|no_memory|control]
 python -m arena.cli run --cycles N --backend mock|sim|replay|live [--judge simulated|live]
+    [--reference ladder|guided]
     [--arm full|no_memory|control]
 python -m arena.cli abandon-cycle --reason TEXT
 python -m arena.cli baseline --backend mock|replay|live [--profile clean|low_asr]
@@ -33,7 +34,14 @@ from pathlib import Path
 
 from arena import baselines, cycle, db, evidence, llm, novelty_check, usage
 from arena.anomaly import Anomaly
-from arena.config import DEFAULTS, OPEN_WEIGHTS_ROLES, REPO_ROOT, agent_db_path, private_data_dir
+from arena.config import (
+    DEFAULTS,
+    OPEN_WEIGHTS_ROLES,
+    REPO_ROOT,
+    ArenaConfig,
+    agent_db_path,
+    private_data_dir,
+)
 from arena.control import placebo
 from arena.data import large_synthetic
 from arena.data.build import build_dataset, plan_dataset
@@ -77,6 +85,23 @@ def cmd_control(conn, action: str) -> int:
     return 0
 
 
+def run_config(reference: str) -> ArenaConfig:
+    """`--reference guided` validates attacks on rung 3 with the part 2 screening help, the
+    engineered target the arena searches on (PLAN section 7 note of 2026-11-08). The default
+    keeps the configured ladder rung. One trial per dev pair keeps a live cycle near an hour of
+    local Gemma; an attack that fires rarely can be missed (operator choice, 2026-11-08)."""
+    if reference == "ladder":
+        return DEFAULTS
+    return DEFAULTS.model_copy(
+        update={
+            "reference_rung": 3,
+            "reference_tool_help": "guided",
+            "arena_findings_per_cycle": 5,
+            "trials_per_pair": 1,
+        }
+    )
+
+
 def cmd_run(conn, args, cycles: int) -> int:
     """Run cycles one after another, one line each, until `cycles` are done or one halts.
 
@@ -107,6 +132,7 @@ def cmd_run(conn, args, cycles: int) -> int:
             run_id=args.run_id,
             arm=args.arm,
             judge_backend=args.judge,
+            config=run_config(args.reference),
         )
         for done in range(cycles):
             try:
@@ -718,6 +744,8 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--judge", choices=["simulated", "live"], default="simulated")
         # PLAN section 14: full memory, no memory, or the scripted hill-climb control.
         command.add_argument("--arm", choices=["full", "no_memory", "control"], default="full")
+        # ladder: the configured rung; guided: guided Gemma, the arena's engineered target.
+        command.add_argument("--reference", choices=["ladder", "guided"], default="ladder")
     baseline = commands.add_parser("baseline")
     baseline.add_argument("--backend", choices=["mock", "replay", "live"], default="mock")
     baseline.add_argument("--profile", choices=["clean", "low_asr"], default="clean")

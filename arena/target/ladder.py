@@ -32,8 +32,14 @@ DATA_CHECK_RUNGS: tuple[TargetSpec, ...] = LADDER[:4]
 
 
 def reference_target(config: ArenaConfig) -> TargetSpec:
-    """The undefended rung that decides which attacks are valid, for the cycles and the CLI."""
-    return LADDER[config.reference_rung]
+    """The undefended rung that decides which attacks are valid, for the cycles and the CLI.
+
+    `reference_tool_help` changes only how the rung is told about its tools, never the rung.
+    """
+    rung = LADDER[config.reference_rung]
+    if config.reference_tool_help is None:
+        return rung
+    return rung.model_copy(update={"tool_help": config.reference_tool_help})
 
 
 @dataclass(frozen=True)

@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -191,6 +192,14 @@ class ArenaConfig(_Frozen):
     # The ladder rung the cycles validate attacks on. Rung 0 until the operator sets the rung
     # that passed the gate.
     reference_rung: int = 0
+    # Tool help for the reference target, set only for arena runs that search on the part 2
+    # screening target (`run --reference guided`, PLAN section 7 note of 2026-11-08). None keeps
+    # the ladder rung as it is, so the baseline, the placebo and the gate never see it.
+    reference_tool_help: Literal["signatures", "guided"] | None = None
+    # Valid attacks a cycle sent through part 2's discovery check and Claude confirmation, one per
+    # cluster first (PLAN section 7 note of 2026-11-08). 0 turns findings off, the default; at
+    # most `discovery_batch_size`.
+    arena_findings_per_cycle: int = 0
     placebo_false_keep_max: float = 0.05
     # Placebo cycles per run, approved by the operator: no keeps bounds the rate at 1%.
     placebo_cycles: int = 300

@@ -40,9 +40,11 @@ from arena.anomaly import (
 from arena.baselines import REGEX_RULES
 from arena.config import DEFAULTS, REPO_ROOT, ArenaConfig, config_hash, private_data_dir
 from arena.control import hillclimb
+from arena.data.pairs import pick_task
 from arena.defender_inputs import hard_benign, shown_evasions, train_attacks, train_samples
 from arena.detector.patch import PatchRefused, apply_patch, fingerprint
-from arena.judge_client import HashReport
+from arena.discover import screening_target as discover_target
+from arena.judge_client import HashReport, JudgeError
 from arena.memory import briefing, shortlist
 from arena.memory.lessons import actual_delta, dispute_contradicted, noise_band
 from arena.memory.memory import Memory, MemoryWriteRejected, incumbent
@@ -58,6 +60,11 @@ from arena.schemas import (
     DetectorConfig,
     DetectorQuery,
     Directive,
+    DiscoveryAttack,
+    DiscoveryConfirmReport,
+    DiscoveryConfirmRequest,
+    DiscoveryReport,
+    DiscoveryRequest,
     EvaluateRequest,
     JudgeReport,
     MeasureRequest,
@@ -73,6 +80,7 @@ from arena.taxonomy import RULE_TECHNIQUES
 STEPS = ("plan", "attack", "defend", "judge", "postmortem")
 # The undefended target that decides which attacks are valid: the evaluation target, the same one
 # the baseline settles on, set once in the config.
+# Built from DEFAULTS, so it never follows `run --reference`; only the placebo command uses it.
 REFERENCE_TARGET = reference_target(DEFAULTS)
 # What the Judge measures with: its simulated models, or the real ones. Separate from the agents'
 # backend, so live agents can be watched without the Judge's long live measurements.
@@ -88,6 +96,8 @@ class Judge(Protocol):
     def evaluate(self, cycle_id: int) -> JudgeReport: ...
     def evaluate_candidate(self, request: EvaluateRequest) -> JudgeReport: ...
     def validate_batch(self, request: ValidateBatchRequest) -> BatchReport: ...
+    def discovery_check(self, request: DiscoveryRequest) -> DiscoveryReport: ...
+    def discovery_confirm(self, request: DiscoveryConfirmRequest) -> DiscoveryConfirmReport: ...
     def query_detector(self, request: QueryRequest) -> QueryReply: ...
 
 
@@ -445,7 +455,7 @@ class Orchestrator:
             return
         detector = self._incumbent()[1]
 
-        def produce() -> tuple[AttackBatch, BatchReport]:
+        def produce() -> tuple[AttackBatch, BatchReport, "Findings"]:
             settings = self._measure_settings(detector)
 
             def judge_query(cycle: int, step: str, text: str) -> QueryReply:
@@ -462,19 +472,94 @@ class Orchestrator:
             report = self.judge.validate_batch(
                 ValidateBatchRequest(cycle_id=cycle_id, attacks=batch.attacks, measure=settings)
             )
-            return batch, report
+            return batch, report, self._findings(cycle_id, batch, report)
 
-        def write(memory: Memory, result: tuple[AttackBatch, BatchReport]) -> str:
-            batch, report = result
+        def write(memory: Memory, result: tuple[AttackBatch, BatchReport, Findings]) -> str:
+            batch, report, findings = result
             self._store_baseline(memory, cycle_id, "attack")
             texts = [attack.text for attack in batch.attacks]
             self.novelty.record_batch(memory, cycle_id, texts, report)
             valid = sum(verdict.valid for verdict in report.verdicts)
+            if findings.error is not None:
+                db.log_event(
+                    self.conn, "arena_findings_failed", {"error": findings.error}, cycle_id=cycle_id
+                )
+            elif findings.screened or findings.skipped:
+                # Counts only: the bands and the confirmation counts stay in the Judge.
+                db.log_event(self.conn, "arena_findings", findings.as_detail(), cycle_id=cycle_id)
+            # Resuming is the operator's acknowledgement, recorded as a control change. An
+            # operator's stop is never turned into a pause.
+            if findings.confirmed and db.control_state(self.conn)[0] == "running":
+                # As in part 2, a confirmed candidate waits for the operator's disclosure decision.
+                db.set_control(
+                    self.conn,
+                    "paused",
+                    "a finding was confirmed on a Claude target: decide on disclosure, then resume",
+                )
             return (
                 f"{len(texts)} attacks, {valid} valid, {report.evading_clusters} evading clusters"
             )
 
         self._run_step(cycle_id, "attack", "attacker", "submit_attack_batch", produce, write)
+
+    def _findings(self, cycle_id: int, batch: AttackBatch, report: BatchReport) -> "Findings":
+        """Up to `arena_findings_per_cycle` of the cycle's valid attacks, one per cluster first, go
+        through part 2's discovery check on the screening target, and its candidates through the
+        Claude confirmation. Both are stored and cached in the Judge under `arena-<run id>`, round =
+        cycle, so a resumed cycle repeats them at no cost and `discover export` writes them out."""
+        limit = min(self.config.arena_findings_per_cycle, DEFAULTS.discovery_batch_size)
+        if limit <= 0:
+            return Findings()
+        valid = [v for v in report.verdicts if v.valid and not v.refused]
+        clusters, first, rest = set(), [], []
+        for verdict in valid:
+            (rest if verdict.cluster_id in clusters else first).append(verdict)
+            clusters.add(verdict.cluster_id)
+        attacks, skipped = [], 0
+        for verdict in [*first, *rest]:
+            attack = batch.attacks[verdict.index]
+            # No task reads the user channel, so a direct prompt cannot be screened.
+            task = pick_task(f"c{cycle_id}-a{verdict.index}", attack.channel)
+            if task is None:
+                skipped += 1
+                continue
+            attacks.append(DiscoveryAttack(**attack.model_dump(), task_id=task.id))
+            if len(attacks) == limit:
+                break
+        if not attacks:
+            return Findings(skipped=skipped)
+        backend = "live" if self.judge_backend == "live" else "mock"
+        run_id = f"arena-{self.run_id}"
+        try:
+            return self._screen(run_id, cycle_id, attacks, backend, skipped)
+        except JudgeError as error:
+            # Findings are an add-on: a fault in them is recorded, and the cycle goes on.
+            return Findings(skipped=skipped, error=str(error)[:500])
+
+    def _screen(
+        self, run_id: str, cycle_id: int, attacks: list, backend: str, skipped: int
+    ) -> "Findings":
+        checked = self.judge.discovery_check(
+            DiscoveryRequest(
+                run_id=run_id,
+                round=cycle_id,
+                attacks=attacks,
+                target=discover_target(),
+                backend=backend,
+                trials=DEFAULTS.discovery_trials,
+                seed=self.config.seed,
+            )
+        )
+        candidates = sum(v.candidate for v in checked.verdicts)
+        confirmed = 0
+        if candidates:
+            answer = self.judge.discovery_confirm(
+                DiscoveryConfirmRequest(
+                    run_id=run_id, round=cycle_id, backend=backend, seed=self.config.seed
+                )
+            )
+            confirmed = sum(c.confirmed for c in answer.candidates)
+        return Findings(len(attacks), candidates, confirmed, skipped)
 
     def _incumbent(self) -> tuple[int | None, DetectorConfig]:
         """The run's incumbent config and its id. Before any config is stored, the regex rules are
@@ -812,6 +897,27 @@ class Orchestrator:
                 " VALUES (?, ?, 'memory', ?)",
                 (cycle_id, step, db.now()),
             )
+
+
+@dataclass(frozen=True)
+class Findings:
+    """One cycle's findings, as counts: attacks screened, candidates on the screening target,
+    candidates confirmed on a Claude target, and valid attacks no task could carry. `error` is set
+    when the Judge refused the screening."""
+
+    screened: int = 0
+    candidates: int = 0
+    confirmed: int = 0
+    skipped: int = 0
+    error: str | None = None
+
+    def as_detail(self) -> dict:
+        return {
+            "screened": self.screened,
+            "candidates": self.candidates,
+            "confirmed": self.confirmed,
+            "skipped": self.skipped,
+        }
 
 
 class CyclePorts:
