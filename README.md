@@ -376,6 +376,8 @@ written down.
 8. **A refused Attacker request crashed the run.** It now pauses with the cycle still open.
 
 Details in [docs/debug-log.md](docs/debug-log.md) and [docs/limitations.md](docs/limitations.md).
+Three of them, written up as triage tickets with the evidence and verdict, are in
+[docs/case-notes.md](docs/case-notes.md).
 
 ## Trade-offs I made
 
@@ -488,7 +490,7 @@ arena/
   control/     the placebo test and the hill-climb control
   llm.py       every model call: live, mock, record and replay
   server.py    the dashboard backend
-docs/          limitations, references, run record, debug log, figures and screenshots
+docs/          limitations, references, run record, debug log, case notes, figures and screenshots
 tests/         the suite, including the hostile-dispatcher and kill-and-resume tests
 ```
 

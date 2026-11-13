@@ -446,3 +446,7 @@ model-id pin. Joe ended the arena there. Cycle 2 closed with abandon-cycle. Writ
 `scripts/arena_report.py` (report, and a part 3 leak check, since `discovery_report.py check`
 only sees part 2), the run record, limitations, README (verdicts, advice, Where I stopped) and
 the roadmap figure. Nothing pushed without Joe's word.
+
+2026-11-13, case notes.  writes up three flagged events as closed
+triage tickets (rung 2 false positives, the connector near miss, the cycle 2 refusal) from the
+existing records, with no new runs. Plan critiqued by sonnet and approved by Joe.
